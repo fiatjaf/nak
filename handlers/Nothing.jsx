@@ -15,7 +15,7 @@ export default function Nothing() {
           <a
             target="_blank"
             style={{color: 'inherit'}}
-            href="https://github.com/fiatjaf/nostr-utils-web"
+            href="https://github.com/fiatjaf/nostr-army-knife"
           >
             _______
           </a>
