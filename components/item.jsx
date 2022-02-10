@@ -1,6 +1,6 @@
 import React from 'react'
 
-export default function Item({label, children}) {
+export default function Item({label, hint, children}) {
   return (
     <div
       style={{
@@ -10,7 +10,9 @@ export default function Item({label, children}) {
         wordBreak: 'break-all'
       }}
     >
-      <b>{label}: </b>
+      <b data-wenk={hint} data-wenk-pos="right">
+        {label}:{' '}
+      </b>
       {children}
     </div>
   )

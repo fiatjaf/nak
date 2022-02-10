@@ -1,4 +1,4 @@
-import React, {useState} from 'react'
+import React, {useState, useEffect} from 'react'
 import {render} from 'react-dom'
 
 import Nothing from './handlers/Nothing'
@@ -7,7 +7,11 @@ import EventSigning from './handlers/EventSigning'
 const handlers = [EventSigning, Nothing]
 
 function App() {
-  let [value, setValue] = useState(null)
+  let [value, setValue] = useState(localStorage.getItem('value'))
+
+  useEffect(() => {
+    localStorage.setItem('value', value)
+  }, [value])
 
   let Result
   for (let i = 0; i < handlers.length; i++) {
@@ -29,6 +33,7 @@ function App() {
         <h1>nostr army knife</h1>
         paste something nostric
         <textarea
+          value={value}
           onChange={e => setValue(e.target.value)}
           style={{
             padding: '7px',
