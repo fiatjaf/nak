@@ -1,5 +1,4 @@
-import React, {useState, useEffect} from 'react'
-import useBooleanState from 'use-boolean-state'
+import React, {useState} from 'react'
 import useComputedState from 'use-computed-state'
 import {
   getPublicKey,
@@ -12,10 +11,10 @@ import {
 import Item from '../components/item'
 
 export default function EventSigning({value}) {
+  let evt = JSON.parse(value)
   let [privateKey, setPrivateKey] = useState(
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   )
-  let [isValidSignature, signatureGood, signatureBad] = useBooleanState(false)
   let privateKeyIsValid = useComputedState(
     () => privateKey.match(/[a-f0-9]{64}/),
     [privateKey]
@@ -25,16 +24,23 @@ export default function EventSigning({value}) {
     [privateKeyIsValid]
   )
   let signature = useComputedState(async () => {
-    evt.pubkey = publicKey
-    return await signEvent(evt, privateKey)
+    try {
+      evt.pubkey = publicKey
+      return await signEvent(evt, privateKey)
+    } catch (err) {
+      return null
+    }
   }, [value, privateKey])
-
-  let evt = JSON.parse(value)
-
-  useEffect(() => {
-    verifySignature(evt)
-      .then(ok => (ok ? signatureGood() : signatureBad()))
-      .catch(signatureBad)
+  let isValidSignature = useComputedState(async () => {
+    if (evt.id && evt.signature) {
+      try {
+        return await verifySignature(evt)
+      } catch (err) {
+        return false
+      }
+    } else {
+      return null
+    }
   }, [value])
 
   return (

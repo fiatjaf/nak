@@ -4,7 +4,7 @@
     "esbuild": "^0.14.21",
     "esbuild-plugin-alias": "^0.2.1",
     "events": "^3.3.0",
-    "nostr-tools": "^0.21.4",
+    "nostr-tools": "^0.22.1",
     "react": "^17.0.2",
     "react-dom": "^17.0.2",
     "use-boolean-state": "^1.0.2",
