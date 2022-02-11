@@ -16,7 +16,7 @@ export default function EventSigning({value}) {
     'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   )
   let privateKeyIsValid = useComputedState(
-    () => privateKey.match(/[a-f0-9]{64}/),
+    () => privateKey.match(/^[a-f0-9]{64}$/),
     [privateKey]
   )
   let publicKey = useComputedState(

@@ -3,8 +3,9 @@ import {render} from 'react-dom'
 
 import Nothing from './handlers/Nothing'
 import EventSigning from './handlers/EventSigning'
+import KeyHandling from './handlers/KeyHandling'
 
-const handlers = [EventSigning, Nothing]
+const handlers = [EventSigning, KeyHandling, Nothing]
 
 function App() {
   let [value, setValue] = useState(localStorage.getItem('value'))
