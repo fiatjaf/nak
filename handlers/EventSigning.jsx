@@ -55,7 +55,9 @@ export default function EventSigning({value}) {
         {getEventHash(evt)}
       </Item>
       {evt.sig ? (
-        <Item label="signature valid">{isValidSignature.toString()}</Item>
+        <Item label="signature valid">
+          {isValidSignature?.toString() || ''}
+        </Item>
       ) : (
         <>
           <Item
