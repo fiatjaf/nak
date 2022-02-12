@@ -32,7 +32,7 @@ export default function EventSigning({value}) {
     }
   }, [value, privateKey])
   let isValidSignature = useComputedState(async () => {
-    if (evt.id && evt.signature) {
+    if (evt.id && evt.sig) {
       try {
         return await verifySignature(evt)
       } catch (err) {
