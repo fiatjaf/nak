@@ -24,6 +24,8 @@ export default function EventSigning({value}) {
     [privateKeyIsValid]
   )
   let signature = useComputedState(async () => {
+    if (evt.sig) return null
+
     try {
       evt.pubkey = publicKey
       return await signEvent(evt, privateKey)
