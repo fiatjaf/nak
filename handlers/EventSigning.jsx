@@ -33,6 +33,11 @@ export default function EventSigning({value}) {
       return null
     }
   }, [value, privateKey])
+  let eventHash = useComputedState(() => getEventHash(evt), [value])
+  let isValidHash = useComputedState(
+    () => evt.id === eventHash,
+    [value, eventHash]
+  )
   let isValidSignature = useComputedState(async () => {
     if (evt.id && evt.sig) {
       try {
@@ -54,28 +59,35 @@ export default function EventSigning({value}) {
         {serializeEvent(evt)}
       </Item>
       <Item label="event id" hint="sha256 hash of serialized event">
-        {getEventHash(evt)}
+        {eventHash}
       </Item>
-      {evt.sig ? (
-        <Item label="signature valid">
-          {isValidSignature?.toString() || ''}
-        </Item>
-      ) : (
-        <>
-          <Item
-            label="private key"
-            hint="paste any private key here (32 bytes hex-encoded)"
-          >
-            <input
-              value={privateKey}
-              onChange={e => setPrivateKey(e.target.value.toLowerCase())}
-            />{' '}
-            {privateKeyIsValid ? 'valid' : 'invalid'}
+      <Item
+        label="event id matches hash"
+        hint="the calculated hash from event data matches the 'id' in the body?"
+      >
+        {isValidHash?.toString()}
+      </Item>
+      {isValidHash &&
+        (evt.sig ? (
+          <Item label="signature valid">
+            {isValidSignature?.toString() || ''}
           </Item>
-          <Item label="public key">{publicKey}</Item>
-          <Item label="signature">{privateKeyIsValid ? signature : ''}</Item>
-        </>
-      )}
+        ) : (
+          <>
+            <Item
+              label="private key"
+              hint="paste any private key here (32 bytes hex-encoded)"
+            >
+              <input
+                value={privateKey}
+                onChange={e => setPrivateKey(e.target.value.toLowerCase())}
+              />{' '}
+              {privateKeyIsValid ? 'valid' : 'invalid'}
+            </Item>
+            <Item label="public key">{publicKey}</Item>
+            <Item label="signature">{privateKeyIsValid ? signature : ''}</Item>
+          </>
+        ))}
     </>
   )
 }
