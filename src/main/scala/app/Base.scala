@@ -6,10 +6,10 @@ import slinky.core.FunctionalComponent
 import slinky.web.html._
 import slinky.core.facade.Hooks._
 
-import app.handlers.{Handler, Nothing}
+import app.handlers.{Handler, Nothing, KeyHandling}
 
 object Base {
-  val handlers: List[Handler] = List(Nothing)
+  val handlers: List[Handler] = List(KeyHandling, Nothing)
 
   val component = FunctionalComponent[Unit] { props =>
     val (typedValue, setTypedValue) = useState("")
@@ -17,7 +17,6 @@ object Base {
     useEffect(
       () => {
         val saved = dom.window.localStorage.getItem("value")
-        println(s"saved: ${saved}")
         setTypedValue(saved match { case _: String => saved; case _ => "" })
       },
       Seq()
