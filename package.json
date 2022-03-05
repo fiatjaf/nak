@@ -3,7 +3,11 @@
     "start": "./build.js && sbt ~fastLinkJS"
   },
   "dependencies": {
+    "@esbuild-plugins/node-globals-polyfill": "^0.1.1",
     "esbuild": "^0.14.23",
+    "esbuild-plugin-alias": "^0.2.1",
+    "events": "^3.3.0",
+    "nostr-tools": "^0.22.2",
     "react": "^17.0.2",
     "react-dom": "^17.0.2"
   }

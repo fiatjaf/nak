@@ -7,6 +7,7 @@ import slinky.web.html._
 import slinky.core.facade.Hooks._
 import slinky.core.facade.Fragment
 
+import app.modules.Nostr
 import app.handlers.{Handler}
 import app.components.{Item}
 
@@ -19,7 +20,9 @@ object KeyHandling extends Handler {
   override val component = FunctionalComponent[String] { props =>
     Fragment(
       Item.component(Item.props("private key", "", props)),
-      Item.component(Item.props("public key", "", "soon to be shown here"))
+      Item.component(
+        Item.props("public key", "", Nostr.getPublicKey(props))
+      )
     )
   }
 }
