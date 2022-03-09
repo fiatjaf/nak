@@ -135,7 +135,7 @@ object EventSignatures extends Handler {
   }
 
   @nowarn("cat=other")
-  def itemSignatureValid(evtj: String): MaybeItem = Future {
+  def itemSignatureValid(evtj: String): MaybeItem = {
     val event: js.Dynamic = js.JSON.parse(evtj)
 
     def render(result: Boolean) = Item.component(
@@ -148,9 +148,11 @@ object EventSignatures extends Handler {
       )
     )
 
-    true match {
-      case true  => Right(render(true))
-      case false => Left(render(false))
+    Nostr.verifySignature(event).toFuture map { result =>
+      result match {
+        case true  => Right(render(true))
+        case false => Left(render(false))
+      }
     }
   }
 
@@ -186,9 +188,7 @@ object EventSignatures extends Handler {
           case Nil => Future { acc.reverse }
         }
 
-        runAndUnwrapUntilFirstLeft(protoElements, List()) foreach { elements =>
-          setElements(elements)
-        }
+        runAndUnwrapUntilFirstLeft(protoElements, List()) foreach setElements
 
         () => {}
       },
