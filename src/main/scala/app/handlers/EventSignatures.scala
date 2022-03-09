@@ -3,6 +3,7 @@ package app.handlers
 import scala.annotation.{nowarn, tailrec}
 import scala.concurrent.ExecutionContext.Implicits.global
 import scala.concurrent.Future
+import scala.util.{Failure, Success}
 import scala.scalajs.js
 import slinky.core.FunctionalComponent
 import slinky.web.html._
@@ -127,10 +128,11 @@ object EventSignatures extends Handler {
       )
     )
 
-    Nostr
-      .getEventHash(event) == (c.get[String]("id")).toOption.get match {
-      case true  => Right(render(true))
-      case false => Left(render(false))
+    val hash = Nostr.getEventHash(event)
+
+    c.get[String]("id") match {
+      case Right(id) if id == hash => Right(render(true))
+      case _                       => Left(render(false))
     }
   }
 
@@ -148,11 +150,9 @@ object EventSignatures extends Handler {
       )
     )
 
-    Nostr.verifySignature(event).toFuture map { result =>
-      result match {
-        case true  => Right(render(true))
-        case false => Left(render(false))
-      }
+    Nostr.verifySignature(event).toFuture map {
+      case true  => Right(render(true))
+      case false => Left(render(false))
     }
   }
 
@@ -178,8 +178,8 @@ object EventSignatures extends Handler {
             acc: List[slinky.core.TagMod[Nothing]]
         ): Future[List[slinky.core.TagMod[Nothing]]] = remaining match {
           case fn :: tail => {
-            fn(props) flatMap { res =>
-              res match {
+            fn(props) flatMap {
+              {
                 case Left(el)  => runAndUnwrapUntilFirstLeft(Nil, el :: acc)
                 case Right(el) => runAndUnwrapUntilFirstLeft(tail, el :: acc)
               }
@@ -188,7 +188,11 @@ object EventSignatures extends Handler {
           case Nil => Future { acc.reverse }
         }
 
-        runAndUnwrapUntilFirstLeft(protoElements, List()) foreach setElements
+        runAndUnwrapUntilFirstLeft(protoElements, List()) onComplete {
+          case Success(x) => setElements(x)
+          case Failure(err) =>
+            println(f"failed to run through elements: ${err}")
+        }
 
         () => {}
       },
