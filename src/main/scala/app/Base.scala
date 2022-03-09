@@ -6,10 +6,10 @@ import slinky.core.FunctionalComponent
 import slinky.web.html._
 import slinky.core.facade.Hooks._
 
-import app.handlers.{Handler, Nothing, KeyHandling}
+import app.handlers.{Handler, Nothing, KeyHandling, EventSignatures}
 
 object Base {
-  val handlers: List[Handler] = List(KeyHandling, Nothing)
+  val handlers: List[Handler] = List(KeyHandling, EventSignatures, Nothing)
 
   val component = FunctionalComponent[Unit] { props =>
     val (typedValue, setTypedValue) = useState("")
