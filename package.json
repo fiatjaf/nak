@@ -1,6 +1,7 @@
 {
   "scripts": {
-    "start": "./build.js && sbt ~fastLinkJS"
+    "start": "./build.js && sbt ~fastLinkJS",
+    "build": "./build.js prod && ./sbtx fullLinkJS && mkdir -p dist/target/scala-2.13/app-fastopt/ && cp index.html globals.bundle.js dist/ && cp target/scala-2.13/app-opt/main.js dist/target/scala-2.13/app-fastopt/"
   },
   "dependencies": {
     "@esbuild-plugins/node-globals-polyfill": "^0.1.1",

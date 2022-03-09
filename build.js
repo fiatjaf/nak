@@ -4,6 +4,8 @@ const esbuild = require('esbuild')
 const alias = require('esbuild-plugin-alias')
 const nodeGlobals = require('@esbuild-plugins/node-globals-polyfill').default
 
+const prod = process.argv.indexOf('prod') !== -1
+
 esbuild
   .build({
     entryPoints: ['globals.js'],
@@ -18,6 +20,8 @@ esbuild
     define: {
       window: 'self',
       global: 'self'
-    }
+    },
+    sourcemap: prod ? false : 'inline',
+    minify: prod
 })
   .then(() => console.log('build success.'))
