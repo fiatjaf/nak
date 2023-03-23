@@ -16,20 +16,34 @@ object Input {
       .toResource
       .flatMap { input =>
         div(
-          textArea.withSelf { self =>
-            (
-              cls := "w-2/3 min-h-fit max-h-96 p-3",
-              placeholder := "paste something nostric",
-              onInput --> (_.foreach(_ => self.value.get.flatMap(input.set))),
-              value <-- input
-            )
-          },
+          cls := "w-full",
           div(
+            cls := "w-full flex justify-center",
+            textArea.withSelf { self =>
+              (
+                cls := "w-2/3 max-h-96 p-3",
+                styleAttr := "min-height: 200px",
+                placeholder := "paste something nostric",
+                onInput --> (_.foreach(_ => self.value.get.flatMap(input.set))),
+                value <-- input
+              )
+            }
+          ),
+          div(
+            cls := "w-full flex justify-center",
             input.map(inp =>
-              decode[Event](inp) match {
-                case Left(err)    => err.toString
-                case Right(event) => event.toString
-              }
+              if inp.trim() == "" then ""
+              else
+                decode[Event](inp) match {
+                  case Right(event) => event.toString
+                  case Left(err: io.circe.DecodingFailure) =>
+                    err.pathToRootString match {
+                      case Some(path) => s"field $path is missing or wrong"
+                      case None       => s"decoding ${err.pathToRootString}"
+                    }
+                  case Left(err: io.circe.ParsingFailure) =>
+                    "not valid JSON"
+                }
             )
           )
         )
