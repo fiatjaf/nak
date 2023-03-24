@@ -5,10 +5,12 @@ import cats.syntax.all.*
 import fs2.concurrent.*
 import fs2.dom.{Event => _, *}
 import io.circe.parser.*
+import io.circe.syntax.*
 import calico.*
 import calico.html.io.{*, given}
 import calico.syntax.*
 import snow.*
+import scoin.*
 
 object Store {
   def apply(window: Window[IO]): Resource[IO, Store] = {
@@ -49,25 +51,42 @@ object Main extends IOWebApp {
     store =>
       div(
         cls := "flex w-full h-full flex-col items-center justify-center",
-        h1(cls := "px-1 py-2 text-lg", "nostr army knife"),
         div(
-          cls := "flex justify-center my-3"
-          // button(cls := buttonCls, "generate event", onClick --> (_.foreach(_ => ))),
-        ),
-        input(store),
-        result(store)
+          cls := "w-4/5",
+          h1(cls := "px-1 py-2 text-center text-xl", "nostr army knife"),
+          div(
+            cls := "flex justify-center my-3",
+            input(store),
+            button(
+              cls :=
+                "shrink bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 mx-2 px-4 rounded ",
+              "generate event",
+              onClick --> (_.foreach(_ =>
+                store.input.set(
+                  Event(
+                    kind = 1,
+                    content = "hello world"
+                  ).sign(PrivateKey(randomBytes32()))
+                    .asJson
+                    .printWith(Utils.jsonPrinter)
+                )
+              ))
+            )
+          ),
+          result(store)
+        )
       )
   }
 
   def input(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
-      cls := "w-full",
+      cls := "w-full grow",
       div(
         cls := "w-full flex justify-center",
         textArea.withSelf { self =>
           (
-            cls := "w-2/3 max-h-96 p-3",
-            styleAttr := "min-height: 200px",
+            cls := "w-full max-h-96 p-3 rounded",
+            styleAttr := "min-height: 400px",
             placeholder := "paste something nostric",
             onInput --> (_.foreach(_ =>
               self.value.get.flatMap(store.input.set)
@@ -80,23 +99,46 @@ object Main extends IOWebApp {
 
   def result(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
-      cls := "w-full flex justify-center",
+      cls := "w-full flex my-5",
       store.input.map { input =>
-        if input.trim() == "" then ""
+        if input.trim() == "" then div("")
         else
           decode[Event](input) match {
-            case Right(event) => event.toString
+            case Left(err: io.circe.ParsingFailure) =>
+              div("not valid JSON")
             case Left(err: io.circe.DecodingFailure) =>
               err.pathToRootString match {
-                case Some(path) => s"field $path is missing or wrong"
-                case None       => s"decoding ${err.pathToRootString}"
+                case None       => div(s"decoding ${err.pathToRootString}")
+                case Some(path) => div(s"field $path is missing or wrong")
               }
-            case Left(err: io.circe.ParsingFailure) =>
-              "not valid JSON"
+            case Right(event) =>
+              div(
+                cls := "text-md",
+                styleAttr := "font-family: monospace",
+                div(
+                  span(cls := "font-bold", "serialized event "),
+                  event.serialized
+                ),
+                div(
+                  span(cls := "font-bold", "implied event id "),
+                  event.hash.toHex
+                ),
+                div(
+                  span(
+                    cls := "font-bold",
+                    "does the implied event id match the given event id? "
+                  ),
+                  event.id == event.hash.toHex match {
+                    case true => "yes"; case false => "no"
+                  }
+                ),
+                div(
+                  span(cls := "font-bold", "is signature valid? "),
+                  event.isValid match { case true => "yes"; case false => "no" }
+                )
+              )
           }
+
       }
     )
-
-  val buttonCls =
-    "bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 mx-2 px-4 rounded"
 }
