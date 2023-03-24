@@ -13,6 +13,7 @@ import scoin.*
 import snow.*
 
 import Utils.*
+import Components.*
 
 object Store {
   def apply(window: Window[IO]): Resource[IO, Store] = {
@@ -105,6 +106,7 @@ object Main extends IOWebApp {
           (
             cls := "w-full max-h-96 p-3 rounded",
             styleAttr := "min-height: 280px; font-family: monospace",
+            spellCheck := false,
             placeholder := "paste something nostric",
             onInput --> (_.foreach(_ =>
               self.value.get.flatMap(store.input.set)
@@ -121,47 +123,18 @@ object Main extends IOWebApp {
       store.input.map { input =>
         if input.trim() == "" then div("")
         else
-          decode[Event](input) match {
-            case Left(err: io.circe.ParsingFailure) =>
-              div("not valid JSON")
-            case Left(err: io.circe.DecodingFailure) =>
-              err.pathToRootString match {
-                case None       => div(s"decoding ${err.pathToRootString}")
-                case Some(path) => div(s"field $path is missing or wrong")
-              }
-            case Right(event) =>
-              div(
-                cls := "text-md",
-                div(
-                  span(cls := "font-bold", "serialized event "),
-                  span(Styles.mono, event.serialized)
-                ),
-                div(
-                  span(cls := "font-bold", "implied event id "),
-                  span(Styles.mono, event.hash.toHex)
-                ),
-                div(
-                  span(
-                    cls := "font-bold",
-                    "does the implied event id match the given event id? "
-                  ),
-                  span(
-                    Styles.mono,
-                    event.id == event.hash.toHex match {
-                      case true => "yes"; case false => "no"
-                    }
-                  )
-                ),
-                div(
-                  span(cls := "font-bold", "is signature valid? "),
-                  span(
-                    Styles.mono,
-                    event.isValid match {
-                      case true => "yes"; case false => "no"
-                    }
-                  )
-                )
+          Parser.parseInput(input) match {
+            case Left(msg) => div(msg)
+            case Right(event: Event) =>
+              renderEvent(event)
+            case Right(pp: ProfilePointer) => renderProfilePointer(pp)
+            case Right(evp: EventPointer)  => renderEventPointer(evp)
+            case Right(sk: PrivateKey) =>
+              renderProfilePointer(
+                ProfilePointer(pubkey = sk.publicKey.xonly),
+                Some(sk)
               )
+            case Right(addr: AddressPointer) => renderAddressPointer(addr)
           }
 
       }
