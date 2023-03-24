@@ -9,8 +9,10 @@ import io.circe.syntax.*
 import calico.*
 import calico.html.io.{*, given}
 import calico.syntax.*
-import snow.*
 import scoin.*
+import snow.*
+
+import Utils.*
 
 object Store {
   def apply(window: Window[IO]): Resource[IO, Store] = {
@@ -55,28 +57,44 @@ object Main extends IOWebApp {
           cls := "w-4/5",
           h1(cls := "px-1 py-2 text-center text-xl", "nostr army knife"),
           div(
-            cls := "flex justify-center my-3",
+            cls := "flex my-3",
             input(store),
-            button(
-              cls :=
-                "shrink bg-blue-500 hover:bg-blue-700 text-white font-bold py-2 mx-2 px-4 rounded ",
-              "generate event",
-              onClick --> (_.foreach(_ =>
-                store.input.set(
-                  Event(
-                    kind = 1,
-                    content = "hello world"
-                  ).sign(PrivateKey(randomBytes32()))
-                    .asJson
-                    .printWith(Utils.jsonPrinter)
-                )
-              ))
-            )
+            actions(store)
           ),
           result(store)
         )
       )
   }
+
+  def actions(store: Store): Resource[IO, HtmlDivElement[IO]] =
+    div(
+      cls := "flex flex-col space-y-1 my-3",
+      button(
+        Styles.button,
+        "format",
+        onClick --> (_.foreach(_ =>
+          store.input.update(original =>
+            parse(original).toOption
+              .map(_.printWith(jsonPrinter))
+              .getOrElse(original)
+          )
+        ))
+      ),
+      button(
+        Styles.button,
+        "generate event",
+        onClick --> (_.foreach(_ =>
+          store.input.set(
+            Event(
+              kind = 1,
+              content = "hello world"
+            ).sign(PrivateKey(randomBytes32()))
+              .asJson
+              .printWith(jsonPrinter)
+          )
+        ))
+      )
+    )
 
   def input(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
@@ -86,7 +104,7 @@ object Main extends IOWebApp {
         textArea.withSelf { self =>
           (
             cls := "w-full max-h-96 p-3 rounded",
-            styleAttr := "min-height: 400px",
+            styleAttr := "min-height: 280px; font-family: monospace",
             placeholder := "paste something nostric",
             onInput --> (_.foreach(_ =>
               self.value.get.flatMap(store.input.set)
@@ -114,27 +132,34 @@ object Main extends IOWebApp {
             case Right(event) =>
               div(
                 cls := "text-md",
-                styleAttr := "font-family: monospace",
                 div(
                   span(cls := "font-bold", "serialized event "),
-                  event.serialized
+                  span(Styles.mono, event.serialized)
                 ),
                 div(
                   span(cls := "font-bold", "implied event id "),
-                  event.hash.toHex
+                  span(Styles.mono, event.hash.toHex)
                 ),
                 div(
                   span(
                     cls := "font-bold",
                     "does the implied event id match the given event id? "
                   ),
-                  event.id == event.hash.toHex match {
-                    case true => "yes"; case false => "no"
-                  }
+                  span(
+                    Styles.mono,
+                    event.id == event.hash.toHex match {
+                      case true => "yes"; case false => "no"
+                    }
+                  )
                 ),
                 div(
                   span(cls := "font-bold", "is signature valid? "),
-                  event.isValid match { case true => "yes"; case false => "no" }
+                  span(
+                    Styles.mono,
+                    event.isValid match {
+                      case true => "yes"; case false => "no"
+                    }
+                  )
                 )
               )
           }
