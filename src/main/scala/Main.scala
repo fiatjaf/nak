@@ -1,4 +1,3 @@
-import cats.data.*
 import cats.effect.*
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
@@ -14,40 +13,6 @@ import snow.*
 
 import Utils.*
 import Components.*
-
-object Store {
-  def apply(window: Window[IO]): Resource[IO, Store] = {
-    val key = "nak-input"
-
-    for {
-      inputRef <- SignallingRef[IO].of("").toResource
-
-      _ <- Resource.eval {
-        OptionT(window.localStorage.getItem(key))
-          .foreachF(inputRef.set(_))
-      }
-
-      _ <- window.localStorage
-        .events(window)
-        .foreach {
-          case Storage.Event.Updated(`key`, _, value, _) =>
-            inputRef.set(value)
-          case _ => IO.unit
-        }
-        .compile
-        .drain
-        .background
-
-      _ <- inputRef.discrete
-        .foreach(input => IO.cede *> window.localStorage.setItem(key, input))
-        .compile
-        .drain
-        .background
-    } yield new Store(inputRef)
-  }
-}
-
-case class Store(input: SignallingRef[IO, String])
 
 object Main extends IOWebApp {
   def render: Resource[IO, HtmlDivElement[IO]] = Store(window).flatMap {
@@ -120,23 +85,18 @@ object Main extends IOWebApp {
   def result(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "w-full flex my-5",
-      store.input.map { input =>
-        if input.trim() == "" then div("")
-        else
-          Parser.parseInput(input) match {
-            case Left(msg) => div(msg)
-            case Right(event: Event) =>
-              renderEvent(event)
-            case Right(pp: ProfilePointer) => renderProfilePointer(pp)
-            case Right(evp: EventPointer)  => renderEventPointer(evp)
-            case Right(sk: PrivateKey) =>
-              renderProfilePointer(
-                ProfilePointer(pubkey = sk.publicKey.xonly),
-                Some(sk)
-              )
-            case Right(addr: AddressPointer) => renderAddressPointer(addr)
-          }
-
+      store.result.map {
+        case Left(msg) => div(msg)
+        case Right(event: Event) =>
+          renderEvent(event)
+        case Right(pp: ProfilePointer) => renderProfilePointer(pp)
+        case Right(evp: EventPointer)  => renderEventPointer(evp)
+        case Right(sk: PrivateKey) =>
+          renderProfilePointer(
+            ProfilePointer(pubkey = sk.publicKey.xonly),
+            Some(sk)
+          )
+        case Right(addr: AddressPointer) => renderAddressPointer(addr)
       }
     )
 }

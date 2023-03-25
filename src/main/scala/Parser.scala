@@ -3,13 +3,13 @@ import cats.syntax.all.*
 import scoin.*
 import snow.*
 
-import Components.*
+type Result = Either[
+  String,
+  Event | PrivateKey | AddressPointer | EventPointer | ProfilePointer
+]
 
 object Parser {
-  def parseInput(input: String): Either[
-    String,
-    Event | PrivateKey | AddressPointer | EventPointer | ProfilePointer
-  ] =
+  def parseInput(input: String): Result =
     NIP19.decode(input) match {
       case Right(pp: ProfilePointer)   => Right(pp)
       case Right(evp: EventPointer)    => Right(evp)
