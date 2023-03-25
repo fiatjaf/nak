@@ -58,7 +58,7 @@ object Main extends IOWebApp {
             Event(
               kind = 1,
               content = "hello world"
-            ).sign(PrivateKey(randomBytes32()))
+            ).sign(keyOne)
               .asJson
               .printWith(jsonPrinter)
           )
@@ -90,9 +90,8 @@ object Main extends IOWebApp {
     div(
       cls := "w-full flex my-5",
       store.result.map {
-        case Left(msg) => div(msg)
-        case Right(event: Event) =>
-          renderEvent(event)
+        case Left(msg)                 => div(msg)
+        case Right(event: Event)       => renderEvent(event, store)
         case Right(pp: ProfilePointer) => renderProfilePointer(pp)
         case Right(evp: EventPointer)  => renderEventPointer(evp)
         case Right(sk: PrivateKey) =>

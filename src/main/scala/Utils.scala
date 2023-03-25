@@ -1,6 +1,10 @@
 import io.circe.Printer
+import scodec.bits.ByteVector
+import scoin.*
 
 object Utils {
+  val keyOne = PrivateKey(ByteVector32(ByteVector(0x01).padLeft(32)))
+
   val jsonPrinter = Printer(
     dropNullValues = false,
     indent = "  ",

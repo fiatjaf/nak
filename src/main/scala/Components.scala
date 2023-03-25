@@ -1,4 +1,4 @@
-import cats.data.*
+import cats.data.{Store => *, *}
 import cats.effect.*
 import cats.effect.syntax.all.*
 import cats.syntax.all.*
@@ -11,6 +11,8 @@ import calico.html.io.{*, given}
 import calico.syntax.*
 import scoin.*
 import snow.*
+
+import Utils.*
 
 object Components {
   def renderEventPointer(
@@ -53,12 +55,83 @@ object Components {
       else None
     )
 
-  def renderEvent(event: Event): Resource[IO, HtmlDivElement[IO]] =
+  def renderEvent(
+      event: Event,
+      store: Store
+  ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
-      List(("pubkey", event.pubkey), ("id", event.id), ("sig", event.sig))
-        .filter((_, v) => v.isEmpty)
-        .map { (label, _) => entry("property missing", label) },
+      if event.pubkey.isEmpty then
+        Some(
+          div(
+            cls := "flex items-center",
+            entry("missing", "pubkey"),
+            button(
+              Styles.buttonSmall,
+              "fill with a debugging key",
+              onClick --> (_.foreach { _ =>
+                store.input.set(
+                  event
+                    .copy(pubkey = Some(keyOne.publicKey.xonly))
+                    .asJson
+                    .printWith(jsonPrinter)
+                )
+              })
+            )
+          )
+        )
+      else None,
+      if event.id.isEmpty then
+        Some(
+          div(
+            cls := "flex items-center",
+            entry("missing", "id"),
+            if event.pubkey.isDefined then
+              Some(
+                button(
+                  Styles.buttonSmall,
+                  "fill id",
+                  onClick --> (_.foreach(_ =>
+                    store.input.set(
+                      event
+                        .copy(id = Some(event.hash.toHex))
+                        .asJson
+                        .printWith(jsonPrinter)
+                    )
+                  ))
+                )
+              )
+            else None
+          )
+        )
+      else None,
+      if event.sig.isEmpty then
+        Some(
+          div(
+            cls := "flex items-center",
+            entry("missing", "sig"),
+            if event.id.isDefined && event.pubkey == Some(
+                keyOne.publicKey.xonly
+              )
+            then
+              Some(
+                button(
+                  Styles.buttonSmall,
+                  "sign",
+                  onClick --> (_.foreach(_ =>
+                    store.input.set(
+                      event
+                        .sign(keyOne)
+                        .asJson
+                        .printWith(jsonPrinter)
+                    )
+                  ))
+                )
+              )
+            else None
+          )
+        )
+      else None,
       entry("serialized event", event.serialized),
       entry("implied event id", event.hash.toHex),
       entry(
