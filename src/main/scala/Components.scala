@@ -80,6 +80,7 @@ object Components {
     div(
       cls := "text-md",
       sk.map { k => entry("private key (hex)", k.value.toHex) },
+      sk.map { k => entry("nsec", NIP19.encode(k)) },
       entry("public key (hex)", pp.pubkey.value.toHex),
       if pp.relays.size > 0 then
         Some(entry("relay hints", pp.relays.reduce((a, b) => s"$a, $b")))

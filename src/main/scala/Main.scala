@@ -63,6 +63,15 @@ object Main extends IOWebApp {
               .printWith(jsonPrinter)
           )
         ))
+      ),
+      button(
+        Styles.button,
+        "generate keypair",
+        onClick --> (_.foreach(_ =>
+          store.input.set(
+            NIP19.encode(PrivateKey(randomBytes32()))
+          )
+        ))
       )
     )
 
