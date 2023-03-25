@@ -85,7 +85,7 @@ object Main extends IOWebApp {
             cls := "w-full max-h-96 p-3 rounded",
             styleAttr := "min-height: 280px; font-family: monospace",
             spellCheck := false,
-            placeholder := "paste something nostric",
+            placeholder := "paste something nostric (event JSON, nprofile, npub, nevent etc or hex key or id)",
             onInput --> (_.foreach(_ =>
               self.value.get.flatMap(store.input.set)
             )),

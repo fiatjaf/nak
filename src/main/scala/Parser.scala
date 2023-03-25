@@ -12,7 +12,8 @@ type Result = Either[
 ]
 
 object Parser {
-  def parseInput(input: String): Result =
+  def parseInput(input: String): Result = if input == "" then Left("")
+  else
     ByteVector
       .fromHex(input)
       .flatMap(b => Try(Right(ByteVector32(b))).toOption)
