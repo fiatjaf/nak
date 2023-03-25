@@ -37,7 +37,7 @@ object Store {
 
       _ <- input.discrete
         .evalTap(input => IO.cede *> window.localStorage.setItem(key, input))
-        .evalTap(input => result.set(Parser.parseInput(input)))
+        .evalTap(input => result.set(Parser.parseInput(input.trim())))
         .compile
         .drain
         .background

@@ -90,10 +90,11 @@ object Main extends IOWebApp {
     div(
       cls := "w-full flex my-5",
       store.result.map {
-        case Left(msg)                 => div(msg)
-        case Right(event: Event)       => renderEvent(event, store)
-        case Right(pp: ProfilePointer) => renderProfilePointer(pp)
-        case Right(evp: EventPointer)  => renderEventPointer(evp)
+        case Left(msg)                  => div(msg)
+        case Right(bytes: ByteVector32) => render32Bytes(bytes)
+        case Right(event: Event)        => renderEvent(event, store)
+        case Right(pp: ProfilePointer)  => renderProfilePointer(pp)
+        case Right(evp: EventPointer)   => renderEventPointer(evp)
         case Right(sk: PrivateKey) =>
           renderProfilePointer(
             ProfilePointer(pubkey = sk.publicKey.xonly),

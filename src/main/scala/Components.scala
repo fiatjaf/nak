@@ -9,12 +9,55 @@ import io.circe.syntax.*
 import calico.*
 import calico.html.io.{*, given}
 import calico.syntax.*
+import scodec.bits.ByteVector
 import scoin.*
 import snow.*
 
 import Utils.*
 
 object Components {
+  def render32Bytes(bytes32: ByteVector32): Resource[IO, HtmlDivElement[IO]] =
+    div(
+      cls := "text-md",
+      entry("canonical hex", bytes32.toHex),
+      "if this is a public key:",
+      div(
+        cls := "pl-2 mb-2",
+        entry(
+          "npub",
+          NIP19.encode(XOnlyPublicKey(bytes32))
+        ),
+        entry(
+          "nprofile",
+          NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
+        )
+      ),
+      "if this is a private key:",
+      div(
+        cls := "pl-2 mb-2",
+        entry(
+          "nsec",
+          NIP19.encode(PrivateKey(bytes32))
+        ),
+        entry(
+          "npub",
+          NIP19.encode(XOnlyPublicKey(bytes32))
+        ),
+        entry(
+          "nprofile",
+          NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
+        )
+      ),
+      "if this is an event id:",
+      div(
+        cls := "pl-2 mb-2",
+        entry(
+          "nevent",
+          NIP19.encode(EventPointer(bytes32.toHex))
+        )
+      )
+    )
+
   def renderEventPointer(
       evp: snow.EventPointer
   ): Resource[IO, HtmlDivElement[IO]] =
