@@ -35,17 +35,21 @@ object Main extends IOWebApp {
   def actions(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "flex flex-col space-y-1 my-3",
-      button(
-        Styles.button,
-        "format",
-        onClick --> (_.foreach(_ =>
-          store.input.update(original =>
-            parse(original).toOption
-              .map(_.printWith(jsonPrinter))
-              .getOrElse(original)
+      store.result.map {
+        case Right(_: Event) =>
+          button(
+            Styles.button,
+            "format",
+            onClick --> (_.foreach(_ =>
+              store.input.update(original =>
+                parse(original).toOption
+                  .map(_.printWith(jsonPrinter))
+                  .getOrElse(original)
+              )
+            ))
           )
-        ))
-      ),
+        case _ => div("")
+      },
       button(
         Styles.button,
         "generate event",
