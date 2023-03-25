@@ -27,7 +27,7 @@ object Components {
           "npub",
           NIP19.encode(XOnlyPublicKey(bytes32))
         ),
-        entry(
+        nip19_21(
           "nprofile",
           NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
         )
@@ -43,7 +43,7 @@ object Components {
           "npub",
           NIP19.encode(XOnlyPublicKey(bytes32))
         ),
-        entry(
+        nip19_21(
           "nprofile",
           NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
         )
@@ -51,7 +51,7 @@ object Components {
       "if this is an event id:",
       div(
         cls := "pl-2 mb-2",
-        entry(
+        nip19_21(
           "nevent",
           NIP19.encode(EventPointer(bytes32.toHex))
         )
@@ -69,7 +69,8 @@ object Components {
       else None,
       evp.author.map { pk =>
         entry("author hint (pubkey hex)", pk.value.toHex)
-      }
+      },
+      nip19_21("nevent", NIP19.encode(evp))
     )
 
   def renderProfilePointer(
@@ -82,7 +83,9 @@ object Components {
       entry("public key (hex)", pp.pubkey.value.toHex),
       if pp.relays.size > 0 then
         Some(entry("relay hints", pp.relays.reduce((a, b) => s"$a, $b")))
-      else None
+      else None,
+      entry("npub", NIP19.encode(pp.pubkey)),
+      nip19_21("nprofile", NIP19.encode(pp))
     )
 
   def renderAddressPointer(
@@ -95,7 +98,8 @@ object Components {
       entry("kind", addr.kind.toString),
       if addr.relays.size > 0 then
         Some(entry("relay hints", addr.relays.reduce((a, b) => s"$a, $b")))
-      else None
+      else None,
+      nip19_21("naddr", NIP19.encode(addr))
     )
 
   def renderEvent(
@@ -188,7 +192,8 @@ object Components {
         event.isValid match {
           case true => "yes"; case false => "no"
         }
-      )
+      ),
+      event.id.map(id => nip19_21("nevent", NIP19.encode(EventPointer(id))))
     )
 
   private def entry(
@@ -198,5 +203,20 @@ object Components {
     div(
       span(cls := "font-bold", key + " "),
       span(Styles.mono, value)
+    )
+
+  private def nip19_21(
+      key: String,
+      code: String
+  ): Resource[IO, HtmlDivElement[IO]] =
+    div(
+      span(cls := "font-bold", key + " "),
+      span(
+        Styles.mono,
+        a(
+          href := "nostr:" + code,
+          code
+        )
+      )
     )
 }
