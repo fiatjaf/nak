@@ -55,6 +55,13 @@ object Components {
           "nevent",
           NIP19.encode(EventPointer(bytes32.toHex))
         )
+      ),
+      div(
+        cls := "pl-2 mb-2",
+        entry(
+          "note",
+          NIP19.encode(bytes32)
+        )
       )
     )
 
@@ -70,7 +77,8 @@ object Components {
       evp.author.map { pk =>
         entry("author hint (pubkey hex)", pk.value.toHex)
       },
-      nip19_21("nevent", NIP19.encode(evp))
+      nip19_21("nevent", NIP19.encode(evp)),
+      entry("note", NIP19.encode(ByteVector32.fromValidHex(evp.id)))
     )
 
   def renderProfilePointer(
@@ -194,7 +202,18 @@ object Components {
           case true => "yes"; case false => "no"
         }
       ),
-      event.id.map(id => nip19_21("nevent", NIP19.encode(EventPointer(id))))
+      event.id.map(id =>
+        nip19_21(
+          "nevent",
+          NIP19.encode(EventPointer(id, author = event.pubkey))
+        )
+      ),
+      event.id.map(id =>
+        entry(
+          "note",
+          NIP19.encode(ByteVector32.fromValidHex(id))
+        )
+      )
     )
 
   private def entry(
