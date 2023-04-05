@@ -21,7 +21,14 @@ object Main extends IOWebApp {
         cls := "flex w-full h-full flex-col items-center justify-center",
         div(
           cls := "w-4/5",
-          h1(cls := "px-1 py-2 text-center text-xl", "nostr army knife"),
+          h1(
+            cls := "px-1 py-2 text-center text-xl",
+            img(
+              cls := "inline-block w-8 mr-2",
+              src := "/favicon.ico"
+            ),
+            "nostr army knife"
+          ),
           div(
             cls := "flex my-3",
             input(store),
