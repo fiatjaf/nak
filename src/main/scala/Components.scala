@@ -221,8 +221,9 @@ object Components {
       value: String
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
+      cls := "flex items-center space-x-3",
       span(cls := "font-bold", key + " "),
-      span(Styles.mono, value)
+      span(Styles.mono, cls := "max-w-xl", value)
     )
 
   private def nip19_21(
