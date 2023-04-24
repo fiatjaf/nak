@@ -27,7 +27,10 @@ object Main extends IOWebApp {
               cls := "inline-block w-8 mr-2",
               src := "/favicon.ico"
             ),
-            "nostr army knife"
+            a(
+              href := "https://github.com/fiatjaf/nostr-army-knife",
+              "nostr army knife"
+            )
           ),
           div(
             cls := "flex my-3",

@@ -232,12 +232,12 @@ object Components {
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       span(cls := "font-bold", key + " "),
-      span(
-        Styles.mono,
-        a(
-          href := "nostr:" + code,
-          code
-        )
+      span(Styles.mono, cls := "break-all", code),
+      a(
+        href := "nostr:" + code,
+        external
       )
     )
+
+  private val external = img(cls := "inline w-4 ml-2", src := "ext.svg")
 }
