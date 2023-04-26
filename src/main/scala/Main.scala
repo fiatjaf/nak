@@ -111,15 +111,16 @@ object Main extends IOWebApp {
       store.result.map {
         case Left(msg)                  => div(msg)
         case Right(bytes: ByteVector32) => render32Bytes(bytes)
-        case Right(event: Event)        => renderEvent(event, store)
-        case Right(pp: ProfilePointer)  => renderProfilePointer(pp)
-        case Right(evp: EventPointer)   => renderEventPointer(evp)
+        case Right(event: Event)        => renderEvent(store, event)
+        case Right(pp: ProfilePointer)  => renderProfilePointer(store, pp)
+        case Right(evp: EventPointer)   => renderEventPointer(store, evp)
         case Right(sk: PrivateKey) =>
           renderProfilePointer(
+            store,
             ProfilePointer(pubkey = sk.publicKey.xonly),
             Some(sk)
           )
-        case Right(addr: AddressPointer) => renderAddressPointer(addr)
+        case Right(addr: AddressPointer) => renderAddressPointer(store, addr)
       }
     )
 }

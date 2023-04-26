@@ -22,7 +22,7 @@ object Components {
       entry("canonical hex", bytes32.toHex),
       "if this is a public key:",
       div(
-        cls := "pl-2 mb-2",
+        cls := "mt-2 pl-2 mb-2",
         entry(
           "npub",
           NIP19.encode(XOnlyPublicKey(bytes32))
@@ -66,14 +66,13 @@ object Components {
     )
 
   def renderEventPointer(
+      store: Store,
       evp: snow.EventPointer
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
       entry("event id (hex)", evp.id),
-      if evp.relays.size > 0 then
-        Some(entry("relay hints", evp.relays.reduce((a, b) => s"$a, $b")))
-      else None,
+      relayHints(store, evp.relays),
       evp.author.map { pk =>
         entry("author hint (pubkey hex)", pk.value.toHex)
       },
@@ -82,6 +81,7 @@ object Components {
     )
 
   def renderProfilePointer(
+      store: Store,
       pp: snow.ProfilePointer,
       sk: Option[PrivateKey] = None
   ): Resource[IO, HtmlDivElement[IO]] =
@@ -90,14 +90,13 @@ object Components {
       sk.map { k => entry("private key (hex)", k.value.toHex) },
       sk.map { k => entry("nsec", NIP19.encode(k)) },
       entry("public key (hex)", pp.pubkey.value.toHex),
-      if pp.relays.size > 0 then
-        Some(entry("relay hints", pp.relays.reduce((a, b) => s"$a, $b")))
-      else None,
+      relayHints(store, pp.relays),
       entry("npub", NIP19.encode(pp.pubkey)),
       nip19_21("nprofile", NIP19.encode(pp))
     )
 
   def renderAddressPointer(
+      store: Store,
       addr: snow.AddressPointer
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
@@ -105,15 +104,13 @@ object Components {
       entry("author (pubkey hex)", addr.author.value.toHex),
       entry("identifier", addr.d),
       entry("kind", addr.kind.toString),
-      if addr.relays.size > 0 then
-        Some(entry("relay hints", addr.relays.reduce((a, b) => s"$a, $b")))
-      else None,
+      relayHints(store, addr.relays),
       nip19_21("naddr", NIP19.encode(addr))
     )
 
   def renderEvent(
-      event: Event,
-      store: Store
+      store: Store,
+      event: Event
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
@@ -238,6 +235,50 @@ object Components {
         external
       )
     )
+
+  private def relayHints(
+      store: Store,
+      relays: List[String]
+  ): Resource[IO, HtmlDivElement[IO]] =
+    SignallingRef[IO].of(false).toResource.flatMap { active =>
+      val value =
+        if relays.size > 0 then relays.reduce((a, b) => s"$a, $b") else ""
+
+      div(
+        cls := "flex items-center space-x-3",
+        span(cls := "font-bold", "relay hints "),
+        span(Styles.mono, cls := "max-w-xl", value),
+        active.map {
+          case true =>
+            div(
+              input.withSelf { self =>
+                (
+                  onKeyPress --> (_.foreach(evt =>
+                    evt.key match {
+                      case "Enter" =>
+                        self.value.get.flatMap(url =>
+                          if url.startsWith("wss://") || url.startsWith("ws://")
+                          then
+                            store.input.update(
+                              _.trim() ++ " + " ++ url
+                            ) >> active.set(false)
+                          else IO.unit
+                        )
+                      case _ => IO.unit
+                    }
+                  ))
+                )
+              }
+            )
+          case false =>
+            button(
+              Styles.buttonSmall,
+              "add relay hint",
+              onClick --> (_.foreach(_ => active.set(true)))
+            )
+        }
+      )
+    }
 
   private val external = img(cls := "inline w-4 ml-2", src := "ext.svg")
 }
