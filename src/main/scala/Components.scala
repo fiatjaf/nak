@@ -90,7 +90,11 @@ object Components {
       sk.map { k => entry("private key (hex)", k.value.toHex) },
       sk.map { k => entry("nsec", NIP19.encode(k)) },
       entry("public key (hex)", pp.pubkey.value.toHex),
-      relayHints(store, pp.relays),
+      relayHints(
+        store,
+        pp.relays,
+        dynamic = if sk.isDefined then false else true
+      ),
       entry("npub", NIP19.encode(pp.pubkey)),
       nip19_21("nprofile", NIP19.encode(pp))
     )
@@ -238,47 +242,52 @@ object Components {
 
   private def relayHints(
       store: Store,
-      relays: List[String]
+      relays: List[String],
+      dynamic: Boolean = true
   ): Resource[IO, HtmlDivElement[IO]] =
-    SignallingRef[IO].of(false).toResource.flatMap { active =>
-      val value =
-        if relays.size > 0 then relays.reduce((a, b) => s"$a, $b") else ""
+    if !dynamic && relays.isEmpty then div("")
+    else
+      SignallingRef[IO].of(false).toResource.flatMap { active =>
+        val value =
+          if relays.size > 0 then relays.reduce((a, b) => s"$a, $b") else ""
 
-      div(
-        cls := "flex items-center space-x-3",
-        span(cls := "font-bold", "relay hints "),
-        span(Styles.mono, cls := "max-w-xl", value),
-        active.map {
-          case true =>
-            div(
-              input.withSelf { self =>
-                (
-                  onKeyPress --> (_.foreach(evt =>
-                    evt.key match {
-                      case "Enter" =>
-                        self.value.get.flatMap(url =>
-                          if url.startsWith("wss://") || url.startsWith("ws://")
-                          then
-                            store.input.update(
-                              _.trim() ++ " + " ++ url
-                            ) >> active.set(false)
-                          else IO.unit
-                        )
-                      case _ => IO.unit
-                    }
-                  ))
-                )
-              }
-            )
-          case false =>
-            button(
-              Styles.buttonSmall,
-              "add relay hint",
-              onClick --> (_.foreach(_ => active.set(true)))
-            )
-        }
-      )
-    }
+        div(
+          cls := "flex items-center space-x-3",
+          span(cls := "font-bold", "relay hints "),
+          span(Styles.mono, cls := "max-w-xl", value),
+          active.map {
+            case true =>
+              div(
+                input.withSelf { self =>
+                  (
+                    onKeyPress --> (_.foreach(evt =>
+                      evt.key match {
+                        case "Enter" =>
+                          self.value.get.flatMap(url =>
+                            if url.startsWith("wss://") || url
+                                .startsWith("ws://")
+                            then
+                              store.input.update(
+                                _.trim() ++ " + " ++ url
+                              ) >> active.set(false)
+                            else IO.unit
+                          )
+                        case _ => IO.unit
+                      }
+                    ))
+                  )
+                }
+              )
+            case false if dynamic =>
+              button(
+                Styles.buttonSmall,
+                "add relay hint",
+                onClick --> (_.foreach(_ => active.set(true)))
+              )
+            case false => div("")
+          }
+        )
+      }
 
   private val external = img(cls := "inline w-4 ml-2", src := "ext.svg")
 }
