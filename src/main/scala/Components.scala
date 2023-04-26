@@ -266,11 +266,33 @@ object Components {
                           self.value.get.flatMap(url =>
                             if url.startsWith("wss://") || url
                                 .startsWith("ws://")
-                            then
-                              store.input.update(
-                                _.trim() ++ " + " ++ url
-                              ) >> active.set(false)
-                            else IO.unit
+                            then {
+                              store.result.get.flatMap(result =>
+                                store.input.set(
+                                  result
+                                    .map {
+                                      case a: AddressPointer =>
+                                        NIP19
+                                          .encode(
+                                            a.copy(relays = url :: a.relays)
+                                          )
+                                      case p: ProfilePointer =>
+                                        NIP19
+                                          .encode(
+                                            p.copy(relays = url :: p.relays)
+                                          )
+                                      case e: EventPointer =>
+                                        NIP19
+                                          .encode(
+                                            e.copy(relays = url :: e.relays)
+                                          )
+                                      case r => ""
+                                    }
+                                    .getOrElse("")
+                                )
+                              )
+                                >> active.set(false)
+                            } else IO.unit
                           )
                         case _ => IO.unit
                       }

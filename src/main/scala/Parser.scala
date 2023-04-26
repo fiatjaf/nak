@@ -16,13 +16,12 @@ object Parser {
 
   def parseInput(input: String): Result =
     if input == "" then Left("")
-    else {
-      val spl = additions.split(input)
-      val result = ByteVector
-        .fromHex(spl.head)
+    else
+      ByteVector
+        .fromHex(input)
         .flatMap(b => Try(Right(ByteVector32(b))).toOption)
         .getOrElse(
-          NIP19.decode(spl.head) match {
+          NIP19.decode(input) match {
             case Right(pp: ProfilePointer)   => Right(pp)
             case Right(evp: EventPointer)    => Right(evp)
             case Right(sk: PrivateKey)       => Right(sk)
@@ -43,17 +42,4 @@ object Parser {
               }
           }
         )
-
-      val extraRelays = spl
-        .drop(1)
-        .toList
-        .filter(e => e.startsWith("wss://") || e.startsWith("ws://"))
-
-      result.map {
-        case a: AddressPointer => a.copy(relays = a.relays ::: extraRelays)
-        case p: ProfilePointer => p.copy(relays = p.relays ::: extraRelays)
-        case e: EventPointer   => e.copy(relays = e.relays ::: extraRelays)
-        case r                 => r
-      }
-    }
 }
