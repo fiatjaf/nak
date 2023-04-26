@@ -45,6 +45,15 @@ object Main extends IOWebApp {
   def actions(store: Store): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "flex flex-col space-y-1 my-3",
+      store.input.map {
+        case "" => div("")
+        case _ =>
+          button(
+            Styles.button,
+            "clear",
+            onClick --> (_.foreach(_ => store.input.set("")))
+          )
+      },
       store.result.map {
         case Right(_: Event) =>
           button(
