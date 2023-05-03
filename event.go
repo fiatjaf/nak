@@ -96,10 +96,12 @@ var event = &cli.Command{
 			}
 		}
 
-		createdAt := c.String("created_at")
+		createdAt := c.String("created-at")
 		ts := time.Now()
 		if createdAt != "now" {
 			if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
+				return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
+			} else {
 				ts = time.Unix(v, 0)
 			}
 		}
