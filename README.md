@@ -1,7 +1,13 @@
 # nostr army knife
 
-A toolkit for debugging all things Nostr as a webpage.
+this repository contains two things:
+
+1. a command-line tool for decoding and encoding nostr entities
+
+written in go using [go-nostr](https://github.com/nbd-wtf/go-nostr) and distributed as a single binary.
+
+2. a toolkit for debugging all things nostr as a webpage:
 
 ![](https://user-images.githubusercontent.com/1653275/227681805-0cd20b39-de0d-4fcb-abb4-de3283404e8f.png)
 
-Made with [Scala](https://scala-lang.org/) and [Calico](https://www.armanbilge.com/calico/). Icon by [Smashicons](https://www.flaticon.com/free-icons/switzerland).
+written in [scala](https://scala-lang.org/) with [calico](https://www.armanbilge.com/calico/) and [snow](https://github.com/fiatjaf/snow)
