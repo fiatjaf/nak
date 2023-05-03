@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"fmt"
 	"os"
 
 	"github.com/urfave/cli/v2"
@@ -13,10 +13,12 @@ func main() {
 		Usage: "the nostr army knife command-line tool",
 		Commands: []*cli.Command{
 			req,
+			event,
 		},
 	}
 
 	if err := app.Run(os.Args); err != nil {
-		log.Fatalf("failed to run cli: %s", err)
+		fmt.Println(err)
+		os.Exit(1)
 	}
 }

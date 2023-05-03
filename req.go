@@ -15,8 +15,7 @@ var req = &cli.Command{
 	Name:  "req",
 	Usage: "generates an encoded REQ message to be sent to a relay",
 	Description: `example usage (with 'nostcat'):
-					nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nostr-pub.wellorder.net
-                `,
+		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
@@ -43,14 +42,12 @@ var req = &cli.Command{
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
 		&cli.StringSliceFlag{
-			Name:     "event-tag",
-			Aliases:  []string{"e"},
+			Name:     "e",
 			Usage:    "shortcut for --tag e=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
 		&cli.StringSliceFlag{
-			Name:     "pubkey-tag",
-			Aliases:  []string{"p"},
+			Name:     "p",
 			Usage:    "shortcut for --tag p=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
@@ -95,12 +92,14 @@ var req = &cli.Command{
 			spl := strings.Split(tagFlag, "=")
 			if len(spl) == 2 && len(spl[0]) == 1 {
 				tags = append(tags, spl)
+			} else {
+				return fmt.Errorf("invalid --tag '%s'", tagFlag)
 			}
 		}
-		for _, etag := range c.StringSlice("event-tag") {
+		for _, etag := range c.StringSlice("e") {
 			tags = append(tags, []string{"e", etag})
 		}
-		for _, ptag := range c.StringSlice("pubkey-tag") {
+		for _, ptag := range c.StringSlice("p") {
 			tags = append(tags, []string{"p", ptag})
 		}
 		if len(tags) > 0 {
