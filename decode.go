@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
@@ -15,10 +16,10 @@ var decode = &cli.Command{
 	Name:  "decode",
 	Usage: "decodes nip19, nip21, nip05 or hex entities",
 	Description: `example usage:
-		nak decode
-		nak decode
-		nak decode
-		nak decode`,
+		nak decode npub1uescmd5krhrmj9rcura833xpke5eqzvcz5nxjw74ufeewf2sscxq4g7chm
+		nak decode nevent1qqs29yet5tp0qq5xu5qgkeehkzqh5qu46739axzezcxpj4tjlkx9j7gpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5sh59ud
+		nak decode nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpz4mhxue69uhk2er9dchxummnw3ezumrpdejqz8thwden5te0dehhxarj94c82c3wwajkcmr0wfjx2u3wdejhgqgcwaehxw309aex2mrp0yhxummnw3exzarf9e3k7mgnp0sh5
+		nak decode nsec1jrmyhtjhgd9yqalps8hf9mayvd58852gtz66m7tqpacjedkp6kxq4dyxsr`,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "id",
@@ -38,6 +39,9 @@ var decode = &cli.Command{
 			return fmt.Errorf("invalid number of arguments, need just one")
 		}
 		input := args.First()
+		if strings.HasPrefix(input, "nostr:") {
+			input = input[6:]
+		}
 
 		var decodeResult DecodeResult
 		if b, err := hex.DecodeString(input); err == nil {
