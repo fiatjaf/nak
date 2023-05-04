@@ -121,7 +121,7 @@ OPTIONS:
    --help, -h    show help
 ```
 
-written in go using [go-nostr](https://github.com/nbd-wtf/go-nostr) and distributed as a single binary.
+written in go using [go-nostr](https://github.com/nbd-wtf/go-nostr), heavily inspired by [nostril](http://git.jb55.com/nostril/).
 
 ## a toolkit for debugging all things nostr as a webpage:
 
