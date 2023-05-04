@@ -3,13 +3,14 @@ module git.fiatjaf.com/nak
 go 1.20
 
 require (
-	github.com/nbd-wtf/go-nostr v0.17.1
+	github.com/nbd-wtf/go-nostr v0.17.3
 	github.com/urfave/cli/v2 v2.25.3
 )
 
 require (
 	github.com/SaveTheRbtz/generic-sync-map-go v0.0.0-20220414055132-a37292614db8 // indirect
 	github.com/btcsuite/btcd/btcec/v2 v2.2.0 // indirect
+	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.0.0 // indirect
