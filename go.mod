@@ -1,4 +1,4 @@
-module git.fiatjaf.com/nak
+module github.com/fiatjaf/nak
 
 go 1.20
 

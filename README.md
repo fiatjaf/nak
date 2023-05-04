@@ -4,7 +4,7 @@ this repository contains two things:
 
 ## a command-line tool for decoding and encoding nostr entities
 
-Install with `go install git.fiatjaf.com/nak`.
+Install with `go install github.com/fiatjaf/nak`.
 
 ### examples
 
