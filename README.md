@@ -6,6 +6,8 @@ this repository contains two things:
 
 Install with `go install github.com/fiatjaf/nak`.
 
+It pairs nicely with https://github.com/blakejakopovic/nostcat (which handles the websocket/relay interface very well) using unix pipes.
+
 ### examples
 
 ```
