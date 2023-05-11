@@ -28,7 +28,7 @@ object Main extends IOWebApp {
               src := "/favicon.ico"
             ),
             a(
-              href := "https://github.com/fiatjaf/nostr-army-knife",
+              href := "/",
               "nostr army knife"
             )
           ),
@@ -38,6 +38,18 @@ object Main extends IOWebApp {
             actions(store)
           ),
           result(store)
+        ),
+        div(
+          cls := "flex justify-end mr-5 mt-10 text-xs w-4/5",
+          a(
+            href := "https://github.com/fiatjaf/nak",
+            "source code"
+          ),
+          a(
+            cls := "ml-4",
+            href := "https://github.com/fiatjaf/nak",
+            "get the command-line tool"
+          )
         )
       )
   }
