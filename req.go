@@ -14,8 +14,13 @@ const CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"
 var req = &cli.Command{
 	Name:  "req",
 	Usage: "generates an encoded REQ message to be sent to a relay",
-	Description: `example usage (with 'nostcat'):
-		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol`,
+	Description: `outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
+
+example usage (with 'nostcat'):
+		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
+
+standalone:
+		nak req -k 1 wss://nos.lol`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
@@ -71,9 +76,15 @@ var req = &cli.Command{
 		},
 		&cli.BoolFlag{
 			Name:  "bare",
-			Usage: "print just the filter, not enveloped in a [\"REQ\", ...] array",
+			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
+		},
+		&cli.BoolFlag{
+			Name:        "stream",
+			Usage:       "keep the subscription open, printing all events as they are returned",
+			DefaultText: "false, will close on EOSE",
 		},
 	},
+	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
 		filter := nostr.Filter{}
 
@@ -124,15 +135,29 @@ var req = &cli.Command{
 			filter.Limit = limit
 		}
 
-		var result string
-		if c.Bool("bare") {
-			result = filter.String()
+		relays := c.Args().Slice()
+		if len(relays) > 0 {
+			pool := nostr.NewSimplePool(c.Context)
+			fn := pool.SubManyEose
+			if c.Bool("stream") {
+				fn = pool.SubMany
+			}
+			for evt := range fn(c.Context, relays, nostr.Filters{filter}) {
+				fmt.Println(evt)
+			}
 		} else {
-			j, _ := json.Marshal([]any{"REQ", "nak", filter})
-			result = string(j)
+			// no relays given, will just print the filter
+			var result string
+			if c.Bool("bare") {
+				result = filter.String()
+			} else {
+				j, _ := json.Marshal([]any{"REQ", "nak", filter})
+				result = string(j)
+			}
+
+			fmt.Println(result)
 		}
 
-		fmt.Println(result)
 		return nil
 	},
 }

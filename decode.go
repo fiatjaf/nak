@@ -58,7 +58,7 @@ var decode = &cli.Command{
 			}
 		} else if evp := sdk.InputToEventPointer(input); evp != nil {
 			decodeResult = DecodeResult{EventPointer: evp}
-		} else if pp := sdk.InputToProfile(input); pp != nil {
+		} else if pp := sdk.InputToProfile(c.Context, input); pp != nil {
 			decodeResult = DecodeResult{ProfilePointer: pp}
 		} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
 			ep := value.(nostr.EntityPointer)
