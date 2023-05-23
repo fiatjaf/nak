@@ -2,11 +2,11 @@
 
 this repository contains two things:
 
-## a command-line tool for decoding and encoding nostr entities
+## a command-line tool for decoding and encoding nostr entities and talking to relays
 
 Install with `go install github.com/fiatjaf/nak`.
 
-It pairs nicely with https://github.com/blakejakopovic/nostcat (which handles the websocket/relay interface very well) using unix pipes.
+It pairs nicely with https://github.com/blakejakopovic/nostcat using unix pipes.
 
 ### examples
 
@@ -43,7 +43,7 @@ USAGE:
    nak [global options] command [command options] [arguments...]
 
 COMMANDS:
-   req      generates an encoded REQ message to be sent to a relay
+   req      generates encoded REQ messages and optionally use them to talk to relays
    event    generates an encoded event
    decode   decodes nip19, nip21, nip05 or hex entities
    help, h  Shows a list of commands or help for one command
@@ -77,17 +77,23 @@ OPTIONS:
 
 ~> nak req --help
 NAME:
-   nak req - generates an encoded REQ message to be sent to a relay
+   nak req - generates encoded REQ messages and optionally use them to talk to relays
 
 USAGE:
-   nak req [command options] [arguments...]
+   nak req [command options] [relay...]
 
 DESCRIPTION:
+   outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
+
    example usage (with 'nostcat'):
        nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
 
+   standalone:
+       nak req -k 1 wss://nos.lol
+
 OPTIONS:
-   --bare  print just the filter, not enveloped in a ["REQ", ...] array (default: false)
+   --bare    when printing the filter, print just the filter, not enveloped in a ["REQ", ...] array (default: false)
+   --stream  keep the subscription open, printing all events as they are returned (default: false, will close on EOSE)
 
    FILTER ATTRIBUTES
 
@@ -100,6 +106,24 @@ OPTIONS:
    --until value, -u value                                only accept events older than this (unix timestamp) (default: 0)
    -e value [ -e value ]                                  shortcut for --tag e=<value>
    -p value [ -p value ]                                  shortcut for --tag p=<value>
+
+
+OPTIONS:
+   --bare    when printing the filter, print just the filter, not enveloped in a ["REQ", ...] array (default: false)
+   --stream  keep the subscription open, printing all events as they are returned (default: false, will close on EOSE)
+
+   FILTER ATTRIBUTES
+
+   --author value, -a value [ --author value, -a value ]  only accept events from these authors (pubkey as hex)
+   --id value, -i value [ --id value, -i value ]          only accept events with these ids (hex)
+   --kind value, -k value [ --kind value, -k value ]      only accept events with these kind numbers
+   --limit value, -l value                                only accept up to this number of events (default: 0)
+   --since value, -s value                                only accept events newer than this (unix timestamp) (default: 0)
+   --tag value, -t value [ --tag value, -t value ]        takes a tag like -t e=<id>, only accept events with these tags
+   --until value, -u value                                only accept events older than this (unix timestamp) (default: 0)
+   -e value [ -e value ]                                  shortcut for --tag e=<value>
+   -p value [ -p value ]                                  shortcut for --tag p=<value>
+
 
 ~> nak decode --help
 NAME:

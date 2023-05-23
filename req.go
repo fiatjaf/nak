@@ -13,7 +13,7 @@ const CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"
 
 var req = &cli.Command{
 	Name:  "req",
-	Usage: "generates an encoded REQ message to be sent to a relay",
+	Usage: "generates encoded REQ messages and optionally use them to talk to relays",
 	Description: `outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
 
 example usage (with 'nostcat'):
