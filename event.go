@@ -117,6 +117,7 @@ standalone:
 
 		relays := c.Args().Slice()
 		if len(relays) > 0 {
+			fmt.Println(evt.String())
 			for _, url := range relays {
 				fmt.Fprintf(os.Stderr, "publishing to %s... ", url)
 				if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
