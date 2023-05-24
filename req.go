@@ -18,7 +18,6 @@ var req = &cli.Command{
 
 example usage (with 'nostcat'):
 		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
-
 standalone:
 		nak req -k 1 wss://nos.lol`,
 	Flags: []cli.Flag{

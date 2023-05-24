@@ -44,7 +44,7 @@ USAGE:
 
 COMMANDS:
    req      generates encoded REQ messages and optionally use them to talk to relays
-   event    generates an encoded event
+   event    generates an encoded event and either prints it or sends it to a set of relays
    decode   decodes nip19, nip21, nip05 or hex entities
    help, h  Shows a list of commands or help for one command
 
@@ -53,7 +53,7 @@ GLOBAL OPTIONS:
 
 ~> nak event --help
 NAME:
-   nak event - generates an encoded event
+   nak event - generates an encoded event and either prints it or sends it to a set of relays
 
 USAGE:
    nak event [command options] [arguments...]
@@ -61,6 +61,8 @@ USAGE:
 DESCRIPTION:
    example usage (for sending directly to a relay with 'nostcat'):
        nak event -k 1 -c hello --envelope | nostcat wss://nos.lol
+   standalone:
+       nak event -k 1 -c hello wss://nos.lol`,
 
 OPTIONS:
    --envelope   print the event enveloped in a ["EVENT", ...] message ready to be sent to a relay (default: false)
@@ -87,7 +89,6 @@ DESCRIPTION:
 
    example usage (with 'nostcat'):
        nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
-
    standalone:
        nak req -k 1 wss://nos.lol
 

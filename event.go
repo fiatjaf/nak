@@ -19,7 +19,6 @@ var event = &cli.Command{
 	Usage: "generates an encoded event and either prints it or sends it to a set of relays",
 	Description: `example usage (for sending directly to a relay with 'nostcat'):
 		nak event -k 1 -c hello --envelope | nostcat wss://nos.lol
-
 standalone:
 		nak event -k 1 -c hello wss://nos.lol`,
 	Flags: []cli.Flag{
