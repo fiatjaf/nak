@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 	"time"
@@ -15,9 +16,12 @@ const CATEGORY_EVENT_FIELDS = "EVENT FIELDS"
 
 var event = &cli.Command{
 	Name:  "event",
-	Usage: "generates an encoded event",
+	Usage: "generates an encoded event and either prints it or sends it to a set of relays",
 	Description: `example usage (for sending directly to a relay with 'nostcat'):
-		nak event -k 1 -c hello --envelope | nostcat wss://nos.lol`,
+		nak event -k 1 -c hello --envelope | nostcat wss://nos.lol
+
+standalone:
+		nak event -k 1 -c hello wss://nos.lol`,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:        "sec",
@@ -70,6 +74,7 @@ var event = &cli.Command{
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
 	},
+	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
 		evt := nostr.Event{
 			Kind:    c.Int("kind"),
@@ -111,15 +116,31 @@ var event = &cli.Command{
 			return fmt.Errorf("error signing with provided key: %w", err)
 		}
 
-		var result string
-		if c.Bool("envelope") {
-			j, _ := json.Marshal([]any{"EVENT", evt})
-			result = string(j)
+		relays := c.Args().Slice()
+		if len(relays) > 0 {
+			for _, url := range relays {
+				fmt.Fprintf(os.Stderr, "publishing to %s... ", url)
+				if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
+					fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
+				} else {
+					if status, err := relay.Publish(c.Context, evt); err != nil {
+						fmt.Fprintf(os.Stderr, "failed: %s\n", err)
+					} else {
+						fmt.Fprintf(os.Stderr, "%s.\n", status)
+					}
+				}
+			}
 		} else {
-			result = evt.String()
+			var result string
+			if c.Bool("envelope") {
+				j, _ := json.Marshal([]any{"EVENT", evt})
+				result = string(j)
+			} else {
+				result = evt.String()
+			}
+			fmt.Println(result)
 		}
 
-		fmt.Println(result)
 		return nil
 	},
 }
