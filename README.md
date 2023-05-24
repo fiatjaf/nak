@@ -19,6 +19,13 @@ It pairs nicely with https://github.com/blakejakopovic/nostcat using unix pipes.
 
 ~> nak event -c hello --sec e8314053e76f5fff73481f6a1a1affce3f34645f0c10df0a8d33fd80f0f03255
 {"id":"ed840ef37a40cce4f4b8c361e5df13457ad664209cf4a297fd7df7e84fdd32e0","pubkey":"5b36b874b2b983197ba4be80553b2e4b6db2895a04567cea0aa47585b2e0c620","created_at":1683201092,"kind":1,"tags":[],"content":"hello","sig":"304a87dbbdf986a187eb9417316cfe3d6f8f31793ba20c9c6d7e4ebeeefe950d6ecba6098c201b7170c04e27c2f920d607a90f5c8763c35ac806dce37df1d05d"}
+~> nak event -c hello --sec e8314053e76f5fff73481f6a1a1affce3f34645f0c10df0a8d33fd80f0f03255 wss://relay.stoner.com wss://nos.lol wss://nostr.wine wss://atlas.nostr.land wss://relay.damus.io
+{"id":"54a534647bdcd2751d743fea4fc9eee5dba613887d69425f0891d9c2f82772a5","pubkey":"5b36b874b2b983197ba4be80553b2e4b6db2895a04567cea0aa47585b2e0c620","created_at":1684895417,"kind":1,"tags":[],"content":"hello","sig":"81a14cfe628fab6cd6135bb66f6e8b3bb4bfce4f666462a1303fdfbc9038fd141e73db3fe7e774a8f023fc70622c50a67d4fa41d3d09806c78f051985c11e0bd"}
+publishing to wss://relay.stoner.com... failed: msg: blocked: pubkey is not allowed to publish to this relay
+publishing to wss://nos.lol... success.
+publishing to wss://nostr.wine... failed: msg: blocked: not an active paid member
+publishing to wss://atlas.nostr.land... failed: msg: blocked: pubkey not admitted
+publishing to wss://relay.damus.io... success.
 
 ~> nak decode nevent1qqs29yet5tp0qq5xu5qgkeehkzqh5qu46739axzezcxpj4tjlkx9j7gpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5sh59ud
 {
@@ -30,6 +37,9 @@ It pairs nicely with https://github.com/blakejakopovic/nostcat using unix pipes.
 
 ~> nak req -a a2932ba2c2f00286e5008b6737b0817a0395d7a25e9859160c195572fd8c5979 -k 1 -a e8b487c079b0f67c695ae6c4c2552a47f38adfa2533cc5926bd2c102942fdcb7
 ["REQ","nak",{"kinds":[1],"authors":["a2932ba2c2f00286e5008b6737b0817a0395d7a25e9859160c195572fd8c5979","e8b487c079b0f67c695ae6c4c2552a47f38adfa2533cc5926bd2c102942fdcb7"]}]
+
+~> nak req -k 1 -l 1 --stream wss://relay.stoner.com
+{"id":"1d73832917bf5a72276c53e9246c28b97225b51cd5735843434f7756fc0ddead","pubkey":"3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d","created_at":1684894689,"kind":1,"tags":[["p","bcbeb5a2e6b547f6d0c3d8c16145f7bb94f3639ec7ecbcfe50045dbb2eede70b","wss://nos.lol","artk42"],["e","b5af6815c8d89a7d5b6201b9e624fbd5389fca3337ba2dc05c6187234a7c1bd5","wss://nos.lol","root"],["e","5795e27aff0a459a30c64a61a32c43d968cd19c8f1926cf01fc02e9da7c56f2b","wss://nos.lol","reply"],["client","coracle"]],"content":"Because that makes no sense.","sig":"3ee5b2b26ec6b116ef1a6b1c10bc7e56674a3c36841814f68b57f63259f3d78e23629d4599afe67e72c220e27b4b0966cc51adc1da808c8c6111dedb531ac0c3"}
 ```
 
 ### documentation
