@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -123,7 +124,9 @@ standalone:
 				if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
 					fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
 				} else {
-					if status, err := relay.Publish(c.Context, evt); err != nil {
+					ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+					defer cancel()
+					if status, err := relay.Publish(ctx, evt); err != nil {
 						fmt.Fprintf(os.Stderr, "failed: %s\n", err)
 					} else {
 						fmt.Fprintf(os.Stderr, "%s.\n", status)
