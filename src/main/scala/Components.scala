@@ -41,11 +41,11 @@ object Components {
         ),
         entry(
           "npub",
-          NIP19.encode(XOnlyPublicKey(bytes32))
+          NIP19.encode(PrivateKey(bytes32).publicKey.xonly)
         ),
         nip19_21(
           "nprofile",
-          NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
+          NIP19.encode(ProfilePointer(PrivateKey(bytes32).publicKey.xonly))
         )
       ),
       "if this is an event id:",
