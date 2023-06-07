@@ -85,7 +85,7 @@ standalone:
 		tags := make([][]string, 0, 5)
 		for _, tagFlag := range c.StringSlice("tag") {
 			spl := strings.Split(tagFlag, "=")
-			if len(spl) == 2 && len(spl[0]) == 1 {
+			if len(spl) == 2 && len(spl[0]) > 0 {
 				tags = append(tags, spl)
 			}
 		}
