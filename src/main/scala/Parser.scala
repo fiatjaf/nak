@@ -22,11 +22,27 @@ object Parser {
         .flatMap(b => Try(Right(ByteVector32(b))).toOption)
         .getOrElse(
           NIP19.decode(input) match {
-            case Right(pp: ProfilePointer)   => Right(pp)
-            case Right(evp: EventPointer)    => Right(evp)
-            case Right(sk: PrivateKey)       => Right(sk)
-            case Right(addr: AddressPointer) => Right(addr)
+            case Right(pp: ProfilePointer)             => Right(pp)
+            case Right(evp: EventPointer)              => Right(evp)
+            case Right(sk: PrivateKey)                 => Right(sk)
+            case Right(addr: AddressPointer)           => Right(addr)
+            case Left(_) if input.split(":").size == 3 =>
+              // parse "a" tag format, nip 33
+              val spl = input.split(":")
+              (
+                spl(0).toIntOption,
+                ByteVector.fromHex(spl(1)),
+                Some(spl(2))
+              ).mapN((kind, author, identifier) =>
+                AddressPointer(
+                  identifier,
+                  kind,
+                  scoin.XOnlyPublicKey(ByteVector32(author)),
+                  relays = List.empty
+                )
+              ).toRight("couldn't parse as a nip33 'a' tag")
             case Left(_) =>
+              // parse event json
               parse(input) match {
                 case Left(err: io.circe.ParsingFailure) =>
                   Left("not valid JSON or NIP-19 code")

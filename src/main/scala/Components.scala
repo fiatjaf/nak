@@ -160,15 +160,20 @@ object Components {
   def renderAddressPointer(
       store: Store,
       addr: snow.AddressPointer
-  ): Resource[IO, HtmlDivElement[IO]] =
+  ): Resource[IO, HtmlDivElement[IO]] = {
+    val nip33atag =
+      s"${addr.kind}:${addr.author.value.toHex}:${addr.d}"
+
     div(
       cls := "text-md",
       entry("author (pubkey hex)", addr.author.value.toHex),
       entry("identifier (d tag)", addr.d),
       entry("kind", addr.kind.toString),
       relayHints(store, addr.relays),
-      nip19_21(store, "naddr", NIP19.encode(addr))
+      nip19_21(store, "naddr", NIP19.encode(addr)),
+      entry("nip33 'a' tag", nip33atag, Some(editable(store, nip33atag)))
     )
+  }
 
   def renderEvent(
       store: Store,
@@ -285,7 +290,7 @@ object Components {
     div(
       cls := "flex items-center space-x-3",
       span(cls := "font-bold", key + " "),
-      span(Styles.mono, cls := "max-w-xl", value),
+      span(Styles.mono, cls := "max-w-xl break-all", value),
       editLink
     )
 
