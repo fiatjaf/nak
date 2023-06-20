@@ -164,7 +164,7 @@ object Components {
     div(
       cls := "text-md",
       entry("author (pubkey hex)", addr.author.value.toHex),
-      entry("identifier", addr.d),
+      entry("identifier (d tag)", addr.d),
       entry("kind", addr.kind.toString),
       relayHints(store, addr.relays),
       nip19_21(store, "naddr", NIP19.encode(addr))
