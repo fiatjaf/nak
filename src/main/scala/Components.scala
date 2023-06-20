@@ -30,7 +30,7 @@ object Components {
           "npub",
           NIP19.encode(XOnlyPublicKey(bytes32)),
           Some(
-            editable(
+            selectable(
               store,
               NIP19.encode(XOnlyPublicKey(bytes32))
             )
@@ -49,7 +49,7 @@ object Components {
           "nsec",
           NIP19.encode(PrivateKey(bytes32)),
           Some(
-            editable(
+            selectable(
               store,
               NIP19.encode(PrivateKey(bytes32))
             )
@@ -59,7 +59,7 @@ object Components {
           "npub",
           NIP19.encode(PrivateKey(bytes32).publicKey.xonly),
           Some(
-            editable(
+            selectable(
               store,
               NIP19.encode(PrivateKey(bytes32).publicKey.xonly)
             )
@@ -86,7 +86,7 @@ object Components {
           "note",
           NIP19.encode(bytes32),
           Some(
-            editable(
+            selectable(
               store,
               NIP19.encode(bytes32)
             )
@@ -104,7 +104,7 @@ object Components {
       entry(
         "event id (hex)",
         evp.id,
-        Some(editable(store, evp.id))
+        Some(selectable(store, evp.id))
       ),
       relayHints(store, evp.relays),
       evp.author.map { pk =>
@@ -114,7 +114,7 @@ object Components {
       entry(
         "note",
         NIP19.encode(ByteVector32.fromValidHex(evp.id)),
-        Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(evp.id))))
+        Some(selectable(store, NIP19.encode(ByteVector32.fromValidHex(evp.id))))
       )
     )
 
@@ -129,20 +129,20 @@ object Components {
         entry(
           "private key (hex)",
           k.value.toHex,
-          Some(editable(store, k.value.toHex))
+          Some(selectable(store, k.value.toHex))
         )
       },
       sk.map { k =>
         entry(
           "nsec",
           NIP19.encode(k),
-          Some(editable(store, NIP19.encode(k)))
+          Some(selectable(store, NIP19.encode(k)))
         )
       },
       entry(
         "public key (hex)",
         pp.pubkey.value.toHex,
-        Some(editable(store, pp.pubkey.value.toHex))
+        Some(selectable(store, pp.pubkey.value.toHex))
       ),
       relayHints(
         store,
@@ -152,7 +152,7 @@ object Components {
       entry(
         "npub",
         NIP19.encode(pp.pubkey),
-        Some(editable(store, NIP19.encode(pp.pubkey)))
+        Some(selectable(store, NIP19.encode(pp.pubkey)))
       ),
       nip19_21(store, "nprofile", NIP19.encode(pp))
     )
@@ -171,7 +171,7 @@ object Components {
       entry("kind", addr.kind.toString),
       relayHints(store, addr.relays),
       nip19_21(store, "naddr", NIP19.encode(addr)),
-      entry("nip33 'a' tag", nip33atag, Some(editable(store, nip33atag)))
+      entry("nip33 'a' tag", nip33atag, Some(selectable(store, nip33atag)))
     )
   }
 
@@ -296,7 +296,7 @@ object Components {
           entry(
             "note",
             NIP19.encode(ByteVector32.fromValidHex(id)),
-            Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(id))))
+            Some(selectable(store, NIP19.encode(ByteVector32.fromValidHex(id))))
           )
         )
     )
@@ -304,13 +304,13 @@ object Components {
   private def entry(
       key: String,
       value: String,
-      editLink: Option[Resource[IO, HtmlSpanElement[IO]]] = None
+      selectLink: Option[Resource[IO, HtmlSpanElement[IO]]] = None
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "flex items-center space-x-3",
       span(cls := "font-bold", key + " "),
       span(Styles.mono, cls := "max-w-xl break-all", value),
-      editLink
+      selectLink
     )
 
   private def nip19_21(
@@ -321,7 +321,7 @@ object Components {
     div(
       span(cls := "font-bold", key + " "),
       span(Styles.mono, cls := "break-all", code),
-      editable(store, code),
+      selectable(store, code),
       a(
         href := "nostr:" + code,
         external
@@ -452,7 +452,7 @@ object Components {
         )
       }
 
-  private def editable(
+  private def selectable(
       store: Store,
       code: String
   ): Resource[IO, HtmlSpanElement[IO]] =
