@@ -256,14 +256,52 @@ object Components {
           span(cls := "font-bold", "relay hints "),
           if relays.size == 0 then div("")
           else
+            // displaying each relay hint
             div(
               cls := "flex flex-wrap max-w-xl",
               relays
                 .map(url =>
                   div(
                     Styles.mono,
-                    cls := "rounded py-0.5 px-1 mr-1 mb-1 bg-orange-100",
-                    url
+                    cls := "flex items-center rounded py-0.5 px-1 mr-1 mb-1 bg-orange-100",
+                    url,
+                    // removing a relay hint by clicking on the x
+                    div(
+                      cls := "cursor-pointer ml-1 text-rose-600 hover:text-rose-300",
+                      onClick --> (_.foreach(_ => {
+                        store.result.get.flatMap(result =>
+                          store.input.set(
+                            result
+                              .map {
+                                case a: AddressPointer =>
+                                  NIP19
+                                    .encode(
+                                      a.copy(relays =
+                                        relays.filterNot(_ == url)
+                                      )
+                                    )
+                                case p: ProfilePointer =>
+                                  NIP19
+                                    .encode(
+                                      p.copy(relays =
+                                        relays.filterNot(_ == url)
+                                      )
+                                    )
+                                case e: EventPointer =>
+                                  NIP19
+                                    .encode(
+                                      e.copy(relays =
+                                        relays.filterNot(_ == url)
+                                      )
+                                    )
+                                case r => ""
+                              }
+                              .getOrElse("")
+                          )
+                        )
+                      })),
+                      "×"
+                    )
                   )
                 )
             )
@@ -274,6 +312,7 @@ object Components {
                 input.withSelf { self =>
                   (
                     onKeyPress --> (_.foreach(evt =>
+                      // confirm adding a relay hint
                       evt.key match {
                         case "Enter" =>
                           self.value.get.flatMap(url =>
@@ -287,17 +326,17 @@ object Components {
                                       case a: AddressPointer =>
                                         NIP19
                                           .encode(
-                                            a.copy(relays = url :: a.relays)
+                                            a.copy(relays = a.relays :+ url)
                                           )
                                       case p: ProfilePointer =>
                                         NIP19
                                           .encode(
-                                            p.copy(relays = url :: p.relays)
+                                            p.copy(relays = p.relays :+ url)
                                           )
                                       case e: EventPointer =>
                                         NIP19
                                           .encode(
-                                            e.copy(relays = url :: e.relays)
+                                            e.copy(relays = e.relays :+ url)
                                           )
                                       case r => ""
                                     }
@@ -314,6 +353,7 @@ object Components {
                 }
               )
             case false if dynamic =>
+              // button to add a new relay hint
               button(
                 Styles.buttonSmall,
                 "add relay hint",
