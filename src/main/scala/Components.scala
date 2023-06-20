@@ -16,7 +16,10 @@ import snow.*
 import Utils.*
 
 object Components {
-  def render32Bytes(bytes32: ByteVector32): Resource[IO, HtmlDivElement[IO]] =
+  def render32Bytes(
+      store: Store,
+      bytes32: ByteVector32
+  ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
       entry("canonical hex", bytes32.toHex),
@@ -25,9 +28,16 @@ object Components {
         cls := "mt-2 pl-2 mb-2",
         entry(
           "npub",
-          NIP19.encode(XOnlyPublicKey(bytes32))
+          NIP19.encode(XOnlyPublicKey(bytes32)),
+          Some(
+            editable(
+              store,
+              NIP19.encode(XOnlyPublicKey(bytes32))
+            )
+          )
         ),
         nip19_21(
+          store,
           "nprofile",
           NIP19.encode(ProfilePointer(XOnlyPublicKey(bytes32)))
         )
@@ -37,13 +47,26 @@ object Components {
         cls := "pl-2 mb-2",
         entry(
           "nsec",
-          NIP19.encode(PrivateKey(bytes32))
+          NIP19.encode(PrivateKey(bytes32)),
+          Some(
+            editable(
+              store,
+              NIP19.encode(PrivateKey(bytes32))
+            )
+          )
         ),
         entry(
           "npub",
-          NIP19.encode(PrivateKey(bytes32).publicKey.xonly)
+          NIP19.encode(PrivateKey(bytes32).publicKey.xonly),
+          Some(
+            editable(
+              store,
+              NIP19.encode(PrivateKey(bytes32).publicKey.xonly)
+            )
+          )
         ),
         nip19_21(
+          store,
           "nprofile",
           NIP19.encode(ProfilePointer(PrivateKey(bytes32).publicKey.xonly))
         )
@@ -52,6 +75,7 @@ object Components {
       div(
         cls := "pl-2 mb-2",
         nip19_21(
+          store,
           "nevent",
           NIP19.encode(EventPointer(bytes32.toHex))
         )
@@ -60,7 +84,13 @@ object Components {
         cls := "pl-2 mb-2",
         entry(
           "note",
-          NIP19.encode(bytes32)
+          NIP19.encode(bytes32),
+          Some(
+            editable(
+              store,
+              NIP19.encode(bytes32)
+            )
+          )
         )
       )
     )
@@ -71,13 +101,21 @@ object Components {
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
-      entry("event id (hex)", evp.id),
+      entry(
+        "event id (hex)",
+        evp.id,
+        Some(editable(store, evp.id))
+      ),
       relayHints(store, evp.relays),
       evp.author.map { pk =>
         entry("author hint (pubkey hex)", pk.value.toHex)
       },
-      nip19_21("nevent", NIP19.encode(evp)),
-      entry("note", NIP19.encode(ByteVector32.fromValidHex(evp.id)))
+      nip19_21(store, "nevent", NIP19.encode(evp)),
+      entry(
+        "note",
+        NIP19.encode(ByteVector32.fromValidHex(evp.id)),
+        Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(evp.id))))
+      )
     )
 
   def renderProfilePointer(
@@ -87,16 +125,36 @@ object Components {
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "text-md",
-      sk.map { k => entry("private key (hex)", k.value.toHex) },
-      sk.map { k => entry("nsec", NIP19.encode(k)) },
-      entry("public key (hex)", pp.pubkey.value.toHex),
+      sk.map { k =>
+        entry(
+          "private key (hex)",
+          k.value.toHex,
+          Some(editable(store, k.value.toHex))
+        )
+      },
+      sk.map { k =>
+        entry(
+          "nsec",
+          NIP19.encode(k),
+          Some(editable(store, NIP19.encode(k)))
+        )
+      },
+      entry(
+        "public key (hex)",
+        pp.pubkey.value.toHex,
+        Some(editable(store, pp.pubkey.value.toHex))
+      ),
       relayHints(
         store,
         pp.relays,
         dynamic = if sk.isDefined then false else true
       ),
-      entry("npub", NIP19.encode(pp.pubkey)),
-      nip19_21("nprofile", NIP19.encode(pp))
+      entry(
+        "npub",
+        NIP19.encode(pp.pubkey),
+        Some(editable(store, NIP19.encode(pp.pubkey)))
+      ),
+      nip19_21(store, "nprofile", NIP19.encode(pp))
     )
 
   def renderAddressPointer(
@@ -109,7 +167,7 @@ object Components {
       entry("identifier", addr.d),
       entry("kind", addr.kind.toString),
       relayHints(store, addr.relays),
-      nip19_21("naddr", NIP19.encode(addr))
+      nip19_21(store, "naddr", NIP19.encode(addr))
     )
 
   def renderEvent(
@@ -205,6 +263,7 @@ object Components {
       ),
       event.id.map(id =>
         nip19_21(
+          store,
           "nevent",
           NIP19.encode(EventPointer(id, author = event.pubkey))
         )
@@ -212,28 +271,33 @@ object Components {
       event.id.map(id =>
         entry(
           "note",
-          NIP19.encode(ByteVector32.fromValidHex(id))
+          NIP19.encode(ByteVector32.fromValidHex(id)),
+          Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(id))))
         )
       )
     )
 
   private def entry(
       key: String,
-      value: String
+      value: String,
+      editLink: Option[Resource[IO, HtmlSpanElement[IO]]] = None
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       cls := "flex items-center space-x-3",
       span(cls := "font-bold", key + " "),
-      span(Styles.mono, cls := "max-w-xl", value)
+      span(Styles.mono, cls := "max-w-xl", value),
+      editLink
     )
 
   private def nip19_21(
+      store: Store,
       key: String,
       code: String
   ): Resource[IO, HtmlDivElement[IO]] =
     div(
       span(cls := "font-bold", key + " "),
       span(Styles.mono, cls := "break-all", code),
+      editable(store, code),
       a(
         href := "nostr:" + code,
         external
@@ -364,5 +428,25 @@ object Components {
         )
       }
 
+  private def editable(
+      store: Store,
+      code: String
+  ): Resource[IO, HtmlSpanElement[IO]] =
+    span(
+      store.input.map(current =>
+        if current == code then a("")
+        else
+          a(
+            href := "#/" + code,
+            onClick --> (_.foreach(evt =>
+              evt.preventDefault >>
+                store.input.set(code)
+            )),
+            edit
+          )
+      )
+    )
+
+  private val edit = img(cls := "inline w-4 ml-2", src := "edit.svg")
   private val external = img(cls := "inline w-4 ml-2", src := "ext.svg")
 }

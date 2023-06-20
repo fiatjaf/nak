@@ -18,7 +18,7 @@ object Main extends IOWebApp {
   def render: Resource[IO, HtmlDivElement[IO]] = Store(window).flatMap {
     store =>
       div(
-        cls := "flex w-full h-full flex-col items-center justify-center",
+        cls := "flex w-full flex-col items-center justify-center",
         div(
           cls := "w-4/5",
           h1(
@@ -131,7 +131,7 @@ object Main extends IOWebApp {
       cls := "w-full flex my-5",
       store.result.map {
         case Left(msg)                  => div(msg)
-        case Right(bytes: ByteVector32) => render32Bytes(bytes)
+        case Right(bytes: ByteVector32) => render32Bytes(store, bytes)
         case Right(event: Event)        => renderEvent(store, event)
         case Right(pp: ProfilePointer)  => renderProfilePointer(store, pp)
         case Right(evp: EventPointer)   => renderEventPointer(store, evp)
