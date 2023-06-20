@@ -273,13 +273,32 @@ object Components {
           NIP19.encode(EventPointer(id, author = event.pubkey))
         )
       ),
-      event.id.map(id =>
-        entry(
-          "note",
-          NIP19.encode(ByteVector32.fromValidHex(id)),
-          Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(id))))
+      if event.kind >= 30000 && event.kind < 40000 then
+        event.pubkey
+          .map(author =>
+            nip19_21(
+              store,
+              "naddr",
+              NIP19.encode(
+                AddressPointer(
+                  d = event.tags
+                    .collectFirst { case "d" :: v :: _ => v }
+                    .getOrElse(""),
+                  kind = event.kind,
+                  author = author,
+                  relays = List.empty
+                )
+              )
+            )
+          )
+      else
+        event.id.map(id =>
+          entry(
+            "note",
+            NIP19.encode(ByteVector32.fromValidHex(id)),
+            Some(editable(store, NIP19.encode(ByteVector32.fromValidHex(id))))
+          )
         )
-      )
     )
 
   private def entry(
