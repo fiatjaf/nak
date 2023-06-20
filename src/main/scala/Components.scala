@@ -254,7 +254,20 @@ object Components {
         div(
           cls := "flex items-center space-x-3",
           span(cls := "font-bold", "relay hints "),
-          span(Styles.mono, cls := "max-w-xl", value),
+          if relays.size == 0 then div("")
+          else
+            div(
+              cls := "flex flex-wrap max-w-xl",
+              relays
+                .map(url =>
+                  div(
+                    Styles.mono,
+                    cls := "rounded py-0.5 px-1 mr-1 mb-1 bg-orange-100",
+                    url
+                  )
+                )
+            )
+          ,
           active.map {
             case true =>
               div(
