@@ -82,11 +82,17 @@ standalone:
 			Tags:    make(nostr.Tags, 0, 3),
 		}
 
-		tags := make([][]string, 0, 5)
+		tags := make(nostr.Tags, 0, 5)
 		for _, tagFlag := range c.StringSlice("tag") {
+			// tags are in the format key=value
 			spl := strings.Split(tagFlag, "=")
 			if len(spl) == 2 && len(spl[0]) > 0 {
-				tags = append(tags, spl)
+				tag := nostr.Tag{spl[0]}
+				// tags may also contain extra elements separated with a ";"
+				spl2 := strings.Split(spl[1], ";")
+				tag = append(tag, spl2...)
+				// ~
+				tags = append(tags, tag)
 			}
 		}
 		for _, etag := range c.StringSlice("e") {
