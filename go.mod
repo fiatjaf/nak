@@ -3,7 +3,7 @@ module github.com/fiatjaf/nak
 go 1.20
 
 require (
-	github.com/nbd-wtf/go-nostr v0.18.7
+	github.com/nbd-wtf/go-nostr v0.19.1
 	github.com/urfave/cli/v2 v2.25.3
 )
 
