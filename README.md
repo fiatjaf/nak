@@ -56,6 +56,7 @@ COMMANDS:
    req      generates encoded REQ messages and optionally use them to talk to relays
    event    generates an encoded event and either prints it or sends it to a set of relays
    decode   decodes nip19, nip21, nip05 or hex entities
+   encode   encodes notes and other stuff to nip19 entities
    help, h  Shows a list of commands or help for one command
 
 GLOBAL OPTIONS:
@@ -154,6 +155,34 @@ OPTIONS:
    --id, -e      return just the event id, if applicable (default: false)
    --pubkey, -p  return just the pubkey, if applicable (default: false)
    --help, -h    show help
+
+
+~> nak encode --help
+NAME:
+   nak encode - encodes notes and other stuff to nip19 entities
+
+USAGE:
+   nak encode command [command options] [arguments...]
+
+DESCRIPTION:
+   example usage:
+       nak encode npub <pubkey-hex>
+       nak encode nprofile <pubkey-hex>
+       nak encode nprofile --relay <relay-url> <pubkey-hex>
+       nak encode nevent <event-id>
+       nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
+       nak encode nsec <privkey-hex>
+
+COMMANDS:
+   npub      encode a hex private key into bech32 'npub' format
+   nsec      encode a hex private key into bech32 'nsec' format
+   nprofile  generate profile codes with attached relay information
+   nevent    generate event codes with optionally attached relay information
+   naddr     generate codes for NIP-33 parameterized replaceable events
+   help, h   Shows a list of commands or help for one command
+
+OPTIONS:
+   --help, -h  show help
 ```
 
 written in go using [go-nostr](https://github.com/nbd-wtf/go-nostr), heavily inspired by [nostril](http://git.jb55.com/nostril/).
