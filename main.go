@@ -15,6 +15,7 @@ func main() {
 			req,
 			event,
 			decode,
+			encode,
 		},
 	}
 
