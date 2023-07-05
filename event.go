@@ -9,7 +9,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nson"
 	"github.com/urfave/cli/v2"
 )
 
@@ -32,6 +34,10 @@ standalone:
 		&cli.BoolFlag{
 			Name:  "envelope",
 			Usage: "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
+		},
+		&cli.BoolFlag{
+			Name:  "nson",
+			Usage: "encode the event using NSON",
 		},
 		&cli.IntFlag{
 			Name:        "kind",
@@ -144,8 +150,11 @@ standalone:
 			if c.Bool("envelope") {
 				j, _ := json.Marshal([]any{"EVENT", evt})
 				result = string(j)
+			} else if c.Bool("nson") {
+				result, _ = nson.Marshal(&evt)
 			} else {
-				result = evt.String()
+				j, _ := easyjson.Marshal(&evt)
+				result = string(j)
 			}
 			fmt.Println(result)
 		}

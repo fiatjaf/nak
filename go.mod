@@ -3,7 +3,8 @@ module github.com/fiatjaf/nak
 go 1.20
 
 require (
-	github.com/nbd-wtf/go-nostr v0.19.1
+	github.com/mailru/easyjson v0.7.7
+	github.com/nbd-wtf/go-nostr v0.19.2
 	github.com/urfave/cli/v2 v2.25.3
 )
 
@@ -18,7 +19,6 @@ require (
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.2.0 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
-	github.com/mailru/easyjson v0.7.7 // indirect
 	github.com/puzpuzpuz/xsync v1.5.2 // indirect
 	github.com/russross/blackfriday/v2 v2.1.0 // indirect
 	github.com/tidwall/gjson v1.14.4 // indirect
