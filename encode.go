@@ -21,27 +21,22 @@ var encode = &cli.Command{
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
 		nak encode nsec <privkey-hex>`,
 	Before: func(c *cli.Context) error {
-		if c.Args().First() == "naddr" {
-			// validation will be done on the specific handler
-			return nil
-		}
-
 		if c.Args().Len() < 2 {
 			return fmt.Errorf("expected more than 2 arguments.")
 		}
-		target := c.Args().Get(c.Args().Len() - 1)
-		if target == "--help" {
-			return nil
-		}
-
-		return validate32BytesHex(target)
+		return nil
 	},
 	Subcommands: []*cli.Command{
 		{
 			Name:  "npub",
 			Usage: "encode a hex private key into bech32 'npub' format",
 			Action: func(c *cli.Context) error {
-				if npub, err := nip19.EncodePublicKey(c.Args().First()); err == nil {
+				target := c.Args().First()
+				if err := validate32BytesHex(target); err != nil {
+					return err
+				}
+
+				if npub, err := nip19.EncodePublicKey(target); err == nil {
 					fmt.Println(npub)
 					return nil
 				} else {
@@ -53,7 +48,12 @@ var encode = &cli.Command{
 			Name:  "nsec",
 			Usage: "encode a hex private key into bech32 'nsec' format",
 			Action: func(c *cli.Context) error {
-				if npub, err := nip19.EncodePrivateKey(c.Args().First()); err == nil {
+				target := c.Args().First()
+				if err := validate32BytesHex(target); err != nil {
+					return err
+				}
+
+				if npub, err := nip19.EncodePrivateKey(target); err == nil {
 					fmt.Println(npub)
 					return nil
 				} else {
@@ -72,12 +72,17 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
+				target := c.Args().First()
+				if err := validate32BytesHex(target); err != nil {
+					return err
+				}
+
 				relays := c.StringSlice("relay")
 				if err := validateRelayURLs(relays); err != nil {
 					return err
 				}
 
-				if npub, err := nip19.EncodeProfile(c.Args().First(), relays); err == nil {
+				if npub, err := nip19.EncodeProfile(target, relays); err == nil {
 					fmt.Println(npub)
 					return nil
 				} else {
@@ -100,9 +105,16 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				author := c.String("author")
-				if err := validate32BytesHex(author); err != nil {
+				target := c.Args().First()
+				if err := validate32BytesHex(target); err != nil {
 					return err
+				}
+
+				author := c.String("author")
+				if author != "" {
+					if err := validate32BytesHex(author); err != nil {
+						return err
+					}
 				}
 
 				relays := c.StringSlice("relay")
@@ -110,7 +122,7 @@ var encode = &cli.Command{
 					return err
 				}
 
-				if npub, err := nip19.EncodeEvent(c.Args().First(), relays, author); err == nil {
+				if npub, err := nip19.EncodeEvent(target, relays, author); err == nil {
 					fmt.Println(npub)
 					return nil
 				} else {
