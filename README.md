@@ -54,6 +54,7 @@ USAGE:
 
 COMMANDS:
    req      generates encoded REQ messages and optionally use them to talk to relays
+   count    generates encoded COUNT messages and optionally use them to talk to relays
    event    generates an encoded event and either prints it or sends it to a set of relays
    decode   decodes nip19, nip21, nip05 or hex entities
    encode   encodes notes and other stuff to nip19 entities
@@ -136,6 +137,36 @@ OPTIONS:
    -e value [ -e value ]                                  shortcut for --tag e=<value>
    -p value [ -p value ]                                  shortcut for --tag p=<value>
 
+~> nak count --help
+NAME:
+   nak count - generates encoded COUNT messages and optionally use them to talk to relays
+
+USAGE:
+   nak count [command options] [relay...]
+
+DESCRIPTION:
+   outputs a NIP-45 request. Mostly same as req.
+
+   example usage (with 'nostcat'):
+       nak count -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
+   standalone:
+       nak count -k 1 wss://nos.lol
+
+OPTIONS:
+   --bare    when printing the filter, print just the filter, not enveloped in a ["COUNT", ...] array (default: false)
+   --stream  keep the subscription open, printing all events as they are returned (default: false, will close on EOSE)
+
+   FILTER ATTRIBUTES
+
+   --author value, -a value [ --author value, -a value ]  only accept events from these authors (pubkey as hex)
+   --id value, -i value [ --id value, -i value ]          only accept events with these ids (hex)
+   --kind value, -k value [ --kind value, -k value ]      only accept events with these kind numbers
+   --limit value, -l value                                only accept up to this number of events (default: 0)
+   --since value, -s value                                only accept events newer than this (unix timestamp) (default: 0)
+   --tag value, -t value [ --tag value, -t value ]        takes a tag like -t e=<id>, only accept events with these tags
+   --until value, -u value                                only accept events older than this (unix timestamp) (default: 0)
+   -e value [ -e value ]                                  shortcut for --tag e=<value>
+   -p value [ -p value ]                                  shortcut for --tag p=<value>
 
 ~> nak decode --help
 NAME:

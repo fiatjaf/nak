@@ -13,6 +13,7 @@ func main() {
 		Usage: "the nostr army knife command-line tool",
 		Commands: []*cli.Command{
 			req,
+			count,
 			event,
 			decode,
 			encode,
