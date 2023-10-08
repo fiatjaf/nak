@@ -12,25 +12,14 @@ import (
 const CATEGORY_COUNT_ATTRIBUTES = "FILTER ATTRIBUTES"
 
 var count = &cli.Command{
-	Name:  "count",
-	Usage: "generates encoded COUNT messages and optionally use them to talk to relays",
-	Description: `outputs a NIP-45 request. Mostly same as req.
-
-example usage (with 'nostcat'):
-		nak count -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
-standalone:
-		nak count -k 1 wss://nos.lol`,
+	Name:        "count",
+	Usage:       "generates encoded COUNT messages and optionally use them to talk to relays",
+	Description: `outputs a NIP-45 request -- (mostly the same as 'nak req').`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
 			Aliases:  []string{"a"},
 			Usage:    "only accept events from these authors (pubkey as hex)",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "id",
-			Aliases:  []string{"i"},
-			Usage:    "only accept events with these ids (hex)",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
 		&cli.IntSliceFlag{
@@ -76,11 +65,6 @@ standalone:
 		&cli.BoolFlag{
 			Name:  "bare",
 			Usage: "when printing the filter, print just the filter, not enveloped in a [\"COUNT\", ...] array",
-		},
-		&cli.BoolFlag{
-			Name:        "stream",
-			Usage:       "keep the subscription open, printing all events as they are returned",
-			DefaultText: "false, will close on EOSE",
 		},
 	},
 	ArgsUsage: "[relay...]",
@@ -137,11 +121,7 @@ standalone:
 		relays := c.Args().Slice()
 		if len(relays) > 0 {
 			pool := nostr.NewSimplePool(c.Context)
-			fn := pool.SubManyEose
-			if c.Bool("stream") {
-				fn = pool.SubMany
-			}
-			for evt := range fn(c.Context, relays, nostr.Filters{filter}) {
+			for evt := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
 				fmt.Println(evt)
 			}
 		} else {
