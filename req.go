@@ -73,6 +73,11 @@ standalone:
 			Usage:    "only accept up to this number of events",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
+		&cli.StringFlag{
+			Name:     "search",
+			Usage:    "a NIP-50 search query, use it only with relays that explicitly support it",
+			Category: CATEGORY_FILTER_ATTRIBUTES,
+		},
 		&cli.BoolFlag{
 			Name:  "bare",
 			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
@@ -96,7 +101,9 @@ standalone:
 		if kinds := c.IntSlice("kind"); len(kinds) > 0 {
 			filter.Kinds = kinds
 		}
-
+		if search := c.String("search"); search != "" {
+			filter.Search = search
+		}
 		tags := make([][]string, 0, 5)
 		for _, tagFlag := range c.StringSlice("tag") {
 			spl := strings.Split(tagFlag, "=")
