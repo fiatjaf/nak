@@ -9,8 +9,6 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-const CATEGORY_COUNT_ATTRIBUTES = "FILTER ATTRIBUTES"
-
 var count = &cli.Command{
 	Name:        "count",
 	Usage:       "generates encoded COUNT messages and optionally use them to talk to relays",
@@ -61,10 +59,6 @@ var count = &cli.Command{
 			Aliases:  []string{"l"},
 			Usage:    "only accept up to this number of events",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.BoolFlag{
-			Name:  "bare",
-			Usage: "when printing the filter, print just the filter, not enveloped in a [\"COUNT\", ...] array",
 		},
 	},
 	ArgsUsage: "[relay...]",
@@ -118,22 +112,22 @@ var count = &cli.Command{
 			filter.Limit = limit
 		}
 
-		relays := c.Args().Slice()
-		if len(relays) > 0 {
-			pool := nostr.NewSimplePool(c.Context)
-			for ie := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
-				fmt.Println(ie.Event)
+		relay := c.Args().First()
+		if relay != "" {
+			relay, err := nostr.RelayConnect(c.Context, relay)
+			if err != nil {
+				return err
 			}
+			count, err := relay.Count(c.Context, nostr.Filters{filter})
+			if err != nil {
+				return err
+			}
+			fmt.Println(count)
 		} else {
 			// no relays given, will just print the filter
 			var result string
-			if c.Bool("bare") {
-				result = filter.String()
-			} else {
-				j, _ := json.Marshal([]any{"COUNT", "nak", filter})
-				result = string(j)
-			}
-
+			j, _ := json.Marshal([]any{"COUNT", "nak", filter})
+			result = string(j)
 			fmt.Println(result)
 		}
 
