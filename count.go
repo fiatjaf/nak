@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"strings"
 
@@ -12,7 +13,7 @@ import (
 var count = &cli.Command{
 	Name:        "count",
 	Usage:       "generates encoded COUNT messages and optionally use them to talk to relays",
-	Description: `outputs a NIP-45 request -- (mostly the same as 'nak req').`,
+	Description: `outputs a NIP-45 request (the flags are mostly the same as 'nak req').`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
@@ -112,17 +113,27 @@ var count = &cli.Command{
 			filter.Limit = limit
 		}
 
-		relay := c.Args().First()
-		if relay != "" {
-			relay, err := nostr.RelayConnect(c.Context, relay)
-			if err != nil {
-				return err
+		relays := c.Args().Slice()
+		successes := 0
+		failures := make([]error, 0, len(relays))
+		if len(relays) > 0 {
+			for _, relayUrl := range relays {
+				relay, err := nostr.RelayConnect(c.Context, relayUrl)
+				if err != nil {
+					failures = append(failures, err)
+					continue
+				}
+				count, err := relay.Count(c.Context, nostr.Filters{filter})
+				if err != nil {
+					failures = append(failures, err)
+					continue
+				}
+				fmt.Printf("%s: %d\n", relay.URL, count)
+				successes++
 			}
-			count, err := relay.Count(c.Context, nostr.Filters{filter})
-			if err != nil {
-				return err
+			if successes == 0 {
+				return errors.Join(failures...)
 			}
-			fmt.Println(count)
 		} else {
 			// no relays given, will just print the filter
 			var result string
