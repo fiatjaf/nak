@@ -141,8 +141,8 @@ standalone:
 			if c.Bool("stream") {
 				fn = pool.SubMany
 			}
-			for evt := range fn(c.Context, relays, nostr.Filters{filter}) {
-				fmt.Println(evt)
+			for ie := range fn(c.Context, relays, nostr.Filters{filter}) {
+				fmt.Println(ie.Event)
 			}
 		} else {
 			// no relays given, will just print the filter

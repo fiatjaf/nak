@@ -121,8 +121,8 @@ var count = &cli.Command{
 		relays := c.Args().Slice()
 		if len(relays) > 0 {
 			pool := nostr.NewSimplePool(c.Context)
-			for evt := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
-				fmt.Println(evt)
+			for ie := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
+				fmt.Println(ie.Event)
 			}
 		} else {
 			// no relays given, will just print the filter
