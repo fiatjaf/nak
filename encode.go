@@ -187,6 +187,23 @@ var encode = &cli.Command{
 				}
 			},
 		},
+		{
+			Name:  "note",
+			Usage: "generate note1 event codes (not recommended)",
+			Action: func(c *cli.Context) error {
+				target := c.Args().First()
+				if err := validate32BytesHex(target); err != nil {
+					return err
+				}
+
+				if npub, err := nip19.EncodeNote(target); err == nil {
+					fmt.Println(npub)
+					return nil
+				} else {
+					return err
+				}
+			},
+		},
 	},
 }
 
