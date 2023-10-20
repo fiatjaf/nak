@@ -31,7 +31,7 @@ var encode = &cli.Command{
 			Name:  "npub",
 			Usage: "encode a hex private key into bech32 'npub' format",
 			Action: func(c *cli.Context) error {
-				target := c.Args().First()
+				target := getStdinOrFirstArgument(c)
 				if err := validate32BytesHex(target); err != nil {
 					return err
 				}
@@ -48,7 +48,7 @@ var encode = &cli.Command{
 			Name:  "nsec",
 			Usage: "encode a hex private key into bech32 'nsec' format",
 			Action: func(c *cli.Context) error {
-				target := c.Args().First()
+				target := getStdinOrFirstArgument(c)
 				if err := validate32BytesHex(target); err != nil {
 					return err
 				}
@@ -72,7 +72,7 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				target := c.Args().First()
+				target := getStdinOrFirstArgument(c)
 				if err := validate32BytesHex(target); err != nil {
 					return err
 				}
@@ -105,7 +105,7 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				target := c.Args().First()
+				target := getStdinOrFirstArgument(c)
 				if err := validate32BytesHex(target); err != nil {
 					return err
 				}
@@ -191,7 +191,7 @@ var encode = &cli.Command{
 			Name:  "note",
 			Usage: "generate note1 event codes (not recommended)",
 			Action: func(c *cli.Context) error {
-				target := c.Args().First()
+				target := getStdinOrFirstArgument(c)
 				if err := validate32BytesHex(target); err != nil {
 					return err
 				}

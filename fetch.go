@@ -17,7 +17,7 @@ var fetch = &cli.Command{
 	ArgsUsage:   "[nip19code]",
 	Action: func(c *cli.Context) error {
 		filter := nostr.Filter{}
-		code := c.Args().First()
+		code := getStdinOrFirstArgument(c)
 
 		prefix, value, err := nip19.Decode(code)
 		if err != nil {
