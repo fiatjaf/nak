@@ -45,8 +45,14 @@ var fetch = &cli.Command{
 		case "nprofile":
 			v := value.(nostr.ProfilePointer)
 			filter.Authors = append(filter.Authors, v.PublicKey)
+			filter.Kinds = append(filter.Kinds, 0)
 			authorHint = v.PublicKey
 			relays = v.Relays
+		case "npub":
+			v := value.(string)
+			filter.Authors = append(filter.Authors, v)
+			filter.Kinds = append(filter.Kinds, 0)
+			authorHint = v
 		}
 
 		pool := nostr.NewSimplePool(c.Context)
