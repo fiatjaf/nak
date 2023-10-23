@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/url"
 	"os"
+	"strings"
 
 	"github.com/urfave/cli/v2"
 )
@@ -16,7 +17,7 @@ func getStdin() string {
 		read := bytes.NewBuffer(make([]byte, 0, 1000))
 		_, err := io.Copy(read, os.Stdin)
 		if err == nil {
-			return read.String()
+			return strings.TrimSpace(read.String())
 		}
 	}
 	return ""
