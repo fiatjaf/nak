@@ -20,8 +20,8 @@ var encode = &cli.Command{
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
 		nak encode nsec <privkey-hex>`,
 	Before: func(c *cli.Context) error {
-		if c.Args().Len() < 2 {
-			return fmt.Errorf("expected more than 2 arguments.")
+		if c.Args().Len() < 1 {
+			return fmt.Errorf("expected more than 1 argument.")
 		}
 		return nil
 	},
