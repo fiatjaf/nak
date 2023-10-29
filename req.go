@@ -16,10 +16,14 @@ var req = &cli.Command{
 	Usage: "generates encoded REQ messages and optionally use them to talk to relays",
 	Description: `outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
 
-example usage (with 'nostcat'):
-		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d | nostcat wss://nos.lol
-standalone:
-		nak req -k 1 wss://nos.lol`,
+example:
+		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d wss://nos.lol wss://nostr.mom
+
+it can also take a filter from stdin, optionally modify it with flags and send it to specific relays (or just print it).
+
+example:
+		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net
+`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
@@ -91,15 +95,20 @@ standalone:
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
 		filter := nostr.Filter{}
+		if stdinFilter := getStdin(); stdinFilter != "" {
+			if err := json.Unmarshal([]byte(stdinFilter), &filter); err != nil {
+				return fmt.Errorf("invalid filter received from stdin: %w", err)
+			}
+		}
 
 		if authors := c.StringSlice("author"); len(authors) > 0 {
-			filter.Authors = authors
+			filter.Authors = append(filter.Authors, authors...)
 		}
 		if ids := c.StringSlice("id"); len(ids) > 0 {
-			filter.IDs = ids
+			filter.IDs = append(filter.IDs, ids...)
 		}
 		if kinds := c.IntSlice("kind"); len(kinds) > 0 {
-			filter.Kinds = kinds
+			filter.Kinds = append(filter.Kinds, kinds...)
 		}
 		if search := c.String("search"); search != "" {
 			filter.Search = search
@@ -119,14 +128,16 @@ standalone:
 		for _, ptag := range c.StringSlice("p") {
 			tags = append(tags, []string{"p", ptag})
 		}
-		if len(tags) > 0 {
+
+		if len(tags) > 0 && filter.Tags == nil {
 			filter.Tags = make(nostr.TagMap)
-			for _, tag := range tags {
-				if _, ok := filter.Tags[tag[0]]; !ok {
-					filter.Tags[tag[0]] = make([]string, 0, 3)
-				}
-				filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
+		}
+
+		for _, tag := range tags {
+			if _, ok := filter.Tags[tag[0]]; !ok {
+				filter.Tags[tag[0]] = make([]string, 0, 3)
 			}
+			filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
 		}
 
 		if since := c.Int("since"); since != 0 {
