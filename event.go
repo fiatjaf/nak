@@ -20,10 +20,18 @@ const CATEGORY_EVENT_FIELDS = "EVENT FIELDS"
 var event = &cli.Command{
 	Name:  "event",
 	Usage: "generates an encoded event and either prints it or sends it to a set of relays",
-	Description: `example usage (for sending directly to a relay with 'nostcat'):
-		nak event -k 1 -c hello --envelope | nostcat wss://nos.lol
-standalone:
-		nak event -k 1 -c hello wss://nos.lol`,
+	Description: `outputs an event built with the flags. if one or more relays are given as arguments, an attempt is also made to publish the event to these relays.
+
+example:
+		nak event -c hello wss://nos.lol
+		nak event -k 3 -p 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d
+
+if an event -- or a partial event -- is given on stdin, the flags can be used to optionally modify it. if it is modified it is rehashed and resigned, otherwise it is just returned as given, but that can be used to just publish to relays.
+
+example:
+		echo '{"id":"a889df6a387419ff204305f4c2d296ee328c3cd4f8b62f205648a541b4554dfb","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698623783,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"84876e1ee3e726da84e5d195eb79358b2b3eaa4d9bd38456fde3e8a2af3f1cd4cda23f23fda454869975b3688797d4c66e12f4c51c1b43c6d2997c5e61865661"}' | nak event wss://offchain.pub
+		echo '{"tags": [["t", "spam"]]}' | nak event -c 'this is spam'
+`,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:        "sec",
@@ -44,7 +52,7 @@ standalone:
 			Aliases:     []string{"k"},
 			Usage:       "event kind",
 			DefaultText: "1",
-			Value:       1,
+			Value:       0,
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
 		&cli.StringFlag{
@@ -52,7 +60,7 @@ standalone:
 			Aliases:     []string{"c"},
 			Usage:       "event content",
 			DefaultText: "hello from the nostr army knife",
-			Value:       "hello from the nostr army knife",
+			Value:       "",
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
 		&cli.StringSliceFlag{
@@ -76,16 +84,38 @@ standalone:
 			Aliases:     []string{"time", "ts"},
 			Usage:       "unix timestamp value for the created_at field",
 			DefaultText: "now",
-			Value:       "now",
+			Value:       "",
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
 		evt := nostr.Event{
-			Kind:    c.Int("kind"),
-			Content: c.String("content"),
-			Tags:    make(nostr.Tags, 0, 3),
+			Tags: make(nostr.Tags, 0, 3),
+		}
+
+		mustRehashAndResign := false
+
+		if stdinEvent := getStdin(); stdinEvent != "" {
+			if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
+				return fmt.Errorf("invalid event received from stdin: %w", err)
+			}
+		}
+
+		if kind := c.Int("kind"); kind != 0 {
+			evt.Kind = kind
+			mustRehashAndResign = true
+		} else if evt.Kind == 0 {
+			evt.Kind = 1
+			mustRehashAndResign = true
+		}
+
+		if content := c.String("content"); content != "" {
+			evt.Content = content
+			mustRehashAndResign = true
+		} else if evt.Content == "" && evt.Kind == 1 {
+			evt.Content = "hello from the nostr army knife"
+			mustRehashAndResign = true
 		}
 
 		tags := make(nostr.Tags, 0, 5)
@@ -103,29 +133,39 @@ standalone:
 		}
 		for _, etag := range c.StringSlice("e") {
 			tags = append(tags, []string{"e", etag})
+			mustRehashAndResign = true
 		}
 		for _, ptag := range c.StringSlice("p") {
 			tags = append(tags, []string{"p", ptag})
+			mustRehashAndResign = true
 		}
 		if len(tags) > 0 {
 			for _, tag := range tags {
 				evt.Tags = append(evt.Tags, tag)
 			}
+			mustRehashAndResign = true
 		}
 
-		createdAt := c.String("created-at")
-		ts := time.Now()
-		if createdAt != "now" {
-			if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
-				return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
-			} else {
-				ts = time.Unix(v, 0)
+		if createdAt := c.String("created-at"); createdAt != "" {
+			ts := time.Now()
+			if createdAt != "now" {
+				if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
+					return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
+				} else {
+					ts = time.Unix(v, 0)
+				}
 			}
+			evt.CreatedAt = nostr.Timestamp(ts.Unix())
+			mustRehashAndResign = true
+		} else if evt.CreatedAt == 0 {
+			evt.CreatedAt = nostr.Now()
+			mustRehashAndResign = true
 		}
-		evt.CreatedAt = nostr.Timestamp(ts.Unix())
 
-		if err := evt.Sign(c.String("sec")); err != nil {
-			return fmt.Errorf("error signing with provided key: %w", err)
+		if evt.Sig == "" || mustRehashAndResign {
+			if err := evt.Sign(c.String("sec")); err != nil {
+				return fmt.Errorf("error signing with provided key: %w", err)
+			}
 		}
 
 		relays := c.Args().Slice()

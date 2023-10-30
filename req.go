@@ -17,7 +17,8 @@ var req = &cli.Command{
 	Description: `outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
 
 example:
-		nak req -k 1 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d wss://nos.lol wss://nostr.mom
+		nak req -k 1 -l 15 wss://nostr.wine wss://nostr-pub.wellorder.net
+		nak req -k 0 -a 3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d wss://nos.lol | jq '.content | fromjson | .name'
 
 it can also take a filter from stdin, optionally modify it with flags and send it to specific relays (or just print it).
 
