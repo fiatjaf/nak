@@ -1,6 +1,6 @@
 # nak, the nostr army knife
 
-install with `go install github.com/fiatjaf/nak` or
+install with `go install github.com/fiatjaf/nak@latest` or
 [download a binary](https://github.com/fiatjaf/nak/releases).
 
 ## what can you do with it?
