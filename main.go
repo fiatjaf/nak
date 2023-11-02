@@ -18,6 +18,7 @@ func main() {
 			event,
 			decode,
 			encode,
+			verify,
 		},
 	}
 
