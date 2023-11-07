@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/urfave/cli/v2"
@@ -17,21 +16,27 @@ var verify = &cli.Command{
 it outputs nothing if the verification is successful.
 `,
 	Action: func(c *cli.Context) error {
-		evt := nostr.Event{}
-		if stdinEvent := getStdin(); stdinEvent != "" {
-			if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-				return fmt.Errorf("invalid JSON: %w", err)
+		for stdinEvent := range getStdinLinesOrBlank() {
+			evt := nostr.Event{}
+			if stdinEvent != "" {
+				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
+					lineProcessingError(c, "invalid event: %s", err)
+					continue
+				}
+			}
+
+			if evt.GetID() != evt.ID {
+				lineProcessingError(c, "invalid .id, expected %s, got %s", evt.GetID(), evt.ID)
+				continue
+			}
+
+			if ok, err := evt.CheckSignature(); !ok {
+				lineProcessingError(c, "invalid signature: %s", err)
+				continue
 			}
 		}
 
-		if evt.GetID() != evt.ID {
-			return fmt.Errorf("invalid .id, expected %s, got %s", evt.GetID(), evt.ID)
-		}
-
-		if ok, err := evt.CheckSignature(); !ok {
-			return fmt.Errorf("invalid signature: %w", err)
-		}
-
+		exitIfLineProcessingError(c)
 		return nil
 	},
 }

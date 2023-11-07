@@ -95,87 +95,91 @@ example:
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
-		filter := nostr.Filter{}
-		if stdinFilter := getStdin(); stdinFilter != "" {
-			if err := json.Unmarshal([]byte(stdinFilter), &filter); err != nil {
-				return fmt.Errorf("invalid filter received from stdin: %w", err)
+		for stdinFilter := range getStdinLinesOrBlank() {
+			filter := nostr.Filter{}
+			if stdinFilter != "" {
+				if err := json.Unmarshal([]byte(stdinFilter), &filter); err != nil {
+					lineProcessingError(c, "invalid filter received from stdin: %s", err)
+					continue
+				}
 			}
-		}
 
-		if authors := c.StringSlice("author"); len(authors) > 0 {
-			filter.Authors = append(filter.Authors, authors...)
-		}
-		if ids := c.StringSlice("id"); len(ids) > 0 {
-			filter.IDs = append(filter.IDs, ids...)
-		}
-		if kinds := c.IntSlice("kind"); len(kinds) > 0 {
-			filter.Kinds = append(filter.Kinds, kinds...)
-		}
-		if search := c.String("search"); search != "" {
-			filter.Search = search
-		}
-		tags := make([][]string, 0, 5)
-		for _, tagFlag := range c.StringSlice("tag") {
-			spl := strings.Split(tagFlag, "=")
-			if len(spl) == 2 && len(spl[0]) == 1 {
-				tags = append(tags, spl)
+			if authors := c.StringSlice("author"); len(authors) > 0 {
+				filter.Authors = append(filter.Authors, authors...)
+			}
+			if ids := c.StringSlice("id"); len(ids) > 0 {
+				filter.IDs = append(filter.IDs, ids...)
+			}
+			if kinds := c.IntSlice("kind"); len(kinds) > 0 {
+				filter.Kinds = append(filter.Kinds, kinds...)
+			}
+			if search := c.String("search"); search != "" {
+				filter.Search = search
+			}
+			tags := make([][]string, 0, 5)
+			for _, tagFlag := range c.StringSlice("tag") {
+				spl := strings.Split(tagFlag, "=")
+				if len(spl) == 2 && len(spl[0]) == 1 {
+					tags = append(tags, spl)
+				} else {
+					return fmt.Errorf("invalid --tag '%s'", tagFlag)
+				}
+			}
+			for _, etag := range c.StringSlice("e") {
+				tags = append(tags, []string{"e", etag})
+			}
+			for _, ptag := range c.StringSlice("p") {
+				tags = append(tags, []string{"p", ptag})
+			}
+
+			if len(tags) > 0 && filter.Tags == nil {
+				filter.Tags = make(nostr.TagMap)
+			}
+
+			for _, tag := range tags {
+				if _, ok := filter.Tags[tag[0]]; !ok {
+					filter.Tags[tag[0]] = make([]string, 0, 3)
+				}
+				filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
+			}
+
+			if since := c.Int("since"); since != 0 {
+				ts := nostr.Timestamp(since)
+				filter.Since = &ts
+			}
+			if until := c.Int("until"); until != 0 {
+				ts := nostr.Timestamp(until)
+				filter.Until = &ts
+			}
+			if limit := c.Int("limit"); limit != 0 {
+				filter.Limit = limit
+			}
+
+			relays := c.Args().Slice()
+			if len(relays) > 0 {
+				pool := nostr.NewSimplePool(c.Context)
+				fn := pool.SubManyEose
+				if c.Bool("stream") {
+					fn = pool.SubMany
+				}
+				for ie := range fn(c.Context, relays, nostr.Filters{filter}) {
+					fmt.Println(ie.Event)
+				}
 			} else {
-				return fmt.Errorf("invalid --tag '%s'", tagFlag)
+				// no relays given, will just print the filter
+				var result string
+				if c.Bool("bare") {
+					result = filter.String()
+				} else {
+					j, _ := json.Marshal([]any{"REQ", "nak", filter})
+					result = string(j)
+				}
+
+				fmt.Println(result)
 			}
 		}
-		for _, etag := range c.StringSlice("e") {
-			tags = append(tags, []string{"e", etag})
-		}
-		for _, ptag := range c.StringSlice("p") {
-			tags = append(tags, []string{"p", ptag})
-		}
 
-		if len(tags) > 0 && filter.Tags == nil {
-			filter.Tags = make(nostr.TagMap)
-		}
-
-		for _, tag := range tags {
-			if _, ok := filter.Tags[tag[0]]; !ok {
-				filter.Tags[tag[0]] = make([]string, 0, 3)
-			}
-			filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
-		}
-
-		if since := c.Int("since"); since != 0 {
-			ts := nostr.Timestamp(since)
-			filter.Since = &ts
-		}
-		if until := c.Int("until"); until != 0 {
-			ts := nostr.Timestamp(until)
-			filter.Until = &ts
-		}
-		if limit := c.Int("limit"); limit != 0 {
-			filter.Limit = limit
-		}
-
-		relays := c.Args().Slice()
-		if len(relays) > 0 {
-			pool := nostr.NewSimplePool(c.Context)
-			fn := pool.SubManyEose
-			if c.Bool("stream") {
-				fn = pool.SubMany
-			}
-			for ie := range fn(c.Context, relays, nostr.Filters{filter}) {
-				fmt.Println(ie.Event)
-			}
-		} else {
-			// no relays given, will just print the filter
-			var result string
-			if c.Bool("bare") {
-				result = filter.String()
-			} else {
-				j, _ := json.Marshal([]any{"REQ", "nak", filter})
-				result = string(j)
-			}
-
-			fmt.Println(result)
-		}
-
+		exitIfLineProcessingError(c)
 		return nil
 	},
 }

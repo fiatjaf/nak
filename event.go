@@ -90,115 +90,118 @@ example:
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
-		evt := nostr.Event{
-			Tags: make(nostr.Tags, 0, 3),
-		}
-
-		mustRehashAndResign := false
-
-		if stdinEvent := getStdin(); stdinEvent != "" {
-			if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-				return fmt.Errorf("invalid event received from stdin: %w", err)
+		for stdinEvent := range getStdinLinesOrBlank() {
+			evt := nostr.Event{
+				Tags: make(nostr.Tags, 0, 3),
 			}
-		}
 
-		if kind := c.Int("kind"); kind != 0 {
-			evt.Kind = kind
-			mustRehashAndResign = true
-		} else if evt.Kind == 0 {
-			evt.Kind = 1
-			mustRehashAndResign = true
-		}
-
-		if content := c.String("content"); content != "" {
-			evt.Content = content
-			mustRehashAndResign = true
-		} else if evt.Content == "" && evt.Kind == 1 {
-			evt.Content = "hello from the nostr army knife"
-			mustRehashAndResign = true
-		}
-
-		tags := make(nostr.Tags, 0, 5)
-		for _, tagFlag := range c.StringSlice("tag") {
-			// tags are in the format key=value
-			spl := strings.Split(tagFlag, "=")
-			if len(spl) == 2 && len(spl[0]) > 0 {
-				tag := nostr.Tag{spl[0]}
-				// tags may also contain extra elements separated with a ";"
-				spl2 := strings.Split(spl[1], ";")
-				tag = append(tag, spl2...)
-				// ~
-				tags = append(tags, tag)
-			}
-		}
-		for _, etag := range c.StringSlice("e") {
-			tags = append(tags, []string{"e", etag})
-			mustRehashAndResign = true
-		}
-		for _, ptag := range c.StringSlice("p") {
-			tags = append(tags, []string{"p", ptag})
-			mustRehashAndResign = true
-		}
-		if len(tags) > 0 {
-			for _, tag := range tags {
-				evt.Tags = append(evt.Tags, tag)
-			}
-			mustRehashAndResign = true
-		}
-
-		if createdAt := c.String("created-at"); createdAt != "" {
-			ts := time.Now()
-			if createdAt != "now" {
-				if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
-					return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
-				} else {
-					ts = time.Unix(v, 0)
+			mustRehashAndResign := false
+			if stdinEvent != "" {
+				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
+					lineProcessingError(c, "invalid event received from stdin: %s", err)
+					continue
 				}
 			}
-			evt.CreatedAt = nostr.Timestamp(ts.Unix())
-			mustRehashAndResign = true
-		} else if evt.CreatedAt == 0 {
-			evt.CreatedAt = nostr.Now()
-			mustRehashAndResign = true
-		}
 
-		if evt.Sig == "" || mustRehashAndResign {
-			if err := evt.Sign(c.String("sec")); err != nil {
-				return fmt.Errorf("error signing with provided key: %w", err)
+			if kind := c.Int("kind"); kind != 0 {
+				evt.Kind = kind
+				mustRehashAndResign = true
+			} else if evt.Kind == 0 {
+				evt.Kind = 1
+				mustRehashAndResign = true
 			}
-		}
 
-		relays := c.Args().Slice()
-		if len(relays) > 0 {
-			fmt.Println(evt.String())
-			for _, url := range relays {
-				fmt.Fprintf(os.Stderr, "publishing to %s... ", url)
-				if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
-					fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
-				} else {
-					ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
-					defer cancel()
-					if status, err := relay.Publish(ctx, evt); err != nil {
-						fmt.Fprintf(os.Stderr, "failed: %s\n", err)
+			if content := c.String("content"); content != "" {
+				evt.Content = content
+				mustRehashAndResign = true
+			} else if evt.Content == "" && evt.Kind == 1 {
+				evt.Content = "hello from the nostr army knife"
+				mustRehashAndResign = true
+			}
+
+			tags := make(nostr.Tags, 0, 5)
+			for _, tagFlag := range c.StringSlice("tag") {
+				// tags are in the format key=value
+				spl := strings.Split(tagFlag, "=")
+				if len(spl) == 2 && len(spl[0]) > 0 {
+					tag := nostr.Tag{spl[0]}
+					// tags may also contain extra elements separated with a ";"
+					spl2 := strings.Split(spl[1], ";")
+					tag = append(tag, spl2...)
+					// ~
+					tags = append(tags, tag)
+				}
+			}
+			for _, etag := range c.StringSlice("e") {
+				tags = append(tags, []string{"e", etag})
+				mustRehashAndResign = true
+			}
+			for _, ptag := range c.StringSlice("p") {
+				tags = append(tags, []string{"p", ptag})
+				mustRehashAndResign = true
+			}
+			if len(tags) > 0 {
+				for _, tag := range tags {
+					evt.Tags = append(evt.Tags, tag)
+				}
+				mustRehashAndResign = true
+			}
+
+			if createdAt := c.String("created-at"); createdAt != "" {
+				ts := time.Now()
+				if createdAt != "now" {
+					if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
+						return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
 					} else {
-						fmt.Fprintf(os.Stderr, "%s.\n", status)
+						ts = time.Unix(v, 0)
 					}
 				}
+				evt.CreatedAt = nostr.Timestamp(ts.Unix())
+				mustRehashAndResign = true
+			} else if evt.CreatedAt == 0 {
+				evt.CreatedAt = nostr.Now()
+				mustRehashAndResign = true
 			}
-		} else {
-			var result string
-			if c.Bool("envelope") {
-				j, _ := json.Marshal([]any{"EVENT", evt})
-				result = string(j)
-			} else if c.Bool("nson") {
-				result, _ = nson.Marshal(&evt)
+
+			if evt.Sig == "" || mustRehashAndResign {
+				if err := evt.Sign(c.String("sec")); err != nil {
+					return fmt.Errorf("error signing with provided key: %w", err)
+				}
+			}
+
+			relays := c.Args().Slice()
+			if len(relays) > 0 {
+				fmt.Println(evt.String())
+				for _, url := range relays {
+					fmt.Fprintf(os.Stderr, "publishing to %s... ", url)
+					if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
+						fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
+					} else {
+						ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+						defer cancel()
+						if status, err := relay.Publish(ctx, evt); err != nil {
+							fmt.Fprintf(os.Stderr, "failed: %s\n", err)
+						} else {
+							fmt.Fprintf(os.Stderr, "%s.\n", status)
+						}
+					}
+				}
 			} else {
-				j, _ := easyjson.Marshal(&evt)
-				result = string(j)
+				var result string
+				if c.Bool("envelope") {
+					j, _ := json.Marshal([]any{"EVENT", evt})
+					result = string(j)
+				} else if c.Bool("nson") {
+					result, _ = nson.Marshal(&evt)
+				} else {
+					j, _ := easyjson.Marshal(&evt)
+					result = string(j)
+				}
+				fmt.Println(result)
 			}
-			fmt.Println(result)
 		}
 
+		exitIfLineProcessingError(c)
 		return nil
 	},
 }

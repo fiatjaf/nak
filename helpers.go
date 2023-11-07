@@ -1,7 +1,9 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
+	"context"
 	"fmt"
 	"io"
 	"net/url"
@@ -11,7 +13,36 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-func getStdin() string {
+const (
+	LINE_PROCESSING_ERROR = iota
+)
+
+func getStdinLinesOrBlank() chan string {
+	ch := make(chan string)
+	go func() {
+		r := bufio.NewReader(os.Stdin)
+		if _, err := r.Peek(1); err != nil {
+			ch <- ""
+			close(ch)
+		} else {
+			scanner := bufio.NewScanner(r)
+			for scanner.Scan() {
+				ch <- scanner.Text()
+			}
+			close(ch)
+		}
+	}()
+	return ch
+}
+
+func getStdinOrFirstArgument(c *cli.Context) string {
+	// try the first argument
+	target := c.Args().First()
+	if target != "" {
+		return target
+	}
+
+	// try the stdin
 	stat, _ := os.Stdin.Stat()
 	if (stat.Mode() & os.ModeCharDevice) == 0 {
 		read := bytes.NewBuffer(make([]byte, 0, 1000))
@@ -21,14 +52,6 @@ func getStdin() string {
 		}
 	}
 	return ""
-}
-
-func getStdinOrFirstArgument(c *cli.Context) string {
-	target := c.Args().First()
-	if target != "" {
-		return target
-	}
-	return getStdin()
 }
 
 func validateRelayURLs(wsurls []string) error {
@@ -48,4 +71,15 @@ func validateRelayURLs(wsurls []string) error {
 	}
 
 	return nil
+}
+
+func lineProcessingError(c *cli.Context, msg string, args ...any) {
+	c.Context = context.WithValue(c.Context, LINE_PROCESSING_ERROR, true)
+	fmt.Fprintf(os.Stderr, msg+"\n", args...)
+}
+
+func exitIfLineProcessingError(c *cli.Context) {
+	if val := c.Context.Value(LINE_PROCESSING_ERROR); val != nil && val.(bool) {
+		os.Exit(123)
+	}
 }
