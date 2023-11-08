@@ -99,7 +99,7 @@ example:
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
 				if err := json.Unmarshal([]byte(stdinFilter), &filter); err != nil {
-					lineProcessingError(c, "invalid filter received from stdin: %s", err)
+					lineProcessingError(c, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
 					continue
 				}
 			}
