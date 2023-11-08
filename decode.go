@@ -34,43 +34,45 @@ var decode = &cli.Command{
 	},
 	ArgsUsage: "<npub | nprofile | nip05 | nevent | naddr | nsec>",
 	Action: func(c *cli.Context) error {
-		args := c.Args()
-		if args.Len() != 1 {
-			return fmt.Errorf("invalid number of arguments, need just one")
-		}
-		input := args.First()
-		if strings.HasPrefix(input, "nostr:") {
-			input = input[6:]
-		}
-
-		var decodeResult DecodeResult
-		if b, err := hex.DecodeString(input); err == nil {
-			if len(b) == 64 {
-				decodeResult.HexResult.PossibleTypes = []string{"sig"}
-				decodeResult.HexResult.Signature = hex.EncodeToString(b)
-			} else if len(b) == 32 {
-				decodeResult.HexResult.PossibleTypes = []string{"pubkey", "private_key", "event_id"}
-				decodeResult.HexResult.ID = hex.EncodeToString(b)
-				decodeResult.HexResult.PrivateKey = hex.EncodeToString(b)
-				decodeResult.HexResult.PublicKey = hex.EncodeToString(b)
-			} else {
-				return fmt.Errorf("hex string with invalid number of bytes: %d", len(b))
+		for input := range getStdinLinesOrFirstArgument(c) {
+			if strings.HasPrefix(input, "nostr:") {
+				input = input[6:]
 			}
-		} else if evp := sdk.InputToEventPointer(input); evp != nil {
-			decodeResult = DecodeResult{EventPointer: evp}
-		} else if pp := sdk.InputToProfile(c.Context, input); pp != nil {
-			decodeResult = DecodeResult{ProfilePointer: pp}
-		} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
-			ep := value.(nostr.EntityPointer)
-			decodeResult = DecodeResult{EntityPointer: &ep}
-		} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
-			decodeResult.PrivateKey.PrivateKey = value.(string)
-			decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
-		} else {
-			return fmt.Errorf("couldn't decode input")
+
+			var decodeResult DecodeResult
+			if b, err := hex.DecodeString(input); err == nil {
+				if len(b) == 64 {
+					decodeResult.HexResult.PossibleTypes = []string{"sig"}
+					decodeResult.HexResult.Signature = hex.EncodeToString(b)
+				} else if len(b) == 32 {
+					decodeResult.HexResult.PossibleTypes = []string{"pubkey", "private_key", "event_id"}
+					decodeResult.HexResult.ID = hex.EncodeToString(b)
+					decodeResult.HexResult.PrivateKey = hex.EncodeToString(b)
+					decodeResult.HexResult.PublicKey = hex.EncodeToString(b)
+				} else {
+					lineProcessingError(c, "hex string with invalid number of bytes: %d", len(b))
+					continue
+				}
+			} else if evp := sdk.InputToEventPointer(input); evp != nil {
+				decodeResult = DecodeResult{EventPointer: evp}
+			} else if pp := sdk.InputToProfile(c.Context, input); pp != nil {
+				decodeResult = DecodeResult{ProfilePointer: pp}
+			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
+				ep := value.(nostr.EntityPointer)
+				decodeResult = DecodeResult{EntityPointer: &ep}
+			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
+				decodeResult.PrivateKey.PrivateKey = value.(string)
+				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
+			} else {
+				lineProcessingError(c, "couldn't decode input '%s': %s", input, err)
+				continue
+			}
+
+			fmt.Println(decodeResult.JSON())
+
 		}
 
-		fmt.Println(decodeResult.JSON())
+		exitIfLineProcessingError(c)
 		return nil
 	},
 }

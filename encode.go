@@ -28,36 +28,44 @@ var encode = &cli.Command{
 	Subcommands: []*cli.Command{
 		{
 			Name:  "npub",
-			Usage: "encode a hex private key into bech32 'npub' format",
+			Usage: "encode a hex public key into bech32 'npub' format",
 			Action: func(c *cli.Context) error {
-				target := getStdinOrFirstArgument(c)
-				if err := validate32BytesHex(target); err != nil {
-					return err
+				for target := range getStdinLinesOrFirstArgument(c) {
+					if err := validate32BytesHex(target); err != nil {
+						lineProcessingError(c, "invalid public key: %s", target, err)
+						continue
+					}
+
+					if npub, err := nip19.EncodePublicKey(target); err == nil {
+						fmt.Println(npub)
+					} else {
+						return err
+					}
 				}
 
-				if npub, err := nip19.EncodePublicKey(target); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 		{
 			Name:  "nsec",
 			Usage: "encode a hex private key into bech32 'nsec' format",
 			Action: func(c *cli.Context) error {
-				target := getStdinOrFirstArgument(c)
-				if err := validate32BytesHex(target); err != nil {
-					return err
+				for target := range getStdinLinesOrFirstArgument(c) {
+					if err := validate32BytesHex(target); err != nil {
+						lineProcessingError(c, "invalid private key: %s", target, err)
+						continue
+					}
+
+					if npub, err := nip19.EncodePrivateKey(target); err == nil {
+						fmt.Println(npub)
+					} else {
+						return err
+					}
 				}
 
-				if npub, err := nip19.EncodePrivateKey(target); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 		{
@@ -71,22 +79,26 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				target := getStdinOrFirstArgument(c)
-				if err := validate32BytesHex(target); err != nil {
-					return err
+				for target := range getStdinLinesOrFirstArgument(c) {
+					if err := validate32BytesHex(target); err != nil {
+						lineProcessingError(c, "invalid public key: %s", target, err)
+						continue
+					}
+
+					relays := c.StringSlice("relay")
+					if err := validateRelayURLs(relays); err != nil {
+						return err
+					}
+
+					if npub, err := nip19.EncodeProfile(target, relays); err == nil {
+						fmt.Println(npub)
+					} else {
+						return err
+					}
 				}
 
-				relays := c.StringSlice("relay")
-				if err := validateRelayURLs(relays); err != nil {
-					return err
-				}
-
-				if npub, err := nip19.EncodeProfile(target, relays); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 		{
@@ -104,29 +116,33 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				target := getStdinOrFirstArgument(c)
-				if err := validate32BytesHex(target); err != nil {
-					return err
-				}
+				for target := range getStdinLinesOrFirstArgument(c) {
+					if err := validate32BytesHex(target); err != nil {
+						lineProcessingError(c, "invalid event id: %s", target, err)
+						continue
+					}
 
-				author := c.String("author")
-				if author != "" {
-					if err := validate32BytesHex(author); err != nil {
+					author := c.String("author")
+					if author != "" {
+						if err := validate32BytesHex(author); err != nil {
+							return err
+						}
+					}
+
+					relays := c.StringSlice("relay")
+					if err := validateRelayURLs(relays); err != nil {
+						return err
+					}
+
+					if npub, err := nip19.EncodeEvent(target, relays, author); err == nil {
+						fmt.Println(npub)
+					} else {
 						return err
 					}
 				}
 
-				relays := c.StringSlice("relay")
-				if err := validateRelayURLs(relays); err != nil {
-					return err
-				}
-
-				if npub, err := nip19.EncodeEvent(target, relays, author); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 		{
@@ -136,7 +152,7 @@ var encode = &cli.Command{
 				&cli.StringFlag{
 					Name:     "identifier",
 					Aliases:  []string{"d"},
-					Usage:    "the \"d\" tag identifier of this replaceable event",
+					Usage:    "the \"d\" tag identifier of this replaceable event -- can also be read from stdin",
 					Required: true,
 				},
 				&cli.StringFlag{
@@ -158,49 +174,60 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				pubkey := c.String("pubkey")
-				if err := validate32BytesHex(pubkey); err != nil {
-					return err
+				for d := range getStdinLinesOrBlank() {
+					pubkey := c.String("pubkey")
+					if err := validate32BytesHex(pubkey); err != nil {
+						return err
+					}
+
+					kind := c.Int("kind")
+					if kind < 30000 || kind >= 40000 {
+						return fmt.Errorf("kind must be between 30000 and 39999, as per NIP-16, got %d", kind)
+					}
+
+					if d == "" {
+						d = c.String("identifier")
+						if d == "" {
+							lineProcessingError(c, "\"d\" tag identifier can't be empty")
+							continue
+						}
+					}
+
+					relays := c.StringSlice("relay")
+					if err := validateRelayURLs(relays); err != nil {
+						return err
+					}
+
+					if npub, err := nip19.EncodeEntity(pubkey, kind, d, relays); err == nil {
+						fmt.Println(npub)
+					} else {
+						return err
+					}
 				}
 
-				kind := c.Int("kind")
-				if kind < 30000 || kind >= 40000 {
-					return fmt.Errorf("kind must be between 30000 and 39999, as per NIP-16, got %d", kind)
-				}
-
-				d := c.String("identifier")
-				if d == "" {
-					return fmt.Errorf("\"d\" tag identifier can't be empty")
-				}
-
-				relays := c.StringSlice("relay")
-				if err := validateRelayURLs(relays); err != nil {
-					return err
-				}
-
-				if npub, err := nip19.EncodeEntity(pubkey, kind, d, relays); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 		{
 			Name:  "note",
 			Usage: "generate note1 event codes (not recommended)",
 			Action: func(c *cli.Context) error {
-				target := getStdinOrFirstArgument(c)
-				if err := validate32BytesHex(target); err != nil {
-					return err
+				for target := range getStdinLinesOrFirstArgument(c) {
+					if err := validate32BytesHex(target); err != nil {
+						lineProcessingError(c, "invalid event id: %s", target, err)
+						continue
+					}
+
+					if note, err := nip19.EncodeNote(target); err == nil {
+						fmt.Println(note)
+					} else {
+						return err
+					}
 				}
 
-				if npub, err := nip19.EncodeNote(target); err == nil {
-					fmt.Println(npub)
-					return nil
-				} else {
-					return err
-				}
+				exitIfLineProcessingError(c)
+				return nil
 			},
 		},
 	},

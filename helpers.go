@@ -2,10 +2,8 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"fmt"
-	"io"
 	"net/url"
 	"os"
 	"strings"
@@ -18,40 +16,47 @@ const (
 )
 
 func getStdinLinesOrBlank() chan string {
-	ch := make(chan string)
-	go func() {
-		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice == 0 {
-			// piped
-			scanner := bufio.NewScanner(os.Stdin)
-			for scanner.Scan() {
-				ch <- scanner.Text()
-			}
-		} else {
-			// not piped
-			ch <- ""
-		}
-		close(ch)
-	}()
-	return ch
+	multi := make(chan string)
+	if hasStdinLines := writeStdinLinesOrNothing(multi); !hasStdinLines {
+		single := make(chan string, 1)
+		single <- ""
+		close(single)
+		return single
+	} else {
+		return multi
+	}
 }
 
-func getStdinOrFirstArgument(c *cli.Context) string {
+func getStdinLinesOrFirstArgument(c *cli.Context) chan string {
 	// try the first argument
 	target := c.Args().First()
 	if target != "" {
-		return target
+		single := make(chan string, 1)
+		single <- target
+		return single
 	}
 
 	// try the stdin
-	stat, _ := os.Stdin.Stat()
-	if (stat.Mode() & os.ModeCharDevice) == 0 {
-		read := bytes.NewBuffer(make([]byte, 0, 1000))
-		_, err := io.Copy(read, os.Stdin)
-		if err == nil {
-			return strings.TrimSpace(read.String())
-		}
+	multi := make(chan string)
+	writeStdinLinesOrNothing(multi)
+	return multi
+}
+
+func writeStdinLinesOrNothing(ch chan string) (hasStdinLines bool) {
+	if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice == 0 {
+		// piped
+		go func() {
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				ch <- strings.TrimSpace(scanner.Text())
+			}
+			close(ch)
+		}()
+		return true
+	} else {
+		// not piped
+		return false
 	}
-	return ""
 }
 
 func validateRelayURLs(wsurls []string) error {
