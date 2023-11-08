@@ -5,6 +5,7 @@ go 1.21
 toolchain go1.21.0
 
 require (
+	github.com/bgentry/speakeasy v0.1.0
 	github.com/mailru/easyjson v0.7.7
 	github.com/nbd-wtf/go-nostr v0.25.3
 	github.com/nbd-wtf/nostr-sdk v0.0.2

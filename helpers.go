@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -14,6 +15,11 @@ import (
 const (
 	LINE_PROCESSING_ERROR = iota
 )
+
+func isPiped() bool {
+	stat, _ := os.Stdin.Stat()
+	return stat.Mode()&os.ModeCharDevice == 0
+}
 
 func getStdinLinesOrBlank() chan string {
 	multi := make(chan string)
@@ -43,7 +49,7 @@ func getStdinLinesOrFirstArgument(c *cli.Context) chan string {
 }
 
 func writeStdinLinesOrNothing(ch chan string) (hasStdinLines bool) {
-	if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice == 0 {
+	if isPiped() {
 		// piped
 		go func() {
 			scanner := bufio.NewScanner(os.Stdin)
@@ -73,6 +79,20 @@ func validateRelayURLs(wsurls []string) error {
 		if u.Host == "" {
 			return fmt.Errorf("relay url '%s' is missing the hostname", wsurl)
 		}
+	}
+
+	return nil
+}
+
+func validate32BytesHex(target string) error {
+	if _, err := hex.DecodeString(target); err != nil {
+		return fmt.Errorf("target '%s' is not valid hex: %s", target, err)
+	}
+	if len(target) != 64 {
+		return fmt.Errorf("expected '%s' to be 64 characters (32 bytes), got %d", target, len(target))
+	}
+	if strings.ToLower(target) != target {
+		return fmt.Errorf("expected target to be all lowercase hex. try again with '%s'", strings.ToLower(target))
 	}
 
 	return nil

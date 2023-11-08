@@ -9,8 +9,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/bgentry/speakeasy"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nson"
 	"github.com/urfave/cli/v2"
 )
@@ -35,9 +37,13 @@ example:
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:        "sec",
-			Usage:       "secret key to sign the event",
+			Usage:       "secret key to sign the event, as hex or nsec",
 			DefaultText: "the key '1'",
 			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
+		},
+		&cli.BoolFlag{
+			Name:  "prompt-sec",
+			Usage: "prompt the user to paste a hex or nsec with which to sign the event",
 		},
 		&cli.BoolFlag{
 			Name:  "envelope",
@@ -90,6 +96,34 @@ example:
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
+		// gather the secret key first
+		sec := c.String("sec")
+		if c.Bool("prompt-sec") {
+			if isPiped() {
+				return fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
+			}
+			var err error
+			sec, err = speakeasy.FAsk(os.Stderr, "type your secret key as nsec or hex: ")
+			if err != nil {
+				return fmt.Errorf("failed to get secret key: %w", err)
+			}
+		}
+		if strings.HasPrefix(sec, "nsec1") {
+			_, hex, err := nip19.Decode(sec)
+			if err != nil {
+				return fmt.Errorf("invalid nsec: %w", err)
+			}
+			sec = hex.(string)
+		}
+		if len(sec) > 64 {
+			return fmt.Errorf("invalid secret key: too large")
+		}
+		sec = strings.Repeat("0", 64-len(sec)) + sec // left-pad
+		if err := validate32BytesHex(sec); err != nil {
+			return fmt.Errorf("invalid secret key")
+		}
+
+		// then process input and generate events
 		for stdinEvent := range getStdinLinesOrBlank() {
 			evt := nostr.Event{
 				Tags: make(nostr.Tags, 0, 3),
@@ -164,7 +198,7 @@ example:
 			}
 
 			if evt.Sig == "" || mustRehashAndResign {
-				if err := evt.Sign(c.String("sec")); err != nil {
+				if err := evt.Sign(sec); err != nil {
 					return fmt.Errorf("error signing with provided key: %w", err)
 				}
 			}

@@ -1,9 +1,7 @@
 package main
 
 import (
-	"encoding/hex"
 	"fmt"
-	"strings"
 
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/urfave/cli/v2"
@@ -231,18 +229,4 @@ var encode = &cli.Command{
 			},
 		},
 	},
-}
-
-func validate32BytesHex(target string) error {
-	if _, err := hex.DecodeString(target); err != nil {
-		return fmt.Errorf("target '%s' is not valid hex: %s", target, err)
-	}
-	if len(target) != 64 {
-		return fmt.Errorf("expected '%s' to be 64 characters (32 bytes), got %d", target, len(target))
-	}
-	if strings.ToLower(target) != target {
-		return fmt.Errorf("expected target to be all lowercase hex. try again with '%s'", strings.ToLower(target))
-	}
-
-	return nil
 }
