@@ -20,17 +20,17 @@ const (
 func getStdinLinesOrBlank() chan string {
 	ch := make(chan string)
 	go func() {
-		r := bufio.NewReader(os.Stdin)
-		if _, err := r.Peek(1); err != nil {
-			ch <- ""
-			close(ch)
-		} else {
-			scanner := bufio.NewScanner(r)
+		if stat, _ := os.Stdin.Stat(); stat.Mode()&os.ModeCharDevice == 0 {
+			// piped
+			scanner := bufio.NewScanner(os.Stdin)
 			for scanner.Scan() {
 				ch <- scanner.Text()
 			}
-			close(ch)
+		} else {
+			// not piped
+			ch <- ""
 		}
+		close(ch)
 	}()
 	return ch
 }
