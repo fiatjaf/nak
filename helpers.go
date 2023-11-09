@@ -39,6 +39,7 @@ func getStdinLinesOrFirstArgument(c *cli.Context) chan string {
 	if target != "" {
 		single := make(chan string, 1)
 		single <- target
+		close(single)
 		return single
 	}
 
