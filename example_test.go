@@ -14,6 +14,18 @@ func ExampleEventComplex() {
 
 func ExampleReq() {
 	app.Run([]string{"nak", "req", "-k", "1", "-l", "18", "-a", "2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f", "-e", "aec4de6d051a7c2b6ca2d087903d42051a31e07fb742f1240970084822de10a6"})
-	// Output
+	// Output:
 	// ["REQ","nak",{"kinds":[1],"authors":["2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f"],"limit":18,"#e":["aec4de6d051a7c2b6ca2d087903d42051a31e07fb742f1240970084822de10a6"]}]
+}
+
+func ExampleEncodeNpub() {
+	app.Run([]string{"nak", "encode", "npub", "a6a67ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179822"})
+	// Output:
+	// npub156n8a7wuhwk9tgrzjh8gwzc8q2dlekedec5djk0js9d3d7qhnq3qjpdq28
+}
+
+func ExampleEncodeNprofile() {
+	app.Run([]string{"nak", "encode", "nprofile", "-r", "wss://example.com", "a6a67ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f8179822"})
+	// Output:
+	// nprofile1qqs2dfn7l8wthtz45p3ftn58pvrs9xlumvkuu2xet8egzkcklqtesgspz9mhxue69uhk27rpd4cxcefwvdhk6fl5jug
 }
