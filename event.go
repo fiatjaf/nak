@@ -97,6 +97,16 @@ example:
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
+		// try to connect to the relays here
+		var relays []*nostr.Relay
+		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
+			_, relays = connectToAllRelays(c.Context, relayUrls)
+			if len(relays) == 0 {
+				fmt.Fprintf(os.Stderr, "failed to connect to any of the given relays.\n")
+				os.Exit(3)
+			}
+		}
+
 		// gather the secret key first
 		sec := c.String("sec")
 		if c.Bool("prompt-sec") {
@@ -204,12 +214,12 @@ example:
 				}
 			}
 
-			relays := c.Args().Slice()
 			if len(relays) > 0 {
 				fmt.Println(evt.String())
-				for _, url := range relays {
-					fmt.Fprintf(os.Stderr, "publishing to %s... ", url)
-					if relay, err := nostr.RelayConnect(c.Context, url); err != nil {
+				os.Stdout.Sync()
+				for _, relay := range relays {
+					fmt.Fprintf(os.Stderr, "publishing to %s... ", relay.URL)
+					if relay, err := nostr.RelayConnect(c.Context, relay.URL); err != nil {
 						fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
 					} else {
 						ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)

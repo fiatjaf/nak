@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/urfave/cli/v2"
 )
 
@@ -97,6 +98,21 @@ func validate32BytesHex(target string) error {
 	}
 
 	return nil
+}
+
+func connectToAllRelays(ctx context.Context, relayUrls []string) (*nostr.SimplePool, []*nostr.Relay) {
+	relays := make([]*nostr.Relay, 0, len(relayUrls))
+	pool := nostr.NewSimplePool(ctx)
+	for _, url := range relayUrls {
+		fmt.Fprintf(os.Stderr, "connecting to %s... ", url)
+		if relay, err := pool.EnsureRelay(url); err == nil {
+			relays = append(relays, relay)
+			fmt.Fprintf(os.Stderr, "ok.\n")
+		} else {
+			fmt.Fprintf(os.Stderr, err.Error()+"\n")
+		}
+	}
+	return pool, relays
 }
 
 func lineProcessingError(c *cli.Context, msg string, args ...any) {

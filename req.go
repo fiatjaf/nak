@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
@@ -95,6 +96,21 @@ example:
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
+		var pool *nostr.SimplePool
+		relayUrls := c.Args().Slice()
+		if len(relayUrls) > 0 {
+			var relays []*nostr.Relay
+			pool, relays = connectToAllRelays(c.Context, relayUrls)
+			if len(relays) == 0 {
+				fmt.Fprintf(os.Stderr, "failed to connect to any of the given relays.\n")
+				os.Exit(3)
+			}
+			relayUrls = make([]string, len(relays))
+			for i, relay := range relays {
+				relayUrls[i] = relay.URL
+			}
+		}
+
 		for stdinFilter := range getStdinLinesOrBlank() {
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
@@ -155,14 +171,12 @@ example:
 				filter.Limit = limit
 			}
 
-			relays := c.Args().Slice()
-			if len(relays) > 0 {
-				pool := nostr.NewSimplePool(c.Context)
+			if len(relayUrls) > 0 {
 				fn := pool.SubManyEose
 				if c.Bool("stream") {
 					fn = pool.SubMany
 				}
-				for ie := range fn(c.Context, relays, nostr.Filters{filter}) {
+				for ie := range fn(c.Context, relayUrls, nostr.Filters{filter}) {
 					fmt.Println(ie.Event)
 				}
 			} else {
