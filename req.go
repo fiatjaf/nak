@@ -102,7 +102,7 @@ example:
 			var relays []*nostr.Relay
 			pool, relays = connectToAllRelays(c.Context, relayUrls)
 			if len(relays) == 0 {
-				fmt.Fprintf(os.Stderr, "failed to connect to any of the given relays.\n")
+				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
 			}
 			relayUrls = make([]string, len(relays))

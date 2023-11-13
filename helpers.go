@@ -17,6 +17,10 @@ const (
 	LINE_PROCESSING_ERROR = iota
 )
 
+var log = func(msg string, args ...any) {
+	fmt.Fprintf(os.Stderr, msg, args...)
+}
+
 func isPiped() bool {
 	stat, _ := os.Stdin.Stat()
 	return stat.Mode()&os.ModeCharDevice == 0
@@ -104,12 +108,12 @@ func connectToAllRelays(ctx context.Context, relayUrls []string) (*nostr.SimpleP
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 	pool := nostr.NewSimplePool(ctx)
 	for _, url := range relayUrls {
-		fmt.Fprintf(os.Stderr, "connecting to %s... ", url)
+		log("connecting to %s... ", url)
 		if relay, err := pool.EnsureRelay(url); err == nil {
 			relays = append(relays, relay)
-			fmt.Fprintf(os.Stderr, "ok.\n")
+			log("ok.\n")
 		} else {
-			fmt.Fprintf(os.Stderr, err.Error()+"\n")
+			log(err.Error() + "\n")
 		}
 	}
 	return pool, relays
@@ -117,7 +121,7 @@ func connectToAllRelays(ctx context.Context, relayUrls []string) (*nostr.SimpleP
 
 func lineProcessingError(c *cli.Context, msg string, args ...any) {
 	c.Context = context.WithValue(c.Context, LINE_PROCESSING_ERROR, true)
-	fmt.Fprintf(os.Stderr, msg+"\n", args...)
+	log(msg+"\n", args...)
 }
 
 func exitIfLineProcessingError(c *cli.Context) {

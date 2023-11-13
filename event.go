@@ -102,7 +102,7 @@ example:
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
 			_, relays = connectToAllRelays(c.Context, relayUrls)
 			if len(relays) == 0 {
-				fmt.Fprintf(os.Stderr, "failed to connect to any of the given relays.\n")
+				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
 			}
 		}
@@ -218,16 +218,16 @@ example:
 				fmt.Println(evt.String())
 				os.Stdout.Sync()
 				for _, relay := range relays {
-					fmt.Fprintf(os.Stderr, "publishing to %s... ", relay.URL)
+					log("publishing to %s... ", relay.URL)
 					if relay, err := nostr.RelayConnect(c.Context, relay.URL); err != nil {
-						fmt.Fprintf(os.Stderr, "failed to connect: %s\n", err)
+						log("failed to connect: %s\n", err)
 					} else {
 						ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 						defer cancel()
 						if status, err := relay.Publish(ctx, evt); err != nil {
-							fmt.Fprintf(os.Stderr, "failed: %s\n", err)
+							log("failed: %s\n", err)
 						} else {
-							fmt.Fprintf(os.Stderr, "%s.\n", status)
+							log("%s.\n", status)
 						}
 					}
 				}
