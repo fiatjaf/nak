@@ -15,6 +15,7 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nson"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/exp/slices"
 )
 
 const CATEGORY_EVENT_FIELDS = "EVENT FIELDS"
@@ -129,19 +130,19 @@ example:
 				Tags: make(nostr.Tags, 0, 3),
 			}
 
+			kindWasSupplied := true
 			mustRehashAndResign := false
 			if stdinEvent != "" {
 				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
 					lineProcessingError(c, "invalid event received from stdin: %s", err)
 					continue
 				}
+				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)
 			}
+			kindWasSupplied = slices.Contains(c.FlagNames(), "kind")
 
-			if kind := c.Int("kind"); kind != 0 {
+			if kind := c.Int("kind"); kindWasSupplied {
 				evt.Kind = kind
-				mustRehashAndResign = true
-			} else if evt.Kind == 0 {
-				evt.Kind = 1
 				mustRehashAndResign = true
 			}
 
