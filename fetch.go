@@ -46,20 +46,20 @@ var fetch = &cli.Command{
 				if v.Author != "" {
 					authorHint = v.Author
 				}
-				relays = v.Relays
+				relays = append(relays, v.Relays...)
 			case "naddr":
 				v := value.(nostr.EntityPointer)
 				filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
 				filter.Kinds = append(filter.Kinds, v.Kind)
 				filter.Authors = append(filter.Authors, v.PublicKey)
 				authorHint = v.PublicKey
-				relays = v.Relays
+				relays = append(relays, v.Relays...)
 			case "nprofile":
 				v := value.(nostr.ProfilePointer)
 				filter.Authors = append(filter.Authors, v.PublicKey)
 				filter.Kinds = append(filter.Kinds, 0)
 				authorHint = v.PublicKey
-				relays = v.Relays
+				relays = append(relays, v.Relays...)
 			case "npub":
 				v := value.(string)
 				filter.Authors = append(filter.Authors, v)
