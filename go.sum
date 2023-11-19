@@ -82,6 +82,8 @@ github.com/mailru/easyjson v0.7.7 h1:UGYAvKxe3sBsEDzO8ZeWOSlIQfWFlxbzLZe7hwFURr0
 github.com/mailru/easyjson v0.7.7/go.mod h1:xzfreul335JAWq5oZzymOObrkdz5UnU4kGfJJLY9Nlc=
 github.com/nbd-wtf/go-nostr v0.25.3 h1:RPPh4cOosw0OZi5KG627pZ3GlKxiKsjARluzen/mB9g=
 github.com/nbd-wtf/go-nostr v0.25.3/go.mod h1:bkffJI+x914sPQWum9ZRUn66D7NpDnAoWo1yICvj3/0=
+github.com/nbd-wtf/go-nostr v0.25.7 h1:DcGOSgKVr/L6w62tRtKeV2t46sRyFcq9pWcyIFkh0eM=
+github.com/nbd-wtf/go-nostr v0.25.7/go.mod h1:bkffJI+x914sPQWum9ZRUn66D7NpDnAoWo1yICvj3/0=
 github.com/nbd-wtf/nostr-sdk v0.0.2 h1:mZIeti+DOF0D1179q+NLL/h0LVMMOPRQAYpOuUrn5Zk=
 github.com/nbd-wtf/nostr-sdk v0.0.2/go.mod h1:KQZOtzcrXBlVhpZYG1tw83ADIONNMMPjUU3ZAH5U2RY=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
