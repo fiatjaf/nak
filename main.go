@@ -18,6 +18,7 @@ var app = &cli.App{
 		decode,
 		encode,
 		verify,
+		relay,
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
