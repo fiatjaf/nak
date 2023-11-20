@@ -13,8 +13,7 @@ var relay = &cli.Command{
 	Name:  "relay",
 	Usage: "gets the relay information document for the given relay, as JSON",
 	Description: `example:
-		nak relay nostr.wine
-`,
+		nak relay nostr.wine`,
 	ArgsUsage: "<relay-url>",
 	Action: func(c *cli.Context) error {
 		url := c.Args().First()

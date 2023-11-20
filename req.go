@@ -24,8 +24,7 @@ example:
 it can also take a filter from stdin, optionally modify it with flags and send it to specific relays (or just print it).
 
 example:
-		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net
-`,
+		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",
