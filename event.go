@@ -148,10 +148,12 @@ example:
 				}
 				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)
 			}
-			kindWasSupplied = slices.Contains(c.FlagNames(), "kind")
 
-			if kind := c.Int("kind"); kindWasSupplied {
+			if kind := c.Int("kind"); slices.Contains(c.FlagNames(), "kind") {
 				evt.Kind = kind
+				mustRehashAndResign = true
+			} else if !kindWasSupplied {
+				evt.Kind = 1
 				mustRehashAndResign = true
 			}
 
