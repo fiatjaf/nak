@@ -139,7 +139,7 @@ example:
 				Tags: make(nostr.Tags, 0, 3),
 			}
 
-			kindWasSupplied := true
+			kindWasSupplied := false
 			mustRehashAndResign := false
 			if stdinEvent != "" {
 				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
