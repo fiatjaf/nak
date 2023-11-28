@@ -142,7 +142,7 @@ example:
 			kindWasSupplied := false
 			mustRehashAndResign := false
 			if stdinEvent != "" {
-				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
+				if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
 					lineProcessingError(c, "invalid event received from stdin: %s", err)
 					continue
 				}
@@ -235,7 +235,7 @@ example:
 			} else {
 				var result string
 				if c.Bool("envelope") {
-					j, _ := json.Marshal([]any{"EVENT", evt})
+					j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
 					result = string(j)
 				} else if c.Bool("nson") {
 					result, _ = nson.Marshal(&evt)

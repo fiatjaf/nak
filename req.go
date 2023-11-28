@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/urfave/cli/v2"
 )
@@ -113,7 +114,7 @@ example:
 		for stdinFilter := range getStdinLinesOrBlank() {
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
-				if err := json.Unmarshal([]byte(stdinFilter), &filter); err != nil {
+				if err := easyjson.Unmarshal([]byte(stdinFilter), &filter); err != nil {
 					lineProcessingError(c, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
 					continue
 				}
@@ -184,7 +185,7 @@ example:
 				if c.Bool("bare") {
 					result = filter.String()
 				} else {
-					j, _ := json.Marshal([]any{"REQ", "nak", filter})
+					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filters: nostr.Filters{filter}})
 					result = string(j)
 				}
 
