@@ -7,9 +7,10 @@ toolchain go1.21.0
 require (
 	github.com/bgentry/speakeasy v0.1.0
 	github.com/mailru/easyjson v0.7.7
-	github.com/nbd-wtf/go-nostr v0.25.7
+	github.com/nbd-wtf/go-nostr v0.26.1
 	github.com/nbd-wtf/nostr-sdk v0.0.2
 	github.com/urfave/cli/v2 v2.25.3
+	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
 )
 
 require (
@@ -35,6 +36,5 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
-	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53 // indirect
 	golang.org/x/sys v0.8.0 // indirect
 )
