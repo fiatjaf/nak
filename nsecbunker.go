@@ -64,12 +64,12 @@ var nsecbunker = &cli.Command{
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
-		code := fmt.Sprintf("%s#secret?%s", npub, qs.Encode())
-		log("listening at %s%v%s:\n  %spubkey:%s %s\n  %snpub:%s %s\n  %sconnection code:%s %s\n\n",
+		log("listening at %s%v%s:\n  %spubkey:%s %s\n  %snpub:%s %s\n  %sconnection code:%s %s\n  %sbunker:%s %s\n\n",
 			BOLD_ON, relayURLs, BOLD_OFF,
 			BOLD_ON, BOLD_OFF, pubkey,
 			BOLD_ON, BOLD_OFF, npub,
-			BOLD_ON, BOLD_OFF, code,
+			BOLD_ON, BOLD_OFF, fmt.Sprintf("%s#secret?%s", npub, qs.Encode()),
+			BOLD_ON, BOLD_OFF, fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode()),
 		)
 
 		alwaysYes := c.Bool("yes")

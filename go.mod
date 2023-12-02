@@ -7,7 +7,7 @@ toolchain go1.21.0
 require (
 	github.com/bgentry/speakeasy v0.1.0
 	github.com/mailru/easyjson v0.7.7
-	github.com/nbd-wtf/go-nostr v0.26.2
+	github.com/nbd-wtf/go-nostr v0.26.4
 	github.com/nbd-wtf/nostr-sdk v0.0.2
 	github.com/urfave/cli/v2 v2.25.3
 	golang.org/x/exp v0.0.0-20230425010034-47ecfdc1ba53
