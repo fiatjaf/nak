@@ -19,6 +19,7 @@ var app = &cli.App{
 		encode,
 		verify,
 		relay,
+		nsecbunker,
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
