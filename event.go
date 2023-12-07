@@ -48,6 +48,10 @@ example:
 			Usage: "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
 		},
 		&cli.BoolFlag{
+			Name:  "auth",
+			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+		},
+		&cli.BoolFlag{
 			Name:  "nson",
 			Usage: "encode the event using NSON",
 		},
@@ -110,6 +114,8 @@ example:
 			return err
 		}
 
+		doAuth := c.Bool("auth")
+
 		// then process input and generate events
 		for stdinEvent := range getStdinLinesOrBlank() {
 			evt := nostr.Event{
@@ -118,6 +124,7 @@ example:
 
 			kindWasSupplied := false
 			mustRehashAndResign := false
+
 			if stdinEvent != "" {
 				if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
 					lineProcessingError(c, "invalid event received from stdin: %s", err)
@@ -192,38 +199,62 @@ example:
 				}
 			}
 
+			// print event as json
+			var result string
+			if c.Bool("envelope") {
+				j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
+				result = string(j)
+			} else if c.Bool("nson") {
+				result, _ = nson.Marshal(&evt)
+			} else {
+				j, _ := easyjson.Marshal(&evt)
+				result = string(j)
+			}
+			fmt.Println(result)
+
+			// publish to relays
 			if len(relays) > 0 {
-				fmt.Println(evt.String())
 				os.Stdout.Sync()
 				for _, relay := range relays {
 					log("publishing to %s... ", relay.URL)
 					if relay, err := nostr.RelayConnect(c.Context, relay.URL); err != nil {
 						log("failed to connect: %s\n", err)
 					} else {
+					publish:
 						ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 						defer cancel()
-						if status, err := relay.Publish(ctx, evt); err != nil {
-							log("failed: %s\n", err)
-						} else {
+
+						status, err := relay.Publish(ctx, evt)
+						if err == nil {
+							// published fine probably
 							log("%s.\n", status)
+							goto end
 						}
+
+						// error publishing
+						if isAuthRequired(err.Error()) && sec != "" && doAuth {
+							// if the relay is requesting auth and we can auth, let's do it
+							log("performing auth... ")
+							st, err := relay.Auth(c.Context, func(evt *nostr.Event) error { return evt.Sign(sec) })
+							if st == nostr.PublishStatusSucceeded {
+								// try to publish again, but this time don't try to auth again
+								doAuth = false
+								goto publish
+							} else {
+								// auth error
+								if err == nil {
+									err = fmt.Errorf("no response from relay")
+								}
+								log("auth error: %s. ", err)
+							}
+						}
+						log("failed: %s\n", err)
 					}
 				}
-			} else {
-				var result string
-				if c.Bool("envelope") {
-					j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
-					result = string(j)
-				} else if c.Bool("nson") {
-					result, _ = nson.Marshal(&evt)
-				} else {
-					j, _ := easyjson.Marshal(&evt)
-					result = string(j)
-				}
-				fmt.Println(result)
 			}
 		}
 
+	end:
 		exitIfLineProcessingError(c)
 		return nil
 	},

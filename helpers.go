@@ -164,3 +164,7 @@ func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
 
 	return sec, nil
 }
+
+func isAuthRequired(msg string) bool {
+	return strings.HasPrefix(msg, "msg: auth-required:")
+}
