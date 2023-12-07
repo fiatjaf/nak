@@ -117,6 +117,7 @@ example:
 		doAuth := c.Bool("auth")
 
 		// then process input and generate events
+	nextline:
 		for stdinEvent := range getStdinLinesOrBlank() {
 			evt := nostr.Event{
 				Tags: make(nostr.Tags, 0, 3),
@@ -228,7 +229,7 @@ example:
 						if err == nil {
 							// published fine probably
 							log("%s.\n", status)
-							goto end
+							continue nextline
 						}
 
 						// error publishing
@@ -254,7 +255,6 @@ example:
 			}
 		}
 
-	end:
 		exitIfLineProcessingError(c)
 		return nil
 	},
