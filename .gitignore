@@ -1,9 +1,1 @@
-target
-.bsp
-globals.bundle.js
-yarn.lock
-node_modules
-project/project
-.metals
-.bloop
-project/metals.sbt
+nak

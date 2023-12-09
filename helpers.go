@@ -109,9 +109,13 @@ func validate32BytesHex(target string) error {
 	return nil
 }
 
-func connectToAllRelays(ctx context.Context, relayUrls []string) (*nostr.SimplePool, []*nostr.Relay) {
+func connectToAllRelays(
+	ctx context.Context,
+	relayUrls []string,
+	opts ...nostr.PoolOption,
+) (*nostr.SimplePool, []*nostr.Relay) {
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
-	pool := nostr.NewSimplePool(ctx)
+	pool := nostr.NewSimplePool(ctx, opts...)
 	for _, url := range relayUrls {
 		log("connecting to %s... ", url)
 		if relay, err := pool.EnsureRelay(url); err == nil {
@@ -163,8 +167,4 @@ func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
 	}
 
 	return sec, nil
-}
-
-func isAuthRequired(msg string) bool {
-	return strings.HasPrefix(msg, "msg: auth-required:")
 }

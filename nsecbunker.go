@@ -97,8 +97,7 @@ var nsecbunker = &cli.Command{
 			log("~ responding with %s\n", string(jresp))
 
 			if alwaysYes || harmless || askUserIfWeCanRespond() {
-				_, err := ie.Relay.Publish(c.Context, eventResponse)
-				if err == nil {
+				if err := ie.Relay.Publish(c.Context, eventResponse); err == nil {
 					log("* sent response!\n")
 				} else {
 					log("* failed to send response: %s\n", err)

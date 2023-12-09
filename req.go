@@ -85,13 +85,27 @@ example:
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
 		&cli.BoolFlag{
+			Name:        "stream",
+			Usage:       "keep the subscription open, printing all events as they are returned",
+			DefaultText: "false, will close on EOSE",
+		},
+		&cli.BoolFlag{
 			Name:  "bare",
 			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
 		},
 		&cli.BoolFlag{
-			Name:        "stream",
-			Usage:       "keep the subscription open, printing all events as they are returned",
-			DefaultText: "false, will close on EOSE",
+			Name:  "auth",
+			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+		},
+		&cli.StringFlag{
+			Name:        "sec",
+			Usage:       "secret key to sign the AUTH challenge, as hex or nsec",
+			DefaultText: "the key '1'",
+			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
+		},
+		&cli.BoolFlag{
+			Name:  "prompt-sec",
+			Usage: "prompt the user to paste a hex or nsec with which to sign the AUTH challenge",
 		},
 	},
 	ArgsUsage: "[relay...]",
@@ -100,7 +114,18 @@ example:
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
 			var relays []*nostr.Relay
-			pool, relays = connectToAllRelays(c.Context, relayUrls)
+			pool, relays = connectToAllRelays(c.Context, relayUrls, nostr.WithAuthHandler(func(evt *nostr.Event) error {
+				if !c.Bool("auth") {
+					return fmt.Errorf("auth not authorized")
+				}
+				sec, err := gatherSecretKeyFromArguments(c)
+				if err != nil {
+					return err
+				}
+				pk, _ := nostr.GetPublicKey(sec)
+				log("performing auth as %s...\n", pk)
+				return evt.Sign(sec)
+			}))
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
