@@ -6,11 +6,12 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/bgentry/speakeasy"
+	"github.com/manifoldco/promptui"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/urfave/cli/v2"
+	"golang.org/x/exp/slices"
 )
 
 var bunker = &cli.Command{
@@ -96,7 +97,7 @@ var bunker = &cli.Command{
 			jresp, _ := json.MarshalIndent(resp, "  ", "  ")
 			log("~ responding with %s\n", string(jresp))
 
-			if alwaysYes || harmless || askUserIfWeCanRespond() {
+			if alwaysYes || harmless || askProceed(ie.Event.PubKey) {
 				if err := ie.Relay.Publish(c.Context, eventResponse); err == nil {
 					log("* sent response!\n")
 				} else {
@@ -109,15 +110,31 @@ var bunker = &cli.Command{
 	},
 }
 
-func askUserIfWeCanRespond() bool {
-	answer, err := speakeasy.FAsk(os.Stderr,
-		fmt.Sprintf("proceed? y/n"))
-	if err != nil {
-		return false
-	}
-	if answer == "y" || answer == "yes" {
+var allowedSources = make([]string, 0, 2)
+
+func askProceed(source string) bool {
+	if slices.Contains(allowedSources, source) {
 		return true
 	}
 
-	return askUserIfWeCanRespond()
+	prompt := promptui.Select{
+		Label: "proceed?",
+		Items: []string{
+			"no",
+			"yes",
+			"always from this source",
+		},
+	}
+	n, _, _ := prompt.Run()
+	switch n {
+	case 0:
+		return false
+	case 1:
+		return true
+	case 2:
+		allowedSources = append(allowedSources, source)
+		return true
+	}
+
+	return false
 }
