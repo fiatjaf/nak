@@ -13,8 +13,8 @@ import (
 	"github.com/urfave/cli/v2"
 )
 
-var nsecbunker = &cli.Command{
-	Name:        "nsecbunker",
+var bunker = &cli.Command{
+	Name:        "bunker",
 	Usage:       "starts a NIP-46 signer daemon with the given --sec key",
 	ArgsUsage:   "[relay...]",
 	Description: ``,
