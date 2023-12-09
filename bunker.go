@@ -87,7 +87,7 @@ var bunker = &cli.Command{
 		for ie := range events {
 			req, resp, eventResponse, harmless, err := signer.HandleRequest(ie.Event)
 			if err != nil {
-				log("< failed to handle request from %s: %w", ie.Event.PubKey, err)
+				log("< failed to handle request from %s: %s", ie.Event.PubKey, err.Error())
 				continue
 			}
 
