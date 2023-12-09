@@ -217,40 +217,36 @@ example:
 			if len(relays) > 0 {
 				os.Stdout.Sync()
 				for _, relay := range relays {
+				publish:
 					log("publishing to %s... ", relay.URL)
-					if relay, err := nostr.RelayConnect(c.Context, relay.URL); err != nil {
-						log("failed to connect: %s\n", err)
-					} else {
-					publish:
-						ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
-						defer cancel()
+					ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+					defer cancel()
 
-						status, err := relay.Publish(ctx, evt)
-						if err == nil {
-							// published fine probably
-							log("%s.\n", status)
-							continue nextline
-						}
-
-						// error publishing
-						if isAuthRequired(err.Error()) && sec != "" && doAuth {
-							// if the relay is requesting auth and we can auth, let's do it
-							log("performing auth... ")
-							st, err := relay.Auth(c.Context, func(evt *nostr.Event) error { return evt.Sign(sec) })
-							if st == nostr.PublishStatusSucceeded {
-								// try to publish again, but this time don't try to auth again
-								doAuth = false
-								goto publish
-							} else {
-								// auth error
-								if err == nil {
-									err = fmt.Errorf("no response from relay")
-								}
-								log("auth error: %s. ", err)
-							}
-						}
-						log("failed: %s\n", err)
+					status, err := relay.Publish(ctx, evt)
+					if err == nil {
+						// published fine probably
+						log("%s.\n", status)
+						continue nextline
 					}
+
+					// error publishing
+					if strings.HasPrefix(err.Error(), "msg: auth-required:") && sec != "" && doAuth {
+						// if the relay is requesting auth and we can auth, let's do it
+						log("performing auth... ")
+						st, err := relay.Auth(c.Context, func(evt *nostr.Event) error { return evt.Sign(sec) })
+						if st == nostr.PublishStatusSucceeded {
+							// try to publish again, but this time don't try to auth again
+							doAuth = false
+							goto publish
+						} else {
+							// auth error
+							if err == nil {
+								err = fmt.Errorf("no response from relay")
+							}
+							log("auth error: %s. ", err)
+						}
+					}
+					log("failed: %s\n", err)
 				}
 			}
 		}
