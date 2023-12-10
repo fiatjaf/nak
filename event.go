@@ -222,7 +222,8 @@ example:
 					ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
 					defer cancel()
 
-					if err := relay.Publish(ctx, evt); err == nil {
+					err := relay.Publish(ctx, evt)
+					if err == nil {
 						// published fine
 						log("success.\n")
 						continue nextline
