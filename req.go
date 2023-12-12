@@ -68,7 +68,7 @@ example:
 			Usage:    "only accept events newer than this (unix timestamp)",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.IntFlag{
+		&cli.StringFlag{
 			Name:     "until",
 			Aliases:  []string{"u"},
 			Usage:    "only accept events older than this (unix timestamp)",
@@ -196,9 +196,16 @@ example:
 					return fmt.Errorf("parse error: Invalid numeric literal %q", since)
 				}
 			}
-			if until := c.Int("until"); until != 0 {
-				ts := nostr.Timestamp(until)
-				filter.Until = &ts
+			if until := c.String("until"); until != "" {
+				if until == "now" {
+					ts := nostr.Now()
+					filter.Until = &ts
+				} else if i, err := strconv.Atoi(until); err == nil {
+					ts := nostr.Timestamp(i)
+					filter.Until = &ts
+				} else {
+					return fmt.Errorf("parse error: Invalid numeric literal %q", until)
+				}
 			}
 			if limit := c.Int("limit"); limit != 0 {
 				filter.Limit = limit
