@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"strconv"
 	"strings"
 
 	"github.com/mailru/easyjson"
@@ -61,7 +62,7 @@ example:
 			Usage:    "shortcut for --tag p=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.IntFlag{
+		&cli.StringFlag{
 			Name:     "since",
 			Aliases:  []string{"s"},
 			Usage:    "only accept events newer than this (unix timestamp)",
@@ -184,9 +185,16 @@ example:
 				filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
 			}
 
-			if since := c.Int("since"); since != 0 {
-				ts := nostr.Timestamp(since)
-				filter.Since = &ts
+			if since := c.String("since"); since != "" {
+				if since == "now" {
+					ts := nostr.Now()
+					filter.Since = &ts
+				} else if i, err := strconv.Atoi(since); err == nil {
+					ts := nostr.Timestamp(i)
+					filter.Since = &ts
+				} else {
+					return fmt.Errorf("parse error: Invalid numeric literal %q", since)
+				}
 			}
 			if until := c.Int("until"); until != 0 {
 				ts := nostr.Timestamp(until)
