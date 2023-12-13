@@ -7,9 +7,9 @@ func ExampleEventBasic() {
 }
 
 func ExampleEventComplex() {
-	app.Run([]string{"nak", "event", "--ts", "1699485669", "-k", "11", "-c", "skjdbaskd", "--sec", "17", "-t", "t=spam", "-e", "36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c", "-t", "r=https://abc.def;nothing"})
+	app.Run([]string{"nak", "event", "--ts", "1699485669", "-k", "11", "-c", "skjdbaskd", "--sec", "17", "-t", "t=spam", "-e", "36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c", "-t", "r=https://abc.def?name=foobar;nothing"})
 	// Output:
-	// {"id":"aec4de6d051a7c2b6ca2d087903d42051a31e07fb742f1240970084822de10a6","pubkey":"2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f","created_at":1699485669,"kind":11,"tags":[["t","spam"],["r","https://abc.def","nothing"],["e","36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c"]],"content":"skjdbaskd","sig":"1165ac7a27d774d351ef19c8e918fb22f4005fcba193976c3d7edba6ef87ead7f14467f376a9e199f8371835368d86a8506f591e382528d00287fb168a7b8f38"}
+	// {"id":"19aba166dcf354bf5ef64f4afe69ada1eb851495001ee05e07d393ee8c8ea179","pubkey":"2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f","created_at":1699485669,"kind":11,"tags":[["t","spam"],["r","https://abc.def?name=foobar","nothing"],["e","36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c"]],"content":"skjdbaskd","sig":"cf452def4a68341c897c3fc96fa34dc6895a5b8cc266d4c041bcdf758ec992ec5adb8b0179e98552aaaf9450526a26d7e62e413b15b1c57e0cfc8db6b29215d7"}
 }
 
 func ExampleReq() {
