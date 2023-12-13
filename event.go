@@ -153,12 +153,12 @@ example:
 			tags := make(nostr.Tags, 0, 5)
 			for _, tagFlag := range c.StringSlice("tag") {
 				// tags are in the format key=value
-				spl := strings.Split(tagFlag, "=")
-				if len(spl) == 2 && len(spl[0]) > 0 {
-					tag := nostr.Tag{spl[0]}
+				tagName, tagValue, found := strings.Cut(tagFlag, "=")
+				tag := []string{tagName}
+				if found {
 					// tags may also contain extra elements separated with a ";"
-					spl2 := strings.Split(spl[1], ";")
-					tag = append(tag, spl2...)
+					tagValues := strings.Split(tagValue, ";")
+					tag = append(tag, tagValues...)
 					// ~
 					tags = append(tags, tag)
 				}
