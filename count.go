@@ -78,7 +78,7 @@ var count = &cli.Command{
 
 		tags := make([][]string, 0, 5)
 		for _, tagFlag := range c.StringSlice("tag") {
-			spl := strings.Split(tagFlag, "=")
+			spl := strings.SplitN(tagFlag, "=", 2)
 			if len(spl) == 2 && len(spl[0]) == 1 {
 				tags = append(tags, spl)
 			} else {
