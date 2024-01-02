@@ -70,7 +70,8 @@ var fetch = &cli.Command{
 			pool := nostr.NewSimplePool(c.Context)
 			if authorHint != "" {
 				relayList := sdk.FetchRelaysForPubkey(c.Context, pool, authorHint,
-					"wss://purplepag.es", "wss://offchain.pub", "wss://public.relaying.io")
+					"wss://purplepag.es", "wss://relay.damus.io", "wss://relay.noswhere.com",
+					"wss://nos.lol", "wss://public.relaying.io", "wss://relay.nostr.band")
 				for _, relayListItem := range relayList {
 					if relayListItem.Outbox {
 						relays = append(relays, relayListItem.URL)
