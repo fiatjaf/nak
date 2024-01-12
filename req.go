@@ -135,6 +135,12 @@ example:
 			for i, relay := range relays {
 				relayUrls[i] = relay.URL
 			}
+
+			defer func() {
+				for _, relay := range relays {
+					relay.Close()
+				}
+			}()
 		}
 
 		for stdinFilter := range getStdinLinesOrBlank() {

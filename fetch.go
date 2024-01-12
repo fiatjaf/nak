@@ -24,6 +24,15 @@ var fetch = &cli.Command{
 	},
 	ArgsUsage: "[nip19code]",
 	Action: func(c *cli.Context) error {
+		pool := nostr.NewSimplePool(c.Context)
+
+		defer func() {
+			pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
+				relay.Close()
+				return true
+			})
+		}()
+
 		for code := range getStdinLinesOrFirstArgument(c) {
 			filter := nostr.Filter{}
 
@@ -67,7 +76,6 @@ var fetch = &cli.Command{
 				authorHint = v
 			}
 
-			pool := nostr.NewSimplePool(c.Context)
 			if authorHint != "" {
 				relayList := sdk.FetchRelaysForPubkey(c.Context, pool, authorHint,
 					"wss://purplepag.es", "wss://relay.damus.io", "wss://relay.noswhere.com",

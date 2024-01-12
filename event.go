@@ -108,6 +108,12 @@ example:
 			}
 		}
 
+		defer func() {
+			for _, relay := range relays {
+				relay.Close()
+			}
+		}()
+
 		// gather the secret key
 		sec, err := gatherSecretKeyFromArguments(c)
 		if err != nil {
