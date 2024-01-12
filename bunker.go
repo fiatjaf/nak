@@ -84,7 +84,7 @@ var bunker = &cli.Command{
 			},
 		})
 
-		signer := nip46.NewSigner(sec)
+		signer := nip46.NewStaticKeySigner(sec)
 		for ie := range events {
 			req, resp, eventResponse, harmless, err := signer.HandleRequest(ie.Event)
 			if err != nil {
