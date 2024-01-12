@@ -169,6 +169,7 @@ example:
 					tags = append(tags, tag)
 				}
 			}
+
 			for _, etag := range c.StringSlice("e") {
 				tags = append(tags, []string{"e", etag})
 				mustRehashAndResign = true

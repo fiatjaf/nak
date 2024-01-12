@@ -64,6 +64,7 @@ func writeStdinLinesOrNothing(ch chan string) (hasStdinLines bool) {
 		// piped
 		go func() {
 			scanner := bufio.NewScanner(os.Stdin)
+			scanner.Buffer(make([]byte, 16*1024), 256*1024)
 			for scanner.Scan() {
 				ch <- strings.TrimSpace(scanner.Text())
 			}
