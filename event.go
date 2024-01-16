@@ -123,7 +123,6 @@ example:
 		doAuth := c.Bool("auth")
 
 		// then process input and generate events
-	nextline:
 		for stdinEvent := range getStdinLinesOrBlank() {
 			evt := nostr.Event{
 				Tags: make(nostr.Tags, 0, 3),
@@ -233,7 +232,7 @@ example:
 					if err == nil {
 						// published fine
 						log("success.\n")
-						continue nextline
+						continue // continue to next relay
 					}
 
 					// error publishing
