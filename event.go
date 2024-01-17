@@ -87,6 +87,11 @@ example:
 			Usage:    "shortcut for --tag p=<value>",
 			Category: CATEGORY_EVENT_FIELDS,
 		},
+		&cli.StringSliceFlag{
+			Name:     "d",
+			Usage:    "shortcut for --tag d=<value>",
+			Category: CATEGORY_EVENT_FIELDS,
+		},
 		&cli.StringFlag{
 			Name:        "created-at",
 			Aliases:     []string{"time", "ts"},
@@ -165,16 +170,20 @@ example:
 					tagValues := strings.Split(tagValue, ";")
 					tag = append(tag, tagValues...)
 					// ~
-					tags = append(tags, tag)
+					tags = tags.AppendUnique(tag)
 				}
 			}
 
 			for _, etag := range c.StringSlice("e") {
-				tags = append(tags, []string{"e", etag})
+				tags = tags.AppendUnique([]string{"e", etag})
 				mustRehashAndResign = true
 			}
 			for _, ptag := range c.StringSlice("p") {
-				tags = append(tags, []string{"p", ptag})
+				tags = tags.AppendUnique([]string{"p", ptag})
+				mustRehashAndResign = true
+			}
+			for _, dtag := range c.StringSlice("d") {
+				tags = tags.AppendUnique([]string{"d", dtag})
 				mustRehashAndResign = true
 			}
 			if len(tags) > 0 {
