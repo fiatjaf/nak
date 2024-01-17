@@ -62,6 +62,11 @@ example:
 			Usage:    "shortcut for --tag p=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
+		&cli.StringSliceFlag{
+			Name:     "d",
+			Usage:    "shortcut for --tag d=<value>",
+			Category: CATEGORY_FILTER_ATTRIBUTES,
+		},
 		&cli.StringFlag{
 			Name:     "since",
 			Aliases:  []string{"s"},
@@ -178,6 +183,9 @@ example:
 			}
 			for _, ptag := range c.StringSlice("p") {
 				tags = append(tags, []string{"p", ptag})
+			}
+			for _, dtag := range c.StringSlice("d") {
+				tags = append(tags, []string{"d", dtag})
 			}
 
 			if len(tags) > 0 && filter.Tags == nil {
