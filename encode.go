@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/urfave/cli/v2"
 )
@@ -29,8 +30,8 @@ var encode = &cli.Command{
 			Usage: "encode a hex public key into bech32 'npub' format",
 			Action: func(c *cli.Context) error {
 				for target := range getStdinLinesOrFirstArgument(c) {
-					if err := validate32BytesHex(target); err != nil {
-						lineProcessingError(c, "invalid public key: %s", target, err)
+					if ok := nostr.IsValidPublicKey(target); !ok {
+						lineProcessingError(c, "invalid public key: %s", target)
 						continue
 					}
 
@@ -50,8 +51,8 @@ var encode = &cli.Command{
 			Usage: "encode a hex private key into bech32 'nsec' format",
 			Action: func(c *cli.Context) error {
 				for target := range getStdinLinesOrFirstArgument(c) {
-					if err := validate32BytesHex(target); err != nil {
-						lineProcessingError(c, "invalid private key: %s", target, err)
+					if ok := nostr.IsValid32ByteHex(target); !ok {
+						lineProcessingError(c, "invalid private key: %s", target)
 						continue
 					}
 
@@ -78,8 +79,8 @@ var encode = &cli.Command{
 			},
 			Action: func(c *cli.Context) error {
 				for target := range getStdinLinesOrFirstArgument(c) {
-					if err := validate32BytesHex(target); err != nil {
-						lineProcessingError(c, "invalid public key: %s", target, err)
+					if ok := nostr.IsValid32ByteHex(target); !ok {
+						lineProcessingError(c, "invalid public key: %s", target)
 						continue
 					}
 
@@ -115,15 +116,15 @@ var encode = &cli.Command{
 			},
 			Action: func(c *cli.Context) error {
 				for target := range getStdinLinesOrFirstArgument(c) {
-					if err := validate32BytesHex(target); err != nil {
-						lineProcessingError(c, "invalid event id: %s", target, err)
+					if ok := nostr.IsValid32ByteHex(target); !ok {
+						lineProcessingError(c, "invalid event id: %s", target)
 						continue
 					}
 
 					author := c.String("author")
 					if author != "" {
-						if err := validate32BytesHex(author); err != nil {
-							return err
+						if ok := nostr.IsValidPublicKey(author); !ok {
+							return fmt.Errorf("invalid 'author' public key")
 						}
 					}
 
@@ -174,8 +175,8 @@ var encode = &cli.Command{
 			Action: func(c *cli.Context) error {
 				for d := range getStdinLinesOrBlank() {
 					pubkey := c.String("pubkey")
-					if err := validate32BytesHex(pubkey); err != nil {
-						return err
+					if ok := nostr.IsValidPublicKey(pubkey); !ok {
+						return fmt.Errorf("invalid 'pubkey'")
 					}
 
 					kind := c.Int("kind")
@@ -212,8 +213,8 @@ var encode = &cli.Command{
 			Usage: "generate note1 event codes (not recommended)",
 			Action: func(c *cli.Context) error {
 				for target := range getStdinLinesOrFirstArgument(c) {
-					if err := validate32BytesHex(target); err != nil {
-						lineProcessingError(c, "invalid event id: %s", target, err)
+					if ok := nostr.IsValid32ByteHex(target); !ok {
+						lineProcessingError(c, "invalid event id: %s", target)
 						continue
 					}
 

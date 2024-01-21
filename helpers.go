@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
@@ -96,20 +95,6 @@ func validateRelayURLs(wsurls []string) error {
 	return nil
 }
 
-func validate32BytesHex(target string) error {
-	if _, err := hex.DecodeString(target); err != nil {
-		return fmt.Errorf("target '%s' is not valid hex: %s", target, err)
-	}
-	if len(target) != 64 {
-		return fmt.Errorf("expected '%s' to be 64 characters (32 bytes), got %d", target, len(target))
-	}
-	if strings.ToLower(target) != target {
-		return fmt.Errorf("expected target to be all lowercase hex. try again with '%s'", strings.ToLower(target))
-	}
-
-	return nil
-}
-
 func connectToAllRelays(
 	ctx context.Context,
 	relayUrls []string,
@@ -163,7 +148,7 @@ func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
 		return "", fmt.Errorf("invalid secret key: too large")
 	}
 	sec = strings.Repeat("0", 64-len(sec)) + sec // left-pad
-	if err := validate32BytesHex(sec); err != nil {
+	if ok := nostr.IsValid32ByteHex(sec); !ok {
 		return "", fmt.Errorf("invalid secret key")
 	}
 
