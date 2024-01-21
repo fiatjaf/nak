@@ -8,8 +8,10 @@ import (
 )
 
 var app = &cli.App{
-	Name:  "nak",
-	Usage: "the nostr army knife command-line tool",
+	Name:                   "nak",
+	Suggest:                true,
+	UseShortOptionHandling: true,
+	Usage:                  "the nostr army knife command-line tool",
 	Commands: []*cli.Command{
 		req,
 		count,
