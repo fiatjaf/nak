@@ -81,3 +81,8 @@ invalid .id, expected 05bd99d54cb835f427e0092c4275ee44c7ff51219eff417c19f70c9e2c
 ```shell
 nak req -l 100 -k 1 -a 2edbcea694d164629854a52583458fd6d965b161e3c48b57d3aff01940558884 wss://relay.damus.io | jq -r '.content | match("nostr:((note1|nevent1)[a-z0-9]+)";"g") | .captures[0].string' | nak decode | jq -cr '{ids: [.id]}' | nak req wss://relay.damus.io
 ```
+
+## Contributing to this repository
+
+Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnyv9kh2uewd9hsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3vamnwvaz7tmjv4kxz7fwwpexjmtpdshxuet5qgsg04q5ypr6f4n65mv7e5hs05z50hy7vvgua8uc8szwtp262cfwn6srqsqqqauedy5x7y`.
+
