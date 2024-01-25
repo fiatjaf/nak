@@ -8,7 +8,7 @@ require (
 	github.com/bgentry/speakeasy v0.1.0
 	github.com/mailru/easyjson v0.7.7
 	github.com/manifoldco/promptui v0.9.0
-	github.com/nbd-wtf/go-nostr v0.28.1
+	github.com/nbd-wtf/go-nostr v0.28.2
 	github.com/nbd-wtf/nostr-sdk v0.0.5
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
@@ -33,5 +33,6 @@ require (
 	github.com/tidwall/match v1.1.1 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
+	golang.org/x/crypto v0.7.0 // indirect
 	golang.org/x/sys v0.14.0 // indirect
 )

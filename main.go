@@ -20,6 +20,7 @@ var app = &cli.App{
 		event,
 		decode,
 		encode,
+		key,
 		verify,
 		relay,
 		bunker,
