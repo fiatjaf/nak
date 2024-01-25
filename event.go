@@ -11,6 +11,7 @@ import (
 
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nson"
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slices"
@@ -50,6 +51,10 @@ example:
 		&cli.BoolFlag{
 			Name:  "auth",
 			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+		},
+		&cli.BoolFlag{
+			Name:  "nevent",
+			Usage: "print the nevent code (to stderr) after the event is published",
 		},
 		&cli.BoolFlag{
 			Name:  "nson",
@@ -229,6 +234,7 @@ example:
 			stdout(result)
 
 			// publish to relays
+			successRelays := make([]string, 0, len(relays))
 			if len(relays) > 0 {
 				os.Stdout.Sync()
 				for _, relay := range relays {
@@ -241,6 +247,7 @@ example:
 					if err == nil {
 						// published fine
 						log("success.\n")
+						successRelays = append(successRelays, relay.URL)
 						continue // continue to next relay
 					}
 
@@ -258,6 +265,10 @@ example:
 						}
 					}
 					log("failed: %s\n", err)
+				}
+				if len(successRelays) > 0 && c.Bool("nevent") {
+					nevent, _ := nip19.EncodeEvent(evt.ID, successRelays, evt.PubKey)
+					log(nevent + "\n")
 				}
 			}
 		}
