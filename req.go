@@ -231,7 +231,7 @@ example:
 					fn = pool.SubMany
 				}
 				for ie := range fn(c.Context, relayUrls, nostr.Filters{filter}) {
-					fmt.Println(ie.Event)
+					stdout(ie.Event)
 				}
 			} else {
 				// no relays given, will just print the filter
@@ -243,7 +243,7 @@ example:
 					result = string(j)
 				}
 
-				fmt.Println(result)
+				stdout(result)
 			}
 		}
 

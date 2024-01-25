@@ -25,6 +25,8 @@ var log = func(msg string, args ...any) {
 	fmt.Fprintf(os.Stderr, msg, args...)
 }
 
+var stdout = fmt.Println
+
 func isPiped() bool {
 	stat, _ := os.Stdin.Stat()
 	return stat.Mode()&os.ModeCharDevice == 0

@@ -36,7 +36,7 @@ var encode = &cli.Command{
 					}
 
 					if npub, err := nip19.EncodePublicKey(target); err == nil {
-						fmt.Println(npub)
+						stdout(npub)
 					} else {
 						return err
 					}
@@ -57,7 +57,7 @@ var encode = &cli.Command{
 					}
 
 					if npub, err := nip19.EncodePrivateKey(target); err == nil {
-						fmt.Println(npub)
+						stdout(npub)
 					} else {
 						return err
 					}
@@ -90,7 +90,7 @@ var encode = &cli.Command{
 					}
 
 					if npub, err := nip19.EncodeProfile(target, relays); err == nil {
-						fmt.Println(npub)
+						stdout(npub)
 					} else {
 						return err
 					}
@@ -134,7 +134,7 @@ var encode = &cli.Command{
 					}
 
 					if npub, err := nip19.EncodeEvent(target, relays, author); err == nil {
-						fmt.Println(npub)
+						stdout(npub)
 					} else {
 						return err
 					}
@@ -198,7 +198,7 @@ var encode = &cli.Command{
 					}
 
 					if npub, err := nip19.EncodeEntity(pubkey, kind, d, relays); err == nil {
-						fmt.Println(npub)
+						stdout(npub)
 					} else {
 						return err
 					}
@@ -219,7 +219,7 @@ var encode = &cli.Command{
 					}
 
 					if note, err := nip19.EncodeNote(target); err == nil {
-						fmt.Println(note)
+						stdout(note)
 					} else {
 						return err
 					}

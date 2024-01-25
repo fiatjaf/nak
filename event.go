@@ -226,7 +226,7 @@ example:
 				j, _ := easyjson.Marshal(&evt)
 				result = string(j)
 			}
-			fmt.Println(result)
+			stdout(result)
 
 			// publish to relays
 			if len(relays) > 0 {

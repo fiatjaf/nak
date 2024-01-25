@@ -31,7 +31,7 @@ var relay = &cli.Command{
 		}
 
 		pretty, _ := json.MarshalIndent(info, "", "  ")
-		fmt.Println(string(pretty))
+		stdout(string(pretty))
 		return nil
 	},
 }

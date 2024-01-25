@@ -1,8 +1,6 @@
 package main
 
 import (
-	"fmt"
-
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	sdk "github.com/nbd-wtf/nostr-sdk"
@@ -93,7 +91,7 @@ var fetch = &cli.Command{
 			}
 
 			for ie := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
-				fmt.Println(ie.Event)
+				stdout(ie.Event)
 			}
 		}
 

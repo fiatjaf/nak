@@ -139,7 +139,7 @@ var count = &cli.Command{
 			var result string
 			j, _ := json.Marshal([]any{"COUNT", "nak", filter})
 			result = string(j)
-			fmt.Println(result)
+			stdout(result)
 		}
 
 		return nil

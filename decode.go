@@ -3,7 +3,6 @@ package main
 import (
 	"encoding/hex"
 	"encoding/json"
-	"fmt"
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
@@ -68,7 +67,7 @@ var decode = &cli.Command{
 				continue
 			}
 
-			fmt.Println(decodeResult.JSON())
+			stdout(decodeResult.JSON())
 
 		}
 

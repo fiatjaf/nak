@@ -1,11 +1,12 @@
 package main
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/urfave/cli/v2"
 )
+
+var q int
 
 var app = &cli.App{
 	Name:                   "nak",
@@ -25,12 +26,16 @@ var app = &cli.App{
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
-			Name:    "silent",
-			Usage:   "do not print logs and info messages to stderr",
-			Aliases: []string{"s"},
+			Name:    "quiet",
+			Usage:   "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
+			Count:   &q,
+			Aliases: []string{"q"},
 			Action: func(ctx *cli.Context, b bool) error {
-				if b {
+				if q >= 1 {
 					log = func(msg string, args ...any) {}
+					if q >= 2 {
+						stdout = func(a ...any) (int, error) { return 0, nil }
+					}
 				}
 				return nil
 			},
@@ -40,7 +45,7 @@ var app = &cli.App{
 
 func main() {
 	if err := app.Run(os.Args); err != nil {
-		fmt.Println(err)
+		stdout(err)
 		os.Exit(1)
 	}
 }
