@@ -3,14 +3,17 @@ package main
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"net/url"
 	"os"
 	"strings"
 
-	"github.com/bgentry/speakeasy"
+	"github.com/chzyer/readline"
+	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/nip49"
 	"github.com/urfave/cli/v2"
 )
 
@@ -128,31 +131,90 @@ func exitIfLineProcessingError(c *cli.Context) {
 }
 
 func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
+	var err error
 	sec := c.String("sec")
 	if c.Bool("prompt-sec") {
 		if isPiped() {
 			return "", fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
 		}
-		var err error
-		sec, err = speakeasy.FAsk(os.Stderr, "type your secret key as nsec or hex: ")
+		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
 			return "", fmt.Errorf("failed to get secret key: %w", err)
 		}
 	}
-	if strings.HasPrefix(sec, "nsec1") {
-		_, hex, err := nip19.Decode(sec)
+	if strings.HasPrefix(sec, "ncryptsec1") {
+		sec, err = promptDecrypt(sec)
 		if err != nil {
-			return "", fmt.Errorf("invalid nsec: %w", err)
+			return "", fmt.Errorf("failed to decrypt: %w", err)
 		}
-		sec = hex.(string)
+	} else if prefix, hexvalue, err := nip19.Decode(sec); err != nil {
+		return "", fmt.Errorf("invalid nsec: %w", err)
+	} else if prefix == "nsec" {
+		sec = hexvalue.(string)
+	} else if bsec, err := hex.DecodeString(strings.Repeat("0", 64-len(sec)) + sec); err == nil {
+		sec = hex.EncodeToString(bsec)
 	}
-	if len(sec) > 64 {
-		return "", fmt.Errorf("invalid secret key: too large")
-	}
-	sec = strings.Repeat("0", 64-len(sec)) + sec // left-pad
+
 	if ok := nostr.IsValid32ByteHex(sec); !ok {
 		return "", fmt.Errorf("invalid secret key")
 	}
-
 	return sec, nil
+}
+
+func promptDecrypt(ncryptsec1 string) (string, error) {
+	for i := 1; i < 4; i++ {
+		var attemptStr string
+		if i > 1 {
+			attemptStr = fmt.Sprintf(" [%d/3]", i)
+		}
+		password, err := askPassword("type the password to decrypt your secret key"+attemptStr+": ", nil)
+		if err != nil {
+			return "", err
+		}
+		sec, err := nip49.Decrypt(ncryptsec1, password)
+		if err != nil {
+			continue
+		}
+		return sec, nil
+	}
+	return "", fmt.Errorf("couldn't decrypt private key")
+}
+
+func ask(msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
+	return _ask(&readline.Config{
+		Prompt:                 color.YellowString(msg),
+		InterruptPrompt:        "^C",
+		DisableAutoSaveHistory: true,
+	}, msg, defaultValue, shouldAskAgain)
+}
+
+func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
+	config := &readline.Config{
+		Prompt:                 color.YellowString(msg),
+		InterruptPrompt:        "^C",
+		DisableAutoSaveHistory: true,
+		EnableMask:             true,
+		MaskRune:               '*',
+	}
+	return _ask(config, msg, "", shouldAskAgain)
+}
+
+func _ask(config *readline.Config, msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
+	rl, err := readline.NewEx(config)
+	if err != nil {
+		return "", err
+	}
+
+	rl.WriteStdin([]byte(defaultValue))
+	for {
+		answer, err := rl.Readline()
+		if err != nil {
+			return "", err
+		}
+		answer = strings.TrimSpace(strings.ToLower(answer))
+		if shouldAskAgain != nil && shouldAskAgain(answer) {
+			continue
+		}
+		return answer, err
+	}
 }
