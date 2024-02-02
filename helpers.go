@@ -182,6 +182,7 @@ func promptDecrypt(ncryptsec1 string) (string, error) {
 
 func ask(msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
 	return _ask(&readline.Config{
+		Stdout:                 os.Stderr,
 		Prompt:                 color.YellowString(msg),
 		InterruptPrompt:        "^C",
 		DisableAutoSaveHistory: true,
@@ -190,6 +191,7 @@ func ask(msg string, defaultValue string, shouldAskAgain func(answer string) boo
 
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
 	config := &readline.Config{
+		Stdout:                 os.Stderr,
 		Prompt:                 color.YellowString(msg),
 		InterruptPrompt:        "^C",
 		DisableAutoSaveHistory: true,
