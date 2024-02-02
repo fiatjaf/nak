@@ -147,12 +147,12 @@ func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
 		if err != nil {
 			return "", fmt.Errorf("failed to decrypt: %w", err)
 		}
+	} else if bsec, err := hex.DecodeString(strings.Repeat("0", 64-len(sec)) + sec); err == nil {
+		sec = hex.EncodeToString(bsec)
 	} else if prefix, hexvalue, err := nip19.Decode(sec); err != nil {
 		return "", fmt.Errorf("invalid nsec: %w", err)
 	} else if prefix == "nsec" {
 		sec = hexvalue.(string)
-	} else if bsec, err := hex.DecodeString(strings.Repeat("0", 64-len(sec)) + sec); err == nil {
-		sec = hex.EncodeToString(bsec)
 	}
 
 	if ok := nostr.IsValid32ByteHex(sec); !ok {
