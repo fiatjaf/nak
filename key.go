@@ -65,7 +65,7 @@ var encrypt = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		password := c.Args().Get(c.Args().Len() - 1)
+		password := c.Args().Get(1)
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
@@ -87,7 +87,7 @@ var decrypt = &cli.Command{
 	Description: `uses the NIP-49 standard.`,
 	ArgsUsage:   "<ncryptsec-code> <password>",
 	Action: func(c *cli.Context) error {
-		password := c.Args().Get(c.Args().Len() - 1)
+		password := c.Args().Get(1)
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
