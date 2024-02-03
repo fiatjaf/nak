@@ -47,12 +47,11 @@ func getStdinLinesOrBlank() chan string {
 	}
 }
 
-func getStdinLinesOrFirstArgument(c *cli.Context) chan string {
+func getStdinLinesOrFirstArgument(arg string) chan string {
 	// try the first argument
-	target := c.Args().First()
-	if target != "" {
+	if arg != "" {
 		single := make(chan string, 1)
-		single <- target
+		single <- arg
 		close(single)
 		return single
 	}

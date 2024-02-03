@@ -65,7 +65,13 @@ var encrypt = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		password := c.Args().Get(1)
+		var password string
+		switch c.Args().Len() {
+		case 1:
+			password = c.Args().Get(0)
+		case 2:
+			password = c.Args().Get(1)
+		}
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
@@ -87,11 +93,20 @@ var decrypt = &cli.Command{
 	Description: `uses the NIP-49 standard.`,
 	ArgsUsage:   "<ncryptsec-code> <password>",
 	Action: func(c *cli.Context) error {
-		password := c.Args().Get(1)
+		var content string
+		var password string
+		switch c.Args().Len() {
+		case 1:
+			content = ""
+			password = c.Args().Get(0)
+		case 2:
+			content = c.Args().Get(0)
+			password = c.Args().Get(1)
+		}
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for ncryptsec := range getStdinLinesOrFirstArgument(c) {
+		for ncryptsec := range getStdinLinesOrFirstArgument(content) {
 			sec, err := nip49.Decrypt(ncryptsec, password)
 			if err != nil {
 				lineProcessingError(c, "failed to decrypt: %s", err)
@@ -107,7 +122,7 @@ var decrypt = &cli.Command{
 func getSecretKeyFromStdinLinesOrFirstArgument(c *cli.Context) chan string {
 	ch := make(chan string)
 	go func() {
-		for sec := range getStdinLinesOrFirstArgument(c) {
+		for sec := range getStdinLinesOrFirstArgument(c.Args().First()) {
 			if sec == "" {
 				continue
 			}
