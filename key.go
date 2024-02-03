@@ -39,7 +39,7 @@ var public = &cli.Command{
 	Description: ``,
 	ArgsUsage:   "[secret]",
 	Action: func(c *cli.Context) error {
-		for sec := range getSecretKeyFromStdinLinesOrFirstArgument(c) {
+		for sec := range getSecretKeyFromStdinLinesOrFirstArgument(c, c.Args().First()) {
 			pubkey, err := nostr.GetPublicKey(sec)
 			if err != nil {
 				lineProcessingError(c, "failed to derive public key: %s", err)
@@ -65,17 +65,20 @@ var encrypt = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
+		var content string
 		var password string
 		switch c.Args().Len() {
 		case 1:
+			content = ""
 			password = c.Args().Get(0)
 		case 2:
+			content = c.Args().Get(0)
 			password = c.Args().Get(1)
 		}
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for sec := range getSecretKeyFromStdinLinesOrFirstArgument(c) {
+		for sec := range getSecretKeyFromStdinLinesOrFirstArgument(c, content) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
 				lineProcessingError(c, "failed to encrypt: %s", err)
@@ -119,10 +122,10 @@ var decrypt = &cli.Command{
 	},
 }
 
-func getSecretKeyFromStdinLinesOrFirstArgument(c *cli.Context) chan string {
+func getSecretKeyFromStdinLinesOrFirstArgument(c *cli.Context, content string) chan string {
 	ch := make(chan string)
 	go func() {
-		for sec := range getStdinLinesOrFirstArgument(c.Args().First()) {
+		for sec := range getStdinLinesOrFirstArgument(content) {
 			if sec == "" {
 				continue
 			}
