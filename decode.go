@@ -33,7 +33,7 @@ var decode = &cli.Command{
 	},
 	ArgsUsage: "<npub | nprofile | nip05 | nevent | naddr | nsec>",
 	Action: func(c *cli.Context) error {
-		for input := range getStdinLinesOrFirstArgument(c) {
+		for input := range getStdinLinesOrFirstArgument(c.Args().First()) {
 			if strings.HasPrefix(input, "nostr:") {
 				input = input[6:]
 			}
