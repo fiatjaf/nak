@@ -48,6 +48,11 @@ example:
 			Name:  "connect",
 			Usage: "sign event using NIP-46, expects a bunker://... URL",
 		},
+		&cli.StringFlag{
+			Name:        "connect-as",
+			Usage:       "private key to when communicating with the bunker given on --connect",
+			DefaultText: "a random key",
+		},
 		&cli.BoolFlag{
 			Name:  "envelope",
 			Usage: "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",

@@ -134,7 +134,12 @@ func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.Bunker
 	var err error
 
 	if bunkerURL := c.String("connect"); bunkerURL != "" {
-		clientKey := nostr.GeneratePrivateKey()
+		clientKey := c.String("connect-as")
+		if clientKey != "" {
+			clientKey = strings.Repeat("0", 64-len(clientKey)) + clientKey
+		} else {
+			clientKey = nostr.GeneratePrivateKey()
+		}
 		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil)
 		return "", bunker, err
 	}
