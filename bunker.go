@@ -56,7 +56,7 @@ var bunker = &cli.Command{
 		}
 
 		// gather the secret key
-		sec, err := gatherSecretKeyFromArguments(c)
+		sec, _, err := gatherSecretKeyOrBunkerFromArguments(c)
 		if err != nil {
 			return err
 		}

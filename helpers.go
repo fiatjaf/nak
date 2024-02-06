@@ -13,6 +13,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/nbd-wtf/go-nostr/nip49"
 	"github.com/urfave/cli/v2"
 )
@@ -129,35 +130,41 @@ func exitIfLineProcessingError(c *cli.Context) {
 	}
 }
 
-func gatherSecretKeyFromArguments(c *cli.Context) (string, error) {
+func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.BunkerClient, error) {
 	var err error
+
+	if bunkerURL := c.String("connect"); bunkerURL != "" {
+		clientKey := nostr.GeneratePrivateKey()
+		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil)
+		return "", bunker, err
+	}
 	sec := c.String("sec")
 	if c.Bool("prompt-sec") {
 		if isPiped() {
-			return "", fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
+			return "", nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
 		}
 		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
-			return "", fmt.Errorf("failed to get secret key: %w", err)
+			return "", nil, fmt.Errorf("failed to get secret key: %w", err)
 		}
 	}
 	if strings.HasPrefix(sec, "ncryptsec1") {
 		sec, err = promptDecrypt(sec)
 		if err != nil {
-			return "", fmt.Errorf("failed to decrypt: %w", err)
+			return "", nil, fmt.Errorf("failed to decrypt: %w", err)
 		}
 	} else if bsec, err := hex.DecodeString(strings.Repeat("0", 64-len(sec)) + sec); err == nil {
 		sec = hex.EncodeToString(bsec)
 	} else if prefix, hexvalue, err := nip19.Decode(sec); err != nil {
-		return "", fmt.Errorf("invalid nsec: %w", err)
+		return "", nil, fmt.Errorf("invalid nsec: %w", err)
 	} else if prefix == "nsec" {
 		sec = hexvalue.(string)
 	}
 
 	if ok := nostr.IsValid32ByteHex(sec); !ok {
-		return "", fmt.Errorf("invalid secret key")
+		return "", nil, fmt.Errorf("invalid secret key")
 	}
-	return sec, nil
+	return sec, nil, nil
 }
 
 func promptDecrypt(ncryptsec1 string) (string, error) {

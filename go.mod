@@ -9,7 +9,7 @@ require (
 	github.com/fatih/color v1.16.0
 	github.com/mailru/easyjson v0.7.7
 	github.com/manifoldco/promptui v0.9.0
-	github.com/nbd-wtf/go-nostr v0.28.2
+	github.com/nbd-wtf/go-nostr v0.28.4
 	github.com/nbd-wtf/nostr-sdk v0.0.5
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d

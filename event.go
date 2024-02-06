@@ -44,6 +44,10 @@ example:
 			Name:  "prompt-sec",
 			Usage: "prompt the user to paste a hex or nsec with which to sign the event",
 		},
+		&cli.StringFlag{
+			Name:  "connect",
+			Usage: "sign event using NIP-46, expects a bunker://... URL",
+		},
 		&cli.BoolFlag{
 			Name:  "envelope",
 			Usage: "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
@@ -124,8 +128,7 @@ example:
 			}
 		}()
 
-		// gather the secret key
-		sec, err := gatherSecretKeyFromArguments(c)
+		sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(c)
 		if err != nil {
 			return err
 		}
@@ -215,7 +218,11 @@ example:
 			}
 
 			if evt.Sig == "" || mustRehashAndResign {
-				if err := evt.Sign(sec); err != nil {
+				if bunker != nil {
+					if err := bunker.SignEvent(c.Context, &evt); err != nil {
+						return fmt.Errorf("failed to sign with bunker: %w", err)
+					}
+				} else if err := evt.Sign(sec); err != nil {
 					return fmt.Errorf("error signing with provided key: %w", err)
 				}
 			}
@@ -252,11 +259,24 @@ example:
 					}
 
 					// error publishing
-					if strings.HasPrefix(err.Error(), "msg: auth-required:") && sec != "" && doAuth {
+					if strings.HasPrefix(err.Error(), "msg: auth-required:") && (sec != "" || bunker != nil) && doAuth {
 						// if the relay is requesting auth and we can auth, let's do it
-						pk, _ := nostr.GetPublicKey(sec)
+						var pk string
+						if bunker != nil {
+							pk, err = bunker.GetPublicKey(c.Context)
+							if err != nil {
+								return fmt.Errorf("failed to get public key from bunker: %w", err)
+							}
+						} else {
+							pk, _ = nostr.GetPublicKey(sec)
+						}
 						log("performing auth as %s... ", pk)
-						if err := relay.Auth(c.Context, func(evt *nostr.Event) error { return evt.Sign(sec) }); err == nil {
+						if err := relay.Auth(c.Context, func(evt *nostr.Event) error {
+							if bunker != nil {
+								return bunker.SignEvent(c.Context, evt)
+							}
+							return evt.Sign(sec)
+						}); err == nil {
 							// try to publish again, but this time don't try to auth again
 							doAuth = false
 							goto publish

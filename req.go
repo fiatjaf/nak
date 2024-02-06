@@ -113,6 +113,10 @@ example:
 			Name:  "prompt-sec",
 			Usage: "prompt the user to paste a hex or nsec with which to sign the AUTH challenge",
 		},
+		&cli.StringFlag{
+			Name:  "connect",
+			Usage: "sign AUTH using NIP-46, expects a bunker://... URL",
+		},
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(c *cli.Context) error {
@@ -124,13 +128,27 @@ example:
 				if !c.Bool("auth") {
 					return fmt.Errorf("auth not authorized")
 				}
-				sec, err := gatherSecretKeyFromArguments(c)
+				sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(c)
 				if err != nil {
 					return err
 				}
-				pk, _ := nostr.GetPublicKey(sec)
+
+				var pk string
+				if bunker != nil {
+					pk, err = bunker.GetPublicKey(c.Context)
+					if err != nil {
+						return fmt.Errorf("failed to get public key from bunker: %w", err)
+					}
+				} else {
+					pk, _ = nostr.GetPublicKey(sec)
+				}
 				log("performing auth as %s...\n", pk)
-				return evt.Sign(sec)
+
+				if bunker != nil {
+					return bunker.SignEvent(c.Context, evt)
+				} else {
+					return evt.Sign(sec)
+				}
 			}))
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
