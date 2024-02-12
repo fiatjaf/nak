@@ -20,9 +20,6 @@ import (
 
 const (
 	LINE_PROCESSING_ERROR = iota
-
-	BOLD_ON  = "\033[1m"
-	BOLD_OFF = "\033[21m"
 )
 
 var log = func(msg string, args ...any) {

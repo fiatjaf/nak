@@ -8,8 +8,7 @@ require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/fatih/color v1.16.0
 	github.com/mailru/easyjson v0.7.7
-	github.com/manifoldco/promptui v0.9.0
-	github.com/nbd-wtf/go-nostr v0.28.4
+	github.com/nbd-wtf/go-nostr v0.28.6
 	github.com/nbd-wtf/nostr-sdk v0.0.5
 	github.com/urfave/cli/v2 v2.25.7
 	golang.org/x/exp v0.0.0-20231006140011-7918f672742d
@@ -19,6 +18,8 @@ require (
 	github.com/btcsuite/btcd/btcec/v2 v2.3.2 // indirect
 	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.0.2 // indirect
+	github.com/chzyer/logex v1.1.10 // indirect
+	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/cpuguy83/go-md2man/v2 v2.0.2 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.2.0 // indirect

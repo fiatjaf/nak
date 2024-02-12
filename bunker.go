@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"os"
 
-	"github.com/manifoldco/promptui"
+	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
@@ -65,12 +65,12 @@ var bunker = &cli.Command{
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
-		log("listening at %s%v%s:\n  %spubkey:%s %s\n  %snpub:%s %s\n  %sconnection code:%s %s\n  %sbunker:%s %s\n\n",
-			BOLD_ON, relayURLs, BOLD_OFF,
-			BOLD_ON, BOLD_OFF, pubkey,
-			BOLD_ON, BOLD_OFF, npub,
-			BOLD_ON, BOLD_OFF, fmt.Sprintf("%s#secret?%s", npub, qs.Encode()),
-			BOLD_ON, BOLD_OFF, fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode()),
+		bold := color.New(color.Bold).Sprint
+		log("listening at %v:\n  pubkey: %s \n  npub: %s\n  bunker: %s\n\n",
+			bold(relayURLs),
+			bold(pubkey),
+			bold(npub),
+			bold(fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())),
 		)
 
 		alwaysYes := c.Bool("yes")
@@ -93,15 +93,19 @@ var bunker = &cli.Command{
 			}
 
 			jreq, _ := json.MarshalIndent(req, "  ", "  ")
-			log("- got request from '%s': %s\n", ie.Event.PubKey, string(jreq))
+			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey), string(jreq))
 			jresp, _ := json.MarshalIndent(resp, "  ", "  ")
 			log("~ responding with %s\n", string(jresp))
 
 			if alwaysYes || harmless || askProceed(ie.Event.PubKey) {
-				if err := ie.Relay.Publish(c.Context, eventResponse); err == nil {
-					log("* sent response!\n")
-				} else {
-					log("* failed to send response: %s\n", err)
+				for _, relayURL := range relayURLs {
+					if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
+						if err := relay.Publish(c.Context, eventResponse); err == nil {
+							log("* sent response through %s\n", relay.URL)
+						} else {
+							log("* failed to send response: %s\n", err)
+						}
+					}
 				}
 			}
 		}
@@ -117,21 +121,23 @@ func askProceed(source string) bool {
 		return true
 	}
 
-	prompt := promptui.Select{
-		Label: "proceed?",
-		Items: []string{
-			"no",
-			"yes",
-			"always from this source",
-		},
-	}
-	n, _, _ := prompt.Run()
-	switch n {
-	case 0:
+	fmt.Fprintf(os.Stderr, "request from %s:\n", color.New(color.Bold, color.FgBlue).Sprint(source))
+	res, err := ask("  proceed to fulfill this request? (yes/no/always from this) (y/n/a): ", "",
+		func(answer string) bool {
+			if answer != "y" && answer != "n" && answer != "a" {
+				return true
+			}
+			return false
+		})
+	if err != nil {
 		return false
-	case 1:
+	}
+	switch res {
+	case "n":
+		return false
+	case "y":
 		return true
-	case 2:
+	case "a":
 		allowedSources = append(allowedSources, source)
 		return true
 	}
