@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"sync"
 
 	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
@@ -85,10 +86,12 @@ var bunker = &cli.Command{
 		})
 
 		signer := nip46.NewStaticKeySigner(sec)
+		handlerWg := sync.WaitGroup{}
+		printLock := sync.Mutex{}
 		for ie := range events {
 			req, resp, eventResponse, harmless, err := signer.HandleRequest(ie.Event)
 			if err != nil {
-				log("< failed to handle request from %s: %s", ie.Event.PubKey, err.Error())
+				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
 				continue
 			}
 
@@ -98,15 +101,23 @@ var bunker = &cli.Command{
 			log("~ responding with %s\n", string(jresp))
 
 			if alwaysYes || harmless || askProceed(ie.Event.PubKey) {
+				handlerWg.Add(len(relayURLs))
 				for _, relayURL := range relayURLs {
-					if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
-						if err := relay.Publish(c.Context, eventResponse); err == nil {
-							log("* sent response through %s\n", relay.URL)
-						} else {
-							log("* failed to send response: %s\n", err)
+					go func(relayURL string) {
+						if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
+							err := relay.Publish(c.Context, eventResponse)
+							printLock.Lock()
+							if err == nil {
+								log("* sent response through %s\n", relay.URL)
+							} else {
+								log("* failed to send response: %s\n", err)
+							}
+							printLock.Unlock()
+							handlerWg.Done()
 						}
-					}
+					}(relayURL)
 				}
+				handlerWg.Wait()
 			}
 		}
 
