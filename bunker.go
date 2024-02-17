@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/url"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
@@ -66,13 +68,18 @@ var bunker = &cli.Command{
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
+		bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())
 		bold := color.New(color.Bold).Sprint
-		log("listening at %v:\n  pubkey: %s \n  npub: %s\n  bunker: %s\n\n",
-			bold(relayURLs),
-			bold(pubkey),
-			bold(npub),
-			bold(fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())),
-		)
+
+		printBunkerInfo := func() {
+			log("listening at %v:\n  pubkey: %s \n  npub: %s\n  bunker: %s\n\n",
+				bold(relayURLs),
+				bold(pubkey),
+				bold(npub),
+				bold(bunkerURI),
+			)
+		}
+		printBunkerInfo()
 
 		alwaysYes := c.Bool("yes")
 
@@ -88,7 +95,16 @@ var bunker = &cli.Command{
 		signer := nip46.NewStaticKeySigner(sec)
 		handlerWg := sync.WaitGroup{}
 		printLock := sync.Mutex{}
+
+		// just a gimmick
+		var cancelPreviousBunkerInfoPrint context.CancelFunc
+		_, cancel := context.WithCancel(c.Context)
+		cancelPreviousBunkerInfoPrint = cancel
+
 		for ie := range events {
+			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
+
+			// handle the NIP-46 request event
 			req, resp, eventResponse, harmless, err := signer.HandleRequest(ie.Event)
 			if err != nil {
 				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
@@ -119,6 +135,21 @@ var bunker = &cli.Command{
 				}
 				handlerWg.Wait()
 			}
+
+			// just after handling one request we trigger this
+			go func() {
+				ctx, cancel := context.WithCancel(c.Context)
+				defer cancel()
+				cancelPreviousBunkerInfoPrint = cancel
+				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
+				// but we will only do if the bunker is inactive for more than 5 minutes
+				select {
+				case <-ctx.Done():
+				case <-time.After(time.Minute * 5):
+					fmt.Fprintf(os.Stderr, "\n")
+					printBunkerInfo()
+				}
+			}()
 		}
 
 		return nil
