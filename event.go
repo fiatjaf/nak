@@ -182,9 +182,8 @@ example:
 					// tags may also contain extra elements separated with a ";"
 					tagValues := strings.Split(tagValue, ";")
 					tag = append(tag, tagValues...)
-					// ~
-					tags = tags.AppendUnique(tag)
 				}
+				tags = tags.AppendUnique(tag)
 			}
 
 			for _, etag := range c.StringSlice("e") {
