@@ -101,11 +101,16 @@ var bunker = &cli.Command{
 		_, cancel := context.WithCancel(c.Context)
 		cancelPreviousBunkerInfoPrint = cancel
 
+		// asking user for authorization
+		signer.AuthorizeRequest = func(harmless bool, from string) bool {
+			return alwaysYes || harmless || askProceed(from)
+		}
+
 		for ie := range events {
 			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
 
 			// handle the NIP-46 request event
-			req, resp, eventResponse, harmless, err := signer.HandleRequest(ie.Event)
+			req, resp, eventResponse, err := signer.HandleRequest(ie.Event)
 			if err != nil {
 				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
 				continue
@@ -116,25 +121,23 @@ var bunker = &cli.Command{
 			jresp, _ := json.MarshalIndent(resp, "  ", "  ")
 			log("~ responding with %s\n", string(jresp))
 
-			if alwaysYes || harmless || askProceed(ie.Event.PubKey) {
-				handlerWg.Add(len(relayURLs))
-				for _, relayURL := range relayURLs {
-					go func(relayURL string) {
-						if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
-							err := relay.Publish(c.Context, eventResponse)
-							printLock.Lock()
-							if err == nil {
-								log("* sent response through %s\n", relay.URL)
-							} else {
-								log("* failed to send response: %s\n", err)
-							}
-							printLock.Unlock()
-							handlerWg.Done()
+			handlerWg.Add(len(relayURLs))
+			for _, relayURL := range relayURLs {
+				go func(relayURL string) {
+					if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
+						err := relay.Publish(c.Context, eventResponse)
+						printLock.Lock()
+						if err == nil {
+							log("* sent response through %s\n", relay.URL)
+						} else {
+							log("* failed to send response: %s\n", err)
 						}
-					}(relayURL)
-				}
-				handlerWg.Wait()
+						printLock.Unlock()
+						handlerWg.Done()
+					}
+				}(relayURL)
 			}
+			handlerWg.Wait()
 
 			// just after handling one request we trigger this
 			go func() {

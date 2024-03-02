@@ -142,7 +142,9 @@ func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.Bunker
 		} else {
 			clientKey = nostr.GeneratePrivateKey()
 		}
-		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil)
+		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil, func(s string) {
+			fmt.Fprintf(os.Stderr, color.CyanString("[nip46]: open the following URL: %s"), s)
+		})
 		return "", bunker, err
 	}
 	sec := c.String("sec")
