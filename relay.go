@@ -16,22 +16,24 @@ var relay = &cli.Command{
 		nak relay nostr.wine`,
 	ArgsUsage: "<relay-url>",
 	Action: func(c *cli.Context) error {
-		url := c.Args().First()
-		if url == "" {
-			return fmt.Errorf("specify the <relay-url>")
-		}
+		for url := range getStdinLinesOrArguments(c.Args()) {
+			if url == "" {
+				return fmt.Errorf("specify the <relay-url>")
+			}
 
-		if !strings.HasPrefix(url, "wss://") && !strings.HasPrefix(url, "ws://") {
-			url = "wss://" + url
-		}
+			if !strings.HasPrefix(url, "wss://") && !strings.HasPrefix(url, "ws://") {
+				url = "wss://" + url
+			}
 
-		info, err := nip11.Fetch(c.Context, url)
-		if err != nil {
-			return fmt.Errorf("failed to fetch '%s' information document: %w", url, err)
-		}
+			info, err := nip11.Fetch(c.Context, url)
+			if err != nil {
+				lineProcessingError(c, "failed to fetch '%s' information document: %w", url, err)
+				continue
+			}
 
-		pretty, _ := json.MarshalIndent(info, "", "  ")
-		stdout(string(pretty))
+			pretty, _ := json.MarshalIndent(info, "", "  ")
+			stdout(string(pretty))
+		}
 		return nil
 	},
 }

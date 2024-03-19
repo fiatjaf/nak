@@ -45,13 +45,21 @@ func getStdinLinesOrBlank() chan string {
 	}
 }
 
-func getStdinLinesOrFirstArgument(arg string) chan string {
+func getStdinLinesOrArguments(args cli.Args) chan string {
+	return getStdinLinesOrArgumentsFromSlice(args.Slice())
+}
+
+func getStdinLinesOrArgumentsFromSlice(args []string) chan string {
 	// try the first argument
-	if arg != "" {
-		single := make(chan string, 1)
-		single <- arg
-		close(single)
-		return single
+	if len(args) > 0 {
+		argsCh := make(chan string, 1)
+		go func() {
+			for _, arg := range args {
+				argsCh <- arg
+			}
+			close(argsCh)
+		}()
+		return argsCh
 	}
 
 	// try the stdin

@@ -15,7 +15,7 @@ var verify = &cli.Command{
 
 it outputs nothing if the verification is successful.`,
 	Action: func(c *cli.Context) error {
-		for stdinEvent := range getStdinLinesOrFirstArgument(c.Args().First()) {
+		for stdinEvent := range getStdinLinesOrArguments(c.Args()) {
 			evt := nostr.Event{}
 			if stdinEvent != "" {
 				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {

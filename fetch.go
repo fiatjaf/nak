@@ -31,7 +31,7 @@ var fetch = &cli.Command{
 			})
 		}()
 
-		for code := range getStdinLinesOrFirstArgument(c.Args().First()) {
+		for code := range getStdinLinesOrArguments(c.Args()) {
 			filter := nostr.Filter{}
 
 			prefix, value, err := nip19.Decode(code)

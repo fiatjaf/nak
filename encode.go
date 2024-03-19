@@ -29,7 +29,7 @@ var encode = &cli.Command{
 			Name:  "npub",
 			Usage: "encode a hex public key into bech32 'npub' format",
 			Action: func(c *cli.Context) error {
-				for target := range getStdinLinesOrFirstArgument(c.Args().First()) {
+				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValidPublicKey(target); !ok {
 						lineProcessingError(c, "invalid public key: %s", target)
 						continue
@@ -50,7 +50,7 @@ var encode = &cli.Command{
 			Name:  "nsec",
 			Usage: "encode a hex private key into bech32 'nsec' format",
 			Action: func(c *cli.Context) error {
-				for target := range getStdinLinesOrFirstArgument(c.Args().First()) {
+				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
 						lineProcessingError(c, "invalid private key: %s", target)
 						continue
@@ -78,7 +78,7 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				for target := range getStdinLinesOrFirstArgument(c.Args().First()) {
+				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
 						lineProcessingError(c, "invalid public key: %s", target)
 						continue
@@ -115,7 +115,7 @@ var encode = &cli.Command{
 				},
 			},
 			Action: func(c *cli.Context) error {
-				for target := range getStdinLinesOrFirstArgument(c.Args().First()) {
+				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
 						lineProcessingError(c, "invalid event id: %s", target)
 						continue
@@ -212,7 +212,7 @@ var encode = &cli.Command{
 			Name:  "note",
 			Usage: "generate note1 event codes (not recommended)",
 			Action: func(c *cli.Context) error {
-				for target := range getStdinLinesOrFirstArgument(c.Args().First()) {
+				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
 						lineProcessingError(c, "invalid event id: %s", target)
 						continue
