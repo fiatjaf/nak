@@ -24,6 +24,7 @@ var app = &cli.App{
 		verify,
 		relay,
 		bunker,
+		acid,
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
