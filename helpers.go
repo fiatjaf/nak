@@ -23,7 +23,7 @@ const (
 )
 
 var log = func(msg string, args ...any) {
-	fmt.Fprintf(os.Stderr, msg, args...)
+	fmt.Fprintf(color.Error, msg, args...)
 }
 
 var stdout = fmt.Println
@@ -151,7 +151,7 @@ func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.Bunker
 			clientKey = nostr.GeneratePrivateKey()
 		}
 		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil, func(s string) {
-			fmt.Fprintf(os.Stderr, color.CyanString("[nip46]: open the following URL: %s"), s)
+			fmt.Fprintf(color.Error, color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
 		return "", bunker, err
 	}
@@ -205,7 +205,7 @@ func promptDecrypt(ncryptsec1 string) (string, error) {
 
 func ask(msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
 	return _ask(&readline.Config{
-		Stdout:                 os.Stderr,
+		Stdout:                 color.Error,
 		Prompt:                 color.YellowString(msg),
 		InterruptPrompt:        "^C",
 		DisableAutoSaveHistory: true,
@@ -214,7 +214,7 @@ func ask(msg string, defaultValue string, shouldAskAgain func(answer string) boo
 
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
 	config := &readline.Config{
-		Stdout:                 os.Stderr,
+		Stdout:                 color.Error,
 		Prompt:                 color.YellowString(msg),
 		InterruptPrompt:        "^C",
 		DisableAutoSaveHistory: true,
