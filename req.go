@@ -246,6 +246,8 @@ example:
 			}
 			if limit := c.Int("limit"); limit != 0 {
 				filter.Limit = limit
+			} else if c.IsSet("limit") || c.Bool("stream") {
+				filter.LimitZero = true
 			}
 
 			if len(relayUrls) > 0 {
