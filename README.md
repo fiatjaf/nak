@@ -16,7 +16,7 @@ take a look at the help text that comes in it to learn all possibilities, but he
 
 ### make a nostr event with custom content and tags, sign it with a different key and publish it to two relays
 ```shell
-~> nak event --sec 02 -c 'good morning' --tag t=gm wss://nostr-pub.wellorder.net wss://relay.damus.io
+~> nak event --sec 02 -c 'good morning' --tag t=gm nostr-pub.wellorder.net relay.damus.io
 {"id":"e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698632753,"kind":1,"tags":[["t","gm"]],"content":"good morning","sig":"5687c1a97066c349cb3bde0c0719fd1652a13403ba6aca7557b646307ee6718528cd86989db08bf6a7fd04bea0b0b87c1dd1b78c2d21b80b80eebab7f40b8916"}
 publishing to wss://nostr-pub.wellorder.net... success.
 publishing to wss://relay.damus.io... success.
@@ -24,7 +24,7 @@ publishing to wss://relay.damus.io... success.
 
 ### query a bunch of relays for a tag with a limit of 2 for each, print their content
 ```shell
-~> nak req -k 1 -t t=gm -l 2 wss://nostr.mom wss://nostr.wine wss://nostr-pub.wellorder.net | jq .content
+~> nak req -k 1 -t t=gm -l 2 nostr.mom nostr.wine nostr-pub.wellorder.net | jq .content
 "#GM, you sovereign savage #freeple of the #nostrverse. Let's cause some #nostroversy. "
 "ITM slaves!\n#gm https://image.nostr.build/cbbcdf80bfc302a6678ecf9387c87d87deca3e0e288a12e262926c34feb3f6aa.jpg "
 "good morning"
@@ -34,13 +34,13 @@ publishing to wss://relay.damus.io... success.
 
 ### decode a nip19 note1 code, add a relay hint, encode it back to nevent1
 ```shell
-~> nak decode note1ttnnrw78wy0hs5fa59yj03yvcu2r4y0xetg9vh7uf4em39n604vsyp37f2 | jq -r .id | nak encode nevent -r wss://nostr.zbd.gg
+~> nak decode note1ttnnrw78wy0hs5fa59yj03yvcu2r4y0xetg9vh7uf4em39n604vsyp37f2 | jq -r .id | nak encode nevent -r nostr.zbd.gg
 nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw3ezu7nzvshxwec8zw8h7
 ~> nak decode nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw3ezu7nzvshxwec8zw8h7
 {
   "id": "5ae731bbc7711f78513da14927c48cc7143a91e6cad0565fdc4d73b8967a7d59",
   "relays": [
-    "wss://nostr.zbd.gg"
+    "nostr.zbd.gg"
   ]
 }
 ```
@@ -61,7 +61,7 @@ nak fetch nevent1qqs2e3k48vtrkzjm8vvyzcmsmkf58unrxtq2k4h5yspay6vhcqm4wqcpz9mhxue
 
 ### republish an event from one relay to multiple others
 ```shell
-~> nak req -i e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a wss://nostr.wine/ wss://nostr-pub.wellorder.net | nak event wss://nostr.wine wss://offchain.pub wss://public.relaying.io wss://eden.nostr.land wss://atlas.nostr.land wss://relayable.org
+~> nak req -i e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a nostr.wine/ nostr-pub.wellorder.net | nak event nostr.wine offchain.pub public.relaying.io eden.nostr.land atlas.nostr.land relayable.org
 {"id":"e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698632753,"kind":1,"tags":[["t","gm"]],"content":"good morning","sig":"5687c1a97066c349cb3bde0c0719fd1652a13403ba6aca7557b646307ee6718528cd86989db08bf6a7fd04bea0b0b87c1dd1b78c2d21b80b80eebab7f40b8916"}
 publishing to wss://nostr.wine... failed: msg: blocked: not an active paid member
 publishing to wss://offchain.pub... success.
@@ -79,7 +79,7 @@ invalid .id, expected 05bd99d54cb835f427e0092c4275ee44c7ff51219eff417c19f70c9e2c
 
 ### fetch all quoted events by a given pubkey in their last 100 notes
 ```shell
-nak req -l 100 -k 1 -a 2edbcea694d164629854a52583458fd6d965b161e3c48b57d3aff01940558884 wss://relay.damus.io | jq -r '.content | match("nostr:((note1|nevent1)[a-z0-9]+)";"g") | .captures[0].string' | nak decode | jq -cr '{ids: [.id]}' | nak req wss://relay.damus.io
+nak req -l 100 -k 1 -a 2edbcea694d164629854a52583458fd6d965b161e3c48b57d3aff01940558884 relay.damus.io | jq -r '.content | match("nostr:((note1|nevent1)[a-z0-9]+)";"g") | .captures[0].string' | nak decode | jq -cr '{ids: [.id]}' | nak req relay.damus.io
 ```
 
 ## Contributing to this repository
