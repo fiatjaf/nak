@@ -1,9 +1,12 @@
 package main
 
 import (
+	"encoding/hex"
 	"fmt"
 	"strings"
 
+	"github.com/btcsuite/btcd/btcec/v2"
+	"github.com/btcsuite/btcd/btcec/v2/schnorr/musig2"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip49"
@@ -19,6 +22,7 @@ var key = &cli.Command{
 		public,
 		encrypt,
 		decrypt,
+		combine,
 	},
 }
 
@@ -39,7 +43,7 @@ var public = &cli.Command{
 	Description: ``,
 	ArgsUsage:   "[secret]",
 	Action: func(c *cli.Context) error {
-		for sec := range getSecretKeyFromStdinLinesOrSlice(c, c.Args().Slice()) {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(c, c.Args().Slice()) {
 			pubkey, err := nostr.GetPublicKey(sec)
 			if err != nil {
 				lineProcessingError(c, "failed to derive public key: %s", err)
@@ -78,7 +82,7 @@ var encrypt = &cli.Command{
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for sec := range getSecretKeyFromStdinLinesOrSlice(c, []string{content}) {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(c, []string{content}) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
 				lineProcessingError(c, "failed to encrypt: %s", err)
@@ -122,7 +126,38 @@ var decrypt = &cli.Command{
 	},
 }
 
-func getSecretKeyFromStdinLinesOrSlice(c *cli.Context, keys []string) chan string {
+var combine = &cli.Command{
+	Name:        "combine",
+	Usage:       "combines two or more pubkeys using musig2",
+	Description: `The public keys must have 33 bytes (66 characters hex), with the 02 or 03 prefix. It is common in Nostr to drop that first byte, so you'll have to derive the public keys again from the private keys in order to get it back.`,
+	ArgsUsage:   "[pubkey...]",
+	Action: func(c *cli.Context) error {
+		keys := make([]*btcec.PublicKey, 0, 5)
+		for _, pub := range c.Args().Slice() {
+			keyb, err := hex.DecodeString(pub)
+			if err != nil {
+				return fmt.Errorf("error parsing key %s: %w", pub, err)
+			}
+
+			pubk, err := btcec.ParsePubKey(keyb)
+			if err != nil {
+				return fmt.Errorf("error parsing key %s: %w", pub, err)
+			}
+
+			keys = append(keys, pubk)
+		}
+
+		agg, _, _, err := musig2.AggregateKeys(keys, true)
+		if err != nil {
+			return err
+		}
+
+		fmt.Println(hex.EncodeToString(agg.FinalKey.X().Bytes()))
+		return nil
+	},
+}
+
+func getSecretKeysFromStdinLinesOrSlice(c *cli.Context, keys []string) chan string {
 	ch := make(chan string)
 	go func() {
 		for sec := range getStdinLinesOrArgumentsFromSlice(keys) {
@@ -138,7 +173,7 @@ func getSecretKeyFromStdinLinesOrSlice(c *cli.Context, keys []string) chan strin
 				sec = data.(string)
 			}
 			if !nostr.IsValid32ByteHex(sec) {
-				lineProcessingError(c, "invalid hex secret key")
+				lineProcessingError(c, "invalid hex key")
 				continue
 			}
 			ch <- sec
