@@ -251,7 +251,7 @@ func eventToCliArgs(evt *nostr.Event) string {
 			b.WriteString(tag[1])
 			if len(tag) > 2 {
 				for _, item := range tag[2:] {
-					b.WriteString(",")
+					b.WriteString(";")
 					b.WriteString(item)
 				}
 			}
