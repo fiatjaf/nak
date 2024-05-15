@@ -56,25 +56,25 @@ example:
 		// ~ these args are only for the convoluted musig2 signing process
 		// they will be generally copy-shared-pasted across some manual coordination method between participants
 		&cli.UintFlag{
-			Name:        "musig2",
+			Name:        "musig",
 			Usage:       "number of signers to use for musig2",
 			Value:       1,
 			DefaultText: "1 -- i.e. do not use musig2 at all",
 		},
 		&cli.StringSliceFlag{
-			Name:   "musig2-pubkey",
+			Name:   "musig-pubkey",
 			Hidden: true,
 		},
 		&cli.StringFlag{
-			Name:   "musig2-nonce-secret",
+			Name:   "musig-nonce-secret",
 			Hidden: true,
 		},
 		&cli.StringSliceFlag{
-			Name:   "musig2-nonce",
+			Name:   "musig-nonce",
 			Hidden: true,
 		},
 		&cli.StringSliceFlag{
-			Name:   "musig2-partial",
+			Name:   "musig-partial",
 			Hidden: true,
 		},
 		// ~~~
@@ -251,15 +251,15 @@ example:
 					if err := bunker.SignEvent(c.Context, &evt); err != nil {
 						return fmt.Errorf("failed to sign with bunker: %w", err)
 					}
-				} else if numSigners := c.Uint("musig2"); numSigners > 1 && sec != "" {
-					pubkeys := c.StringSlice("musig2-pubkey")
-					secNonce := c.String("musig2-nonce-secret")
-					pubNonces := c.StringSlice("musig2-nonce")
-					partialSigs := c.StringSlice("musig2-partial")
+				} else if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
+					pubkeys := c.StringSlice("musig-pubkey")
+					secNonce := c.String("musig-nonce-secret")
+					pubNonces := c.StringSlice("musig-nonce")
+					partialSigs := c.StringSlice("musig-partial")
 					signed, err := performMusig(c.Context,
 						sec, &evt, int(numSigners), pubkeys, pubNonces, secNonce, partialSigs)
 					if err != nil {
-						return fmt.Errorf("musig2 error: %w", err)
+						return fmt.Errorf("musig error: %w", err)
 					}
 					if !signed {
 						// we haven't finished signing the event, so the users still have to do more steps

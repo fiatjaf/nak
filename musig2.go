@@ -110,7 +110,7 @@ func performMusig(
 		if err != nil {
 			return false, err
 		}
-		fmt.Fprintf(os.Stderr, "the following code should be saved secretly until the next step an included with --musig2-nonce-secret:\n")
+		fmt.Fprintf(os.Stderr, "the following code should be saved secretly until the next step an included with --musig-nonce-secret:\n")
 		fmt.Fprintf(os.Stderr, "%s\n\n", base64.StdEncoding.EncodeToString(nonce.SecNonce[:]))
 
 		knownNonces = append(knownNonces, nonce.PubNonce)
@@ -122,6 +122,8 @@ func performMusig(
 	if comb, err := mctx.CombinedKey(); err != nil {
 		return false, fmt.Errorf("failed to combine keys (after %d signers): %w", len(knownSigners), err)
 	} else {
+		evt.PubKey = hex.EncodeToString(comb.SerializeCompressed()[1:])
+		evt.ID = evt.GetID()
 		fmt.Fprintf(os.Stderr, "combined key: %x\n\n", comb.SerializeCompressed())
 	}
 
@@ -139,11 +141,11 @@ func performMusig(
 		// otherwise we have included our own nonce in the parameters (from copypasting) but must
 		// also include the secret nonce that wasn't shared with peers
 		if secNonce == "" {
-			return false, fmt.Errorf("missing --musig2-nonce-secret value")
+			return false, fmt.Errorf("missing --musig-nonce-secret value")
 		}
 		secNonceB, err := base64.StdEncoding.DecodeString(secNonce)
 		if err != nil {
-			return false, fmt.Errorf("invalid --musig2-nonce-secret: %w", err)
+			return false, fmt.Errorf("invalid --musig-nonce-secret: %w", err)
 		}
 		var secNonce97 [97]byte
 		copy(secNonce97[:], secNonceB)
@@ -214,10 +216,10 @@ func printPublicCommandForNextPeer(
 ) {
 	maybeNonceSecret := ""
 	if includeNonceSecret {
-		maybeNonceSecret = " --musig2-nonce-secret '<their-nonce-secret>'"
+		maybeNonceSecret = " --musig-nonce-secret '<insert-nonce-secret>'"
 	}
 
-	fmt.Fprintf(os.Stderr, "the next signer and they should call this on their side:\nnak event --sec <their-key> --musig2 %d %s%s%s%s%s\n",
+	fmt.Fprintf(os.Stderr, "the next signer and they should call this on their side:\nnak event --sec <insert-secret-key> --musig %d %s%s%s%s%s\n",
 		numSigners,
 		eventToCliArgs(evt),
 		signersToCliArgs(knownSigners),
@@ -262,10 +264,10 @@ func eventToCliArgs(evt *nostr.Event) string {
 
 func signersToCliArgs(knownSigners []*btcec.PublicKey) string {
 	b := strings.Builder{}
-	b.Grow(len(knownSigners) * (17 + 66))
+	b.Grow(len(knownSigners) * (16 + 66))
 
 	for _, signerPub := range knownSigners {
-		b.WriteString(" --musig2-pubkey ")
+		b.WriteString(" --musig-pubkey ")
 		b.WriteString(hex.EncodeToString(signerPub.SerializeCompressed()))
 	}
 
@@ -274,10 +276,10 @@ func signersToCliArgs(knownSigners []*btcec.PublicKey) string {
 
 func noncesToCliArgs(knownNonces [][66]byte) string {
 	b := strings.Builder{}
-	b.Grow(len(knownNonces) * (16 + 132))
+	b.Grow(len(knownNonces) * (15 + 132))
 
 	for _, nonce := range knownNonces {
-		b.WriteString(" --musig2-nonce ")
+		b.WriteString(" --musig-nonce ")
 		b.WriteString(hex.EncodeToString(nonce[:]))
 	}
 
@@ -286,10 +288,10 @@ func noncesToCliArgs(knownNonces [][66]byte) string {
 
 func partialSigsToCliArgs(knownPartialSigs []*musig2.PartialSignature) string {
 	b := strings.Builder{}
-	b.Grow(len(knownPartialSigs) * (18 + 64))
+	b.Grow(len(knownPartialSigs) * (17 + 64))
 
 	for _, partialSig := range knownPartialSigs {
-		b.WriteString(" --musig2-partial ")
+		b.WriteString(" --musig-partial ")
 		w := &bytes.Buffer{}
 		partialSig.Encode(w)
 		b.Write([]byte(hex.EncodeToString(w.Bytes())))
