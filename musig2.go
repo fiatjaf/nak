@@ -134,6 +134,7 @@ func performMusig(
 		if err != nil {
 			return false, fmt.Errorf("failed to create session as the last peer to include our key: %w", err)
 		}
+		knownNonces = append(knownNonces, session.PublicNonce())
 	} else {
 		// otherwise we have included our own nonce in the parameters (from copypasting) but must
 		// also include the secret nonce that wasn't shared with peers
@@ -157,13 +158,18 @@ func performMusig(
 
 	var noncesOk bool
 	for _, b66nonce := range knownNonces {
+		if b66nonce == session.PublicNonce() {
+			// don't add our own nonce
+			continue
+		}
+
 		noncesOk, err = session.RegisterPubNonce(b66nonce)
 		if err != nil {
 			return false, fmt.Errorf("failed to register nonce: %w", err)
 		}
 	}
 	if !noncesOk {
-		return false, fmt.Errorf("we've registered all the nonces we had but at least one is missing")
+		return false, fmt.Errorf("we've registered all the nonces we had but at least one is missing, this shouldn't happen")
 	}
 
 	// signing phase
@@ -172,7 +178,6 @@ func performMusig(
 	hash, _ := hex.DecodeString(id)
 	var msg32 [32]byte
 	copy(msg32[:], hash)
-	fmt.Println("signing over", hex.EncodeToString(msg32[:]))
 	partialSig, err := session.Sign(msg32) // this will already include our sig in the bundle
 	if err != nil {
 		return false, fmt.Errorf("failed to produce partial signature: %w", err)
@@ -212,7 +217,7 @@ func printPublicCommandForNextPeer(
 		maybeNonceSecret = " --musig2-nonce-secret '<their-nonce-secret>'"
 	}
 
-	fmt.Fprintf(os.Stderr, "the next signer and they should call this on their side:\nnak event --sec <their-key> --musig2 %d %s%s%s%s%s",
+	fmt.Fprintf(os.Stderr, "the next signer and they should call this on their side:\nnak event --sec <their-key> --musig2 %d %s%s%s%s%s\n",
 		numSigners,
 		eventToCliArgs(evt),
 		signersToCliArgs(knownSigners),

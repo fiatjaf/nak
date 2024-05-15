@@ -152,7 +152,7 @@ var combine = &cli.Command{
 			return err
 		}
 
-		fmt.Println(hex.EncodeToString(agg.FinalKey.X().Bytes()))
+		fmt.Println(hex.EncodeToString(agg.FinalKey.SerializeCompressed()))
 		return nil
 	},
 }
