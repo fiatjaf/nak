@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/url"
 	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -33,10 +34,15 @@ var bunker = &cli.Command{
 			Name:  "prompt-sec",
 			Usage: "prompt the user to paste a hex or nsec with which to sign the event",
 		},
-		&cli.BoolFlag{
-			Name:    "yes",
-			Aliases: []string{"y"},
-			Usage:   "always respond to any NIP-46 requests from anyone",
+		&cli.StringSliceFlag{
+			Name:    "authorized-secrets",
+			Aliases: []string{"s"},
+			Usage:   "secrets for which we will always respond",
+		},
+		&cli.StringSliceFlag{
+			Name:    "authorized-keys",
+			Aliases: []string{"k"},
+			Usage:   "pubkeys for which we will always respond",
 		},
 	},
 	Action: func(c *cli.Context) error {
@@ -63,32 +69,79 @@ var bunker = &cli.Command{
 		if err != nil {
 			return err
 		}
+
+		// other arguments
+		authorizedKeys := c.StringSlice("authorized-keys")
+		authorizedSecrets := c.StringSlice("authorized-secrets")
+
+		// this will be used to auto-authorize the next person who connects who isn't pre-authorized
+		// it will be stored
+		newSecret := randString(12)
+
+		// static information
 		pubkey, err := nostr.GetPublicKey(sec)
 		if err != nil {
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
-		bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())
 		bold := color.New(color.Bold).Sprint
+		italic := color.New(color.Italic).Sprint
 
+		// this function will be called every now and then
 		printBunkerInfo := func() {
-			log("listening at %v:\n  pubkey: %s \n  npub: %s\n  bunker: %s\n\n",
+			qs.Set("secret", newSecret)
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())
+
+			authorizedKeysStr := ""
+			if len(authorizedKeys) != 0 {
+				authorizedKeysStr = "\n  authorized keys:\n    - " + italic(strings.Join(authorizedKeys, "\n    - "))
+			}
+
+			authorizedSecretsStr := ""
+			if len(authorizedSecrets) != 0 {
+				authorizedSecretsStr = "\n  authorized secrets:\n    - " + italic(strings.Join(authorizedSecrets, "\n    - "))
+			}
+
+			preauthorizedFlags := ""
+			for _, k := range authorizedKeys {
+				preauthorizedFlags += " -k " + k
+			}
+			for _, s := range authorizedSecrets {
+				preauthorizedFlags += " -s " + s
+			}
+
+			secretKeyFlag := ""
+			if sec := c.String("sec"); sec != "" {
+				secretKeyFlag = "--sec " + sec
+			}
+
+			restartCommand := fmt.Sprintf("nak bunker %s%s %s",
+				secretKeyFlag,
+				preauthorizedFlags,
+				strings.Join(relayURLs, " "),
+			)
+
+			log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
 				bold(relayURLs),
 				bold(pubkey),
 				bold(npub),
+				authorizedKeysStr,
+				authorizedSecretsStr,
+				color.CyanString(restartCommand),
 				bold(bunkerURI),
 			)
 		}
 		printBunkerInfo()
 
-		alwaysYes := c.Bool("yes")
-
 		// subscribe to relays
 		pool := nostr.NewSimplePool(c.Context)
+		now := nostr.Now()
 		events := pool.SubMany(c.Context, relayURLs, nostr.Filters{
 			{
-				Kinds: []int{24133},
-				Tags:  nostr.TagMap{"p": []string{pubkey}},
+				Kinds:     []int{nostr.KindNostrConnect},
+				Tags:      nostr.TagMap{"p": []string{pubkey}},
+				Since:     &now,
+				LimitZero: true,
 			},
 		})
 
@@ -102,8 +155,20 @@ var bunker = &cli.Command{
 		cancelPreviousBunkerInfoPrint = cancel
 
 		// asking user for authorization
-		signer.AuthorizeRequest = func(harmless bool, from string) bool {
-			return alwaysYes || harmless || askProceed(from)
+		signer.AuthorizeRequest = func(harmless bool, from string, secret string) bool {
+			if secret == newSecret {
+				// store this key
+				authorizedKeys = append(authorizedKeys, from)
+				// discard this and generate a new secret
+				newSecret = randString(12)
+				// print bunker info again after this
+				go func() {
+					time.Sleep(3 * time.Second)
+					printBunkerInfo()
+				}()
+			}
+
+			return harmless || slices.Contains(authorizedKeys, from) || slices.Contains(authorizedSecrets, secret)
 		}
 
 		for ie := range events {
@@ -157,35 +222,4 @@ var bunker = &cli.Command{
 
 		return nil
 	},
-}
-
-var allowedSources = make([]string, 0, 2)
-
-func askProceed(source string) bool {
-	if slices.Contains(allowedSources, source) {
-		return true
-	}
-
-	fmt.Fprintf(os.Stderr, "request from %s:\n", color.New(color.Bold, color.FgBlue).Sprint(source))
-	res, err := ask("  proceed to fulfill this request? (yes/no/always from this) (y/n/a): ", "",
-		func(answer string) bool {
-			if answer != "y" && answer != "n" && answer != "a" {
-				return true
-			}
-			return false
-		})
-	if err != nil {
-		return false
-	}
-	switch res {
-	case "n":
-		return false
-	case "y":
-		return true
-	case "a":
-		allowedSources = append(allowedSources, source)
-		return true
-	}
-
-	return false
 }

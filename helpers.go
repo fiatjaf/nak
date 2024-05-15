@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"math/rand"
 	"net/url"
 	"os"
 	"strings"
@@ -203,15 +204,6 @@ func promptDecrypt(ncryptsec1 string) (string, error) {
 	return "", fmt.Errorf("couldn't decrypt private key")
 }
 
-func ask(msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
-	return _ask(&readline.Config{
-		Stdout:                 color.Error,
-		Prompt:                 color.YellowString(msg),
-		InterruptPrompt:        "^C",
-		DisableAutoSaveHistory: true,
-	}, msg, defaultValue, shouldAskAgain)
-}
-
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
 	config := &readline.Config{
 		Stdout:                 color.Error,
@@ -242,4 +234,14 @@ func _ask(config *readline.Config, msg string, defaultValue string, shouldAskAga
 		}
 		return answer, err
 	}
+}
+
+const letterBytes = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+func randString(n int) string {
+	b := make([]byte, n)
+	for i := range b {
+		b[i] = letterBytes[rand.Intn(len(letterBytes))]
+	}
+	return string(b)
 }
