@@ -2,11 +2,14 @@ package main
 
 import (
 	"encoding/hex"
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr/musig2"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip49"
@@ -127,32 +130,108 @@ var decrypt = &cli.Command{
 }
 
 var combine = &cli.Command{
-	Name:        "combine",
-	Usage:       "combines two or more pubkeys using musig2",
-	Description: `The public keys must have 33 bytes (66 characters hex), with the 02 or 03 prefix. It is common in Nostr to drop that first byte, so you'll have to derive the public keys again from the private keys in order to get it back.`,
-	ArgsUsage:   "[pubkey...]",
+	Name:  "combine",
+	Usage: "combines two or more pubkeys using musig2",
+	Description: `The public keys must have 33 bytes (66 characters hex), with the 02 or 03 prefix. It is common in Nostr to drop that first byte, so you'll have to derive the public keys again from the private keys in order to get it back.
+
+However, if the intent is to check if two existing Nostr pubkeys match a given combined pubkey, then it might be sufficient to calculate the combined key for all the possible combinations of pubkeys in the input.`,
+	ArgsUsage: "[pubkey...]",
 	Action: func(c *cli.Context) error {
-		keys := make([]*btcec.PublicKey, 0, 5)
-		for _, pub := range c.Args().Slice() {
-			keyb, err := hex.DecodeString(pub)
-			if err != nil {
-				return fmt.Errorf("error parsing key %s: %w", pub, err)
-			}
-
-			pubk, err := btcec.ParsePubKey(keyb)
-			if err != nil {
-				return fmt.Errorf("error parsing key %s: %w", pub, err)
-			}
-
-			keys = append(keys, pubk)
+		type Combination struct {
+			Variants []string `json:"input_variants"`
+			Output   struct {
+				XOnly   string `json:"x_only"`
+				Variant string `json:"variant"`
+			} `json:"combined_key"`
 		}
 
-		agg, _, _, err := musig2.AggregateKeys(keys, true)
-		if err != nil {
-			return err
+		type Result struct {
+			Keys         []string      `json:"keys"`
+			Combinations []Combination `json:"combinations"`
 		}
 
-		fmt.Println(hex.EncodeToString(agg.FinalKey.SerializeCompressed()))
+		result := Result{}
+
+		result.Keys = c.Args().Slice()
+		keyGroups := make([][]*btcec.PublicKey, 0, len(result.Keys))
+
+		for i, keyhex := range result.Keys {
+			keyb, err := hex.DecodeString(keyhex)
+			if err != nil {
+				return fmt.Errorf("error parsing key %s: %w", keyhex, err)
+			}
+
+			if len(keyb) == 32 /* we'll use both the 02 and the 03 prefix versions */ {
+				group := make([]*btcec.PublicKey, 2)
+				for i, prefix := range []byte{0x02, 0x03} {
+					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, keyb...))
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "error parsing key %s: %s", keyhex, err)
+						continue
+					}
+					group[i] = pubk
+				}
+				keyGroups = append(keyGroups, group)
+			} else /* assume it's 33 */ {
+				pubk, err := btcec.ParsePubKey(keyb)
+				if err != nil {
+					return fmt.Errorf("error parsing key %s: %w", keyhex, err)
+				}
+				keyGroups = append(keyGroups, []*btcec.PublicKey{pubk})
+
+				// remove the leading byte from the output just so it is all uniform
+				result.Keys[i] = result.Keys[i][2:]
+			}
+		}
+
+		result.Combinations = make([]Combination, 0, 16)
+
+		var fn func(prepend int, curr []int)
+		fn = func(prepend int, curr []int) {
+			curr = append([]int{prepend}, curr...)
+			if len(curr) == len(keyGroups) {
+				combi := Combination{
+					Variants: make([]string, len(keyGroups)),
+				}
+
+				combining := make([]*btcec.PublicKey, len(keyGroups))
+				for g, altKeys := range keyGroups {
+					altKey := altKeys[curr[g]]
+					variant := secp256k1.PubKeyFormatCompressedEven
+					if altKey.Y().Bit(0) == 1 {
+						variant = secp256k1.PubKeyFormatCompressedOdd
+					}
+					combi.Variants[g] = hex.EncodeToString([]byte{variant})
+					combining[g] = altKey
+				}
+
+				agg, _, _, err := musig2.AggregateKeys(combining, true)
+				if err != nil {
+					fmt.Fprintf(os.Stderr, "error aggregating: %s", err)
+					return
+				}
+
+				serialized := agg.FinalKey.SerializeCompressed()
+				combi.Output.XOnly = hex.EncodeToString(serialized[1:])
+				combi.Output.Variant = hex.EncodeToString(serialized[0:1])
+				result.Combinations = append(result.Combinations, combi)
+				return
+			}
+
+			fn(0, curr)
+			if len(keyGroups[len(keyGroups)-len(curr)-1]) > 1 {
+				fn(1, curr)
+			}
+		}
+
+		fn(0, nil)
+		if len(keyGroups[len(keyGroups)-1]) > 1 {
+			fn(1, nil)
+		}
+
+		res, _ := json.MarshalIndent(result, "", "  ")
+		fmt.Println(string(res))
+
 		return nil
 	},
 }
