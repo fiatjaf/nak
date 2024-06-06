@@ -5,7 +5,7 @@ import "os"
 func ExampleEventBasic() {
 	app.Run([]string{"nak", "event", "--ts", "1699485669"})
 	// Output:
-	// {"id":"36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1699485669,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"68e71a192e8abcf8582a222434ac823ecc50607450ebe8cc4c145eb047794cc382dc3f888ce879d2f404f5ba6085a47601360a0fa2dd4b50d317bd0c6197c2c2"}
+	// {"kind":1,"id":"36d88cf5fcc449f2390a424907023eda7a74278120eebab8d02797cd92e7e29c","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1699485669,"tags":[],"content":"hello from the nostr army knife","sig":"68e71a192e8abcf8582a222434ac823ecc50607450ebe8cc4c145eb047794cc382dc3f888ce879d2f404f5ba6085a47601360a0fa2dd4b50d317bd0c6197c2c2"}
 }
 
 // (for some reason there can only be one test dealing with stdin in the suite otherwise it halts)
