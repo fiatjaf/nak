@@ -9,7 +9,7 @@ import (
 
 var fetch = &cli.Command{
 	Name:  "fetch",
-	Usage: "fetches events related to the given nip19 code from the included relay hints",
+	Usage: "fetches events related to the given nip19 code from the included relay hints or the author's NIP-65 relays.",
 	Description: `example usage:
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
@@ -41,7 +41,7 @@ var fetch = &cli.Command{
 			}
 
 			relays := c.StringSlice("relay")
-			if err := validateRelayURLs(relays); err != nil {
+			if err := normalizeAndValidateRelayURLs(relays); err != nil {
 				return err
 			}
 			var authorHint string

@@ -92,8 +92,11 @@ func writeStdinLinesOrNothing(ch chan string) (hasStdinLines bool) {
 	}
 }
 
-func validateRelayURLs(wsurls []string) error {
-	for _, wsurl := range wsurls {
+func normalizeAndValidateRelayURLs(wsurls []string) error {
+	for i, wsurl := range wsurls {
+		wsurl = nostr.NormalizeURL(wsurl)
+		wsurls[i] = wsurl
+
 		u, err := url.Parse(wsurl)
 		if err != nil {
 			return fmt.Errorf("invalid relay url '%s': %s", wsurl, err)

@@ -85,7 +85,7 @@ var encode = &cli.Command{
 					}
 
 					relays := c.StringSlice("relay")
-					if err := validateRelayURLs(relays); err != nil {
+					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
 
@@ -129,7 +129,7 @@ var encode = &cli.Command{
 					}
 
 					relays := c.StringSlice("relay")
-					if err := validateRelayURLs(relays); err != nil {
+					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
 
@@ -193,7 +193,7 @@ var encode = &cli.Command{
 					}
 
 					relays := c.StringSlice("relay")
-					if err := validateRelayURLs(relays); err != nil {
+					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
 
