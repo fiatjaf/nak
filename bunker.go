@@ -115,10 +115,19 @@ var bunker = &cli.Command{
 				secretKeyFlag = "--sec " + sec
 			}
 
+			relayURLsPossiblyWithoutSchema := make([]string, len(relayURLs))
+			for i, url := range relayURLs {
+				if strings.HasPrefix(url, "wss://") {
+					relayURLsPossiblyWithoutSchema[i] = url[6:]
+				} else {
+					relayURLsPossiblyWithoutSchema[i] = url
+				}
+			}
+
 			restartCommand := fmt.Sprintf("nak bunker %s%s %s",
 				secretKeyFlag,
 				preauthorizedFlags,
-				strings.Join(relayURLs, " "),
+				strings.Join(relayURLsPossiblyWithoutSchema, " "),
 			)
 
 			log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
