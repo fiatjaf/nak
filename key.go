@@ -72,20 +72,19 @@ var encrypt = &cli.Command{
 		},
 	},
 	Action: func(c *cli.Context) error {
-		var content string
+		keys := make([]string, 0, 1)
 		var password string
 		switch c.Args().Len() {
 		case 1:
-			content = ""
 			password = c.Args().Get(0)
 		case 2:
-			content = c.Args().Get(0)
+			keys = append(keys, c.Args().Get(0))
 			password = c.Args().Get(1)
 		}
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for sec := range getSecretKeysFromStdinLinesOrSlice(c, []string{content}) {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(c, keys) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
 				lineProcessingError(c, "failed to encrypt: %s", err)
