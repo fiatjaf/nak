@@ -110,8 +110,9 @@ var encode = &cli.Command{
 					Usage:   "attach relay hints to nevent code",
 				},
 				&cli.StringFlag{
-					Name:  "author",
-					Usage: "attach an author pubkey as a hint to the nevent code",
+					Name:    "author",
+					Aliases: []string{"a"},
+					Usage:   "attach an author pubkey as a hint to the nevent code",
 				},
 			},
 			Action: func(c *cli.Context) error {
@@ -157,7 +158,7 @@ var encode = &cli.Command{
 				&cli.StringFlag{
 					Name:     "pubkey",
 					Usage:    "pubkey of the naddr author",
-					Aliases:  []string{"p"},
+					Aliases:  []string{"author", "a", "p"},
 					Required: true,
 				},
 				&cli.Int64Flag{
