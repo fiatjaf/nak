@@ -102,29 +102,47 @@ var decrypt = &cli.Command{
 	Description: `uses the NIP-49 standard.`,
 	ArgsUsage:   "<ncryptsec-code> <password>",
 	Action: func(c *cli.Context) error {
-		var content string
+		var ncryptsec string
 		var password string
 		switch c.Args().Len() {
-		case 1:
-			content = ""
-			password = c.Args().Get(0)
 		case 2:
-			content = c.Args().Get(0)
+			ncryptsec = c.Args().Get(0)
 			password = c.Args().Get(1)
-		}
-		if password == "" {
-			return fmt.Errorf("no password given")
-		}
-		for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{content}) {
+			if password == "" {
+				return fmt.Errorf("no password given")
+			}
 			sec, err := nip49.Decrypt(ncryptsec, password)
 			if err != nil {
-				lineProcessingError(c, "failed to decrypt: %s", err)
-				continue
+				return fmt.Errorf("failed to decrypt: %s", err)
 			}
 			nsec, _ := nip19.EncodePrivateKey(sec)
 			stdout(nsec)
+			return nil
+		case 1:
+			if arg := c.Args().Get(0); strings.HasPrefix(arg, "ncryptsec1") {
+				ncryptsec = arg
+				if res, err := promptDecrypt(ncryptsec); err != nil {
+					return err
+				} else {
+					stdout(res)
+					return nil
+				}
+			} else {
+				password = c.Args().Get(0)
+				for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{ncryptsec}) {
+					sec, err := nip49.Decrypt(ncryptsec, password)
+					if err != nil {
+						lineProcessingError(c, "failed to decrypt: %s", err)
+						continue
+					}
+					nsec, _ := nip19.EncodePrivateKey(sec)
+					stdout(nsec)
+				}
+				return nil
+			}
+		default:
+			return fmt.Errorf("invalid number of arguments")
 		}
-		return nil
 	},
 }
 

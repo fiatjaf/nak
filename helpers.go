@@ -188,7 +188,7 @@ func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.Bunker
 	return sec, nil, nil
 }
 
-func promptDecrypt(ncryptsec1 string) (string, error) {
+func promptDecrypt(ncryptsec string) (string, error) {
 	for i := 1; i < 4; i++ {
 		var attemptStr string
 		if i > 1 {
@@ -198,7 +198,7 @@ func promptDecrypt(ncryptsec1 string) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		sec, err := nip49.Decrypt(ncryptsec1, password)
+		sec, err := nip49.Decrypt(ncryptsec, password)
 		if err != nil {
 			continue
 		}
