@@ -13,7 +13,7 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nson"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/slices"
 )
 
@@ -36,7 +36,7 @@ example:
 	Flags: []cli.Flag{
 		&cli.StringFlag{
 			Name:        "sec",
-			Usage:       "secret key to sign the event, as hex or nsec",
+			Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
 			DefaultText: "the key '1'",
 			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
 		},
@@ -141,11 +141,11 @@ example:
 		},
 	},
 	ArgsUsage: "[relay...]",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		// try to connect to the relays here
 		var relays []*nostr.Relay
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			_, relays = connectToAllRelays(c.Context, relayUrls)
+			_, relays = connectToAllRelays(ctx, relayUrls)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -158,7 +158,7 @@ example:
 			}
 		}()
 
-		sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(c)
+		sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -176,14 +176,14 @@ example:
 
 			if stdinEvent != "" {
 				if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-					lineProcessingError(c, "invalid event received from stdin: %s", err)
+					lineProcessingError(ctx, "invalid event received from stdin: %s", err)
 					continue
 				}
 				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)
 			}
 
 			if kind := c.Int("kind"); slices.Contains(c.FlagNames(), "kind") {
-				evt.Kind = kind
+				evt.Kind = int(kind)
 				mustRehashAndResign = true
 			} else if !kindWasSupplied {
 				evt.Kind = 1
@@ -248,7 +248,7 @@ example:
 
 			if evt.Sig == "" || mustRehashAndResign {
 				if bunker != nil {
-					if err := bunker.SignEvent(c.Context, &evt); err != nil {
+					if err := bunker.SignEvent(ctx, &evt); err != nil {
 						return fmt.Errorf("failed to sign with bunker: %w", err)
 					}
 				} else if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
@@ -256,7 +256,7 @@ example:
 					secNonce := c.String("musig-nonce-secret")
 					pubNonces := c.StringSlice("musig-nonce")
 					partialSigs := c.StringSlice("musig-partial")
-					signed, err := performMusig(c.Context,
+					signed, err := performMusig(ctx,
 						sec, &evt, int(numSigners), pubkeys, pubNonces, secNonce, partialSigs)
 					if err != nil {
 						return fmt.Errorf("musig error: %w", err)
@@ -291,7 +291,7 @@ example:
 				for _, relay := range relays {
 				publish:
 					log("publishing to %s... ", relay.URL)
-					ctx, cancel := context.WithTimeout(c.Context, 10*time.Second)
+					ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 					defer cancel()
 
 					err := relay.Publish(ctx, evt)
@@ -307,7 +307,7 @@ example:
 						// if the relay is requesting auth and we can auth, let's do it
 						var pk string
 						if bunker != nil {
-							pk, err = bunker.GetPublicKey(c.Context)
+							pk, err = bunker.GetPublicKey(ctx)
 							if err != nil {
 								return fmt.Errorf("failed to get public key from bunker: %w", err)
 							}
@@ -315,9 +315,9 @@ example:
 							pk, _ = nostr.GetPublicKey(sec)
 						}
 						log("performing auth as %s... ", pk)
-						if err := relay.Auth(c.Context, func(evt *nostr.Event) error {
+						if err := relay.Auth(ctx, func(evt *nostr.Event) error {
 							if bunker != nil {
-								return bunker.SignEvent(c.Context, evt)
+								return bunker.SignEvent(ctx, evt)
 							}
 							return evt.Sign(sec)
 						}); err == nil {
@@ -337,7 +337,7 @@ example:
 			}
 		}
 
-		exitIfLineProcessingError(c)
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }

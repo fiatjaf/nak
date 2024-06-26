@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"strings"
@@ -8,7 +9,7 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	sdk "github.com/nbd-wtf/nostr-sdk"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var decode = &cli.Command{
@@ -32,7 +33,7 @@ var decode = &cli.Command{
 		},
 	},
 	ArgsUsage: "<npub | nprofile | nip05 | nevent | naddr | nsec>",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		for input := range getStdinLinesOrArguments(c.Args()) {
 			if strings.HasPrefix(input, "nostr:") {
 				input = input[6:]
@@ -49,12 +50,12 @@ var decode = &cli.Command{
 					decodeResult.HexResult.PrivateKey = hex.EncodeToString(b)
 					decodeResult.HexResult.PublicKey = hex.EncodeToString(b)
 				} else {
-					lineProcessingError(c, "hex string with invalid number of bytes: %d", len(b))
+					lineProcessingError(ctx, "hex string with invalid number of bytes: %d", len(b))
 					continue
 				}
 			} else if evp := sdk.InputToEventPointer(input); evp != nil {
 				decodeResult = DecodeResult{EventPointer: evp}
-			} else if pp := sdk.InputToProfile(c.Context, input); pp != nil {
+			} else if pp := sdk.InputToProfile(ctx, input); pp != nil {
 				decodeResult = DecodeResult{ProfilePointer: pp}
 			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
 				ep := value.(nostr.EntityPointer)
@@ -63,7 +64,7 @@ var decode = &cli.Command{
 				decodeResult.PrivateKey.PrivateKey = value.(string)
 				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
 			} else {
-				lineProcessingError(c, "couldn't decode input '%s': %s", input, err)
+				lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
 				continue
 			}
 
@@ -71,7 +72,7 @@ var decode = &cli.Command{
 
 		}
 
-		exitIfLineProcessingError(c)
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }

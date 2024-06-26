@@ -16,7 +16,7 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/nbd-wtf/go-nostr/nip49"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -133,18 +133,18 @@ func connectToAllRelays(
 	return pool, relays
 }
 
-func lineProcessingError(c *cli.Context, msg string, args ...any) {
-	c.Context = context.WithValue(c.Context, LINE_PROCESSING_ERROR, true)
+func lineProcessingError(ctx context.Context, msg string, args ...any) {
+	ctx = context.WithValue(ctx, LINE_PROCESSING_ERROR, true)
 	log(msg+"\n", args...)
 }
 
-func exitIfLineProcessingError(c *cli.Context) {
-	if val := c.Context.Value(LINE_PROCESSING_ERROR); val != nil && val.(bool) {
+func exitIfLineProcessingError(ctx context.Context) {
+	if val := ctx.Value(LINE_PROCESSING_ERROR); val != nil && val.(bool) {
 		os.Exit(123)
 	}
 }
 
-func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.BunkerClient, error) {
+func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (string, *nip46.BunkerClient, error) {
 	var err error
 
 	if bunkerURL := c.String("connect"); bunkerURL != "" {
@@ -154,7 +154,7 @@ func gatherSecretKeyOrBunkerFromArguments(c *cli.Context) (string, *nip46.Bunker
 		} else {
 			clientKey = nostr.GeneratePrivateKey()
 		}
-		bunker, err := nip46.ConnectBunker(c.Context, clientKey, bunkerURL, nil, func(s string) {
+		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
 			fmt.Fprintf(color.Error, color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
 		return "", bunker, err

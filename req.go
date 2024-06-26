@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -9,7 +10,7 @@ import (
 
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 const CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"
@@ -124,23 +125,23 @@ example:
 		},
 	},
 	ArgsUsage: "[relay...]",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		var pool *nostr.SimplePool
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
 			var relays []*nostr.Relay
-			pool, relays = connectToAllRelays(c.Context, relayUrls, nostr.WithAuthHandler(func(evt *nostr.Event) error {
+			pool, relays = connectToAllRelays(ctx, relayUrls, nostr.WithAuthHandler(func(evt *nostr.Event) error {
 				if !c.Bool("auth") {
 					return fmt.Errorf("auth not authorized")
 				}
-				sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(c)
+				sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 				if err != nil {
 					return err
 				}
 
 				var pk string
 				if bunker != nil {
-					pk, err = bunker.GetPublicKey(c.Context)
+					pk, err = bunker.GetPublicKey(ctx)
 					if err != nil {
 						return fmt.Errorf("failed to get public key from bunker: %w", err)
 					}
@@ -150,7 +151,7 @@ example:
 				log("performing auth as %s...\n", pk)
 
 				if bunker != nil {
-					return bunker.SignEvent(c.Context, evt)
+					return bunker.SignEvent(ctx, evt)
 				} else {
 					return evt.Sign(sec)
 				}
@@ -175,7 +176,7 @@ example:
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
 				if err := easyjson.Unmarshal([]byte(stdinFilter), &filter); err != nil {
-					lineProcessingError(c, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
+					lineProcessingError(ctx, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
 					continue
 				}
 			}
@@ -186,8 +187,8 @@ example:
 			if ids := c.StringSlice("id"); len(ids) > 0 {
 				filter.IDs = append(filter.IDs, ids...)
 			}
-			if kinds := c.IntSlice("kind"); len(kinds) > 0 {
-				filter.Kinds = append(filter.Kinds, kinds...)
+			for _, kind64 := range c.IntSlice("kind") {
+				filter.Kinds = append(filter.Kinds, int(kind64))
 			}
 			if search := c.String("search"); search != "" {
 				filter.Search = search
@@ -245,7 +246,7 @@ example:
 				}
 			}
 			if limit := c.Int("limit"); limit != 0 {
-				filter.Limit = limit
+				filter.Limit = int(limit)
 			} else if c.IsSet("limit") || c.Bool("stream") {
 				filter.LimitZero = true
 			}
@@ -255,7 +256,7 @@ example:
 				if c.Bool("stream") {
 					fn = pool.SubMany
 				}
-				for ie := range fn(c.Context, relayUrls, nostr.Filters{filter}) {
+				for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {
 					stdout(ie.Event)
 				}
 			} else {
@@ -272,7 +273,7 @@ example:
 			}
 		}
 
-		exitIfLineProcessingError(c)
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }

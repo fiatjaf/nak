@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
+
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	sdk "github.com/nbd-wtf/nostr-sdk"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var fetch = &cli.Command{
@@ -21,8 +23,8 @@ var fetch = &cli.Command{
 		},
 	},
 	ArgsUsage: "[nip19code]",
-	Action: func(c *cli.Context) error {
-		pool := nostr.NewSimplePool(c.Context)
+	Action: func(ctx context.Context, c *cli.Command) error {
+		pool := nostr.NewSimplePool(ctx)
 
 		defer func() {
 			pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
@@ -36,7 +38,7 @@ var fetch = &cli.Command{
 
 			prefix, value, err := nip19.Decode(code)
 			if err != nil {
-				lineProcessingError(c, "failed to decode: %s", err)
+				lineProcessingError(ctx, "failed to decode: %s", err)
 				continue
 			}
 
@@ -75,7 +77,7 @@ var fetch = &cli.Command{
 			}
 
 			if authorHint != "" {
-				relayList := sdk.FetchRelaysForPubkey(c.Context, pool, authorHint,
+				relayList := sdk.FetchRelaysForPubkey(ctx, pool, authorHint,
 					"wss://purplepag.es", "wss://relay.damus.io", "wss://relay.noswhere.com",
 					"wss://nos.lol", "wss://public.relaying.io", "wss://relay.nostr.band")
 				for _, relayListItem := range relayList {
@@ -86,16 +88,16 @@ var fetch = &cli.Command{
 			}
 
 			if len(relays) == 0 {
-				lineProcessingError(c, "no relay hints found")
+				lineProcessingError(ctx, "no relay hints found")
 				continue
 			}
 
-			for ie := range pool.SubManyEose(c.Context, relays, nostr.Filters{filter}) {
+			for ie := range pool.SubManyEose(ctx, relays, nostr.Filters{filter}) {
 				stdout(ie.Event)
 			}
 		}
 
-		exitIfLineProcessingError(c)
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }

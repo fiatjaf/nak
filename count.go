@@ -1,13 +1,14 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var count = &cli.Command{
@@ -63,7 +64,7 @@ var count = &cli.Command{
 		},
 	},
 	ArgsUsage: "[relay...]",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		filter := nostr.Filter{}
 
 		if authors := c.StringSlice("author"); len(authors) > 0 {
@@ -72,7 +73,11 @@ var count = &cli.Command{
 		if ids := c.StringSlice("id"); len(ids) > 0 {
 			filter.IDs = ids
 		}
-		if kinds := c.IntSlice("kind"); len(kinds) > 0 {
+		if kinds64 := c.IntSlice("kind"); len(kinds64) > 0 {
+			kinds := make([]int, len(kinds64))
+			for i, v := range kinds64 {
+				kinds[i] = int(v)
+			}
 			filter.Kinds = kinds
 		}
 
@@ -110,7 +115,7 @@ var count = &cli.Command{
 			filter.Until = &ts
 		}
 		if limit := c.Int("limit"); limit != 0 {
-			filter.Limit = limit
+			filter.Limit = int(limit)
 		}
 
 		relays := c.Args().Slice()
@@ -118,12 +123,12 @@ var count = &cli.Command{
 		failures := make([]error, 0, len(relays))
 		if len(relays) > 0 {
 			for _, relayUrl := range relays {
-				relay, err := nostr.RelayConnect(c.Context, relayUrl)
+				relay, err := nostr.RelayConnect(ctx, relayUrl)
 				if err != nil {
 					failures = append(failures, err)
 					continue
 				}
-				count, err := relay.Count(c.Context, nostr.Filters{filter})
+				count, err := relay.Count(ctx, nostr.Filters{filter})
 				if err != nil {
 					failures = append(failures, err)
 					continue

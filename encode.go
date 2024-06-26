@@ -1,11 +1,12 @@
 package main
 
 import (
+	"context"
 	"fmt"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var encode = &cli.Command{
@@ -18,20 +19,20 @@ var encode = &cli.Command{
 		nak encode nevent <event-id>
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
 		nak encode nsec <privkey-hex>`,
-	Before: func(c *cli.Context) error {
+	Before: func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() < 1 {
 			return fmt.Errorf("expected more than 1 argument.")
 		}
 		return nil
 	},
-	Subcommands: []*cli.Command{
+	Commands: []*cli.Command{
 		{
 			Name:  "npub",
 			Usage: "encode a hex public key into bech32 'npub' format",
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValidPublicKey(target); !ok {
-						lineProcessingError(c, "invalid public key: %s", target)
+						lineProcessingError(ctx, "invalid public key: %s", target)
 						continue
 					}
 
@@ -42,17 +43,17 @@ var encode = &cli.Command{
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
 		{
 			Name:  "nsec",
 			Usage: "encode a hex private key into bech32 'nsec' format",
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(c, "invalid private key: %s", target)
+						lineProcessingError(ctx, "invalid private key: %s", target)
 						continue
 					}
 
@@ -63,7 +64,7 @@ var encode = &cli.Command{
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
@@ -77,10 +78,10 @@ var encode = &cli.Command{
 					Usage:   "attach relay hints to nprofile code",
 				},
 			},
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(c, "invalid public key: %s", target)
+						lineProcessingError(ctx, "invalid public key: %s", target)
 						continue
 					}
 
@@ -96,7 +97,7 @@ var encode = &cli.Command{
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
@@ -115,10 +116,10 @@ var encode = &cli.Command{
 					Usage:   "attach an author pubkey as a hint to the nevent code",
 				},
 			},
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(c, "invalid event id: %s", target)
+						lineProcessingError(ctx, "invalid event id: %s", target)
 						continue
 					}
 
@@ -141,7 +142,7 @@ var encode = &cli.Command{
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
@@ -161,7 +162,7 @@ var encode = &cli.Command{
 					Aliases:  []string{"author", "a", "p"},
 					Required: true,
 				},
-				&cli.Int64Flag{
+				&cli.IntFlag{
 					Name:     "kind",
 					Aliases:  []string{"k"},
 					Usage:    "kind of referred replaceable event",
@@ -173,7 +174,7 @@ var encode = &cli.Command{
 					Usage:   "attach relay hints to naddr code",
 				},
 			},
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for d := range getStdinLinesOrBlank() {
 					pubkey := c.String("pubkey")
 					if ok := nostr.IsValidPublicKey(pubkey); !ok {
@@ -188,7 +189,7 @@ var encode = &cli.Command{
 					if d == "" {
 						d = c.String("identifier")
 						if d == "" {
-							lineProcessingError(c, "\"d\" tag identifier can't be empty")
+							lineProcessingError(ctx, "\"d\" tag identifier can't be empty")
 							continue
 						}
 					}
@@ -198,24 +199,24 @@ var encode = &cli.Command{
 						return err
 					}
 
-					if npub, err := nip19.EncodeEntity(pubkey, kind, d, relays); err == nil {
+					if npub, err := nip19.EncodeEntity(pubkey, int(kind), d, relays); err == nil {
 						stdout(npub)
 					} else {
 						return err
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
 		{
 			Name:  "note",
 			Usage: "generate note1 event codes (not recommended)",
-			Action: func(c *cli.Context) error {
+			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(c, "invalid event id: %s", target)
+						lineProcessingError(ctx, "invalid event id: %s", target)
 						continue
 					}
 
@@ -226,7 +227,7 @@ var encode = &cli.Command{
 					}
 				}
 
-				exitIfLineProcessingError(c)
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},

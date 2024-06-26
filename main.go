@@ -1,14 +1,13 @@
 package main
 
 import (
+	"context"
 	"os"
 
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
-var q int
-
-var app = &cli.App{
+var app = &cli.Command{
 	Name:                   "nak",
 	Suggest:                true,
 	UseShortOptionHandling: true,
@@ -29,9 +28,9 @@ var app = &cli.App{
 		&cli.BoolFlag{
 			Name:    "quiet",
 			Usage:   "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
-			Count:   &q,
 			Aliases: []string{"q"},
-			Action: func(ctx *cli.Context, b bool) error {
+			Action: func(ctx context.Context, c *cli.Command, b bool) error {
+				q := c.Count("quiet")
 				if q >= 1 {
 					log = func(msg string, args ...any) {}
 					if q >= 2 {
@@ -45,7 +44,7 @@ var app = &cli.App{
 }
 
 func main() {
-	if err := app.Run(os.Args); err != nil {
+	if err := app.Run(context.Background(), os.Args); err != nil {
 		stdout(err)
 		os.Exit(1)
 	}

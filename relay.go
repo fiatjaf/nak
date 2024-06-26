@@ -1,12 +1,13 @@
 package main
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/nbd-wtf/go-nostr/nip11"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var relay = &cli.Command{
@@ -15,7 +16,7 @@ var relay = &cli.Command{
 	Description: `example:
 		nak relay nostr.wine`,
 	ArgsUsage: "<relay-url>",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		for url := range getStdinLinesOrArguments(c.Args()) {
 			if url == "" {
 				return fmt.Errorf("specify the <relay-url>")
@@ -25,9 +26,9 @@ var relay = &cli.Command{
 				url = "wss://" + url
 			}
 
-			info, err := nip11.Fetch(c.Context, url)
+			info, err := nip11.Fetch(ctx, url)
 			if err != nil {
-				lineProcessingError(c, "failed to fetch '%s' information document: %w", url, err)
+				lineProcessingError(ctx, "failed to fetch '%s' information document: %w", url, err)
 				continue
 			}
 

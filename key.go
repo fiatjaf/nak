@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -13,14 +14,14 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip49"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 )
 
 var key = &cli.Command{
 	Name:        "key",
 	Usage:       "operations on secret keys: generate, derive, encrypt, decrypt.",
 	Description: ``,
-	Subcommands: []*cli.Command{
+	Commands: []*cli.Command{
 		generate,
 		public,
 		encrypt,
@@ -33,7 +34,7 @@ var generate = &cli.Command{
 	Name:        "generate",
 	Usage:       "generates a secret key",
 	Description: ``,
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		sec := nostr.GeneratePrivateKey()
 		stdout(sec)
 		return nil
@@ -45,11 +46,11 @@ var public = &cli.Command{
 	Usage:       "computes a public key from a secret key",
 	Description: ``,
 	ArgsUsage:   "[secret]",
-	Action: func(c *cli.Context) error {
-		for sec := range getSecretKeysFromStdinLinesOrSlice(c, c.Args().Slice()) {
+	Action: func(ctx context.Context, c *cli.Command) error {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
 			pubkey, err := nostr.GetPublicKey(sec)
 			if err != nil {
-				lineProcessingError(c, "failed to derive public key: %s", err)
+				lineProcessingError(ctx, "failed to derive public key: %s", err)
 				continue
 			}
 			stdout(pubkey)
@@ -71,7 +72,7 @@ var encrypt = &cli.Command{
 			DefaultText: "16",
 		},
 	},
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		keys := make([]string, 0, 1)
 		var password string
 		switch c.Args().Len() {
@@ -84,10 +85,10 @@ var encrypt = &cli.Command{
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for sec := range getSecretKeysFromStdinLinesOrSlice(c, keys) {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, keys) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
-				lineProcessingError(c, "failed to encrypt: %s", err)
+				lineProcessingError(ctx, "failed to encrypt: %s", err)
 				continue
 			}
 			stdout(ncryptsec)
@@ -101,7 +102,7 @@ var decrypt = &cli.Command{
 	Usage:       "takes an ncrypsec and a password and decrypts it into an nsec",
 	Description: `uses the NIP-49 standard.`,
 	ArgsUsage:   "<ncryptsec-code> <password>",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		var ncryptsec string
 		var password string
 		switch c.Args().Len() {
@@ -132,7 +133,7 @@ var decrypt = &cli.Command{
 				for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{ncryptsec}) {
 					sec, err := nip49.Decrypt(ncryptsec, password)
 					if err != nil {
-						lineProcessingError(c, "failed to decrypt: %s", err)
+						lineProcessingError(ctx, "failed to decrypt: %s", err)
 						continue
 					}
 					nsec, _ := nip19.EncodePrivateKey(sec)
@@ -153,7 +154,7 @@ var combine = &cli.Command{
 
 However, if the intent is to check if two existing Nostr pubkeys match a given combined pubkey, then it might be sufficient to calculate the combined key for all the possible combinations of pubkeys in the input.`,
 	ArgsUsage: "[pubkey...]",
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		type Combination struct {
 			Variants []string `json:"input_variants"`
 			Output   struct {
@@ -253,7 +254,7 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 	},
 }
 
-func getSecretKeysFromStdinLinesOrSlice(c *cli.Context, keys []string) chan string {
+func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, c *cli.Command, keys []string) chan string {
 	ch := make(chan string)
 	go func() {
 		for sec := range getStdinLinesOrArgumentsFromSlice(keys) {
@@ -263,13 +264,13 @@ func getSecretKeysFromStdinLinesOrSlice(c *cli.Context, keys []string) chan stri
 			if strings.HasPrefix(sec, "nsec1") {
 				_, data, err := nip19.Decode(sec)
 				if err != nil {
-					lineProcessingError(c, "invalid nsec code: %s", err)
+					lineProcessingError(ctx, "invalid nsec code: %s", err)
 					continue
 				}
 				sec = data.(string)
 			}
 			if !nostr.IsValid32ByteHex(sec) {
-				lineProcessingError(c, "invalid hex key")
+				lineProcessingError(ctx, "invalid hex key")
 				continue
 			}
 			ch <- sec

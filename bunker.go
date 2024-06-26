@@ -14,7 +14,7 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
-	"github.com/urfave/cli/v2"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/slices"
 )
 
@@ -45,12 +45,12 @@ var bunker = &cli.Command{
 			Usage:   "pubkeys for which we will always respond",
 		},
 	},
-	Action: func(c *cli.Context) error {
+	Action: func(ctx context.Context, c *cli.Command) error {
 		// try to connect to the relays here
 		qs := url.Values{}
 		relayURLs := make([]string, 0, c.Args().Len())
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			_, relays := connectToAllRelays(c.Context, relayUrls)
+			_, relays := connectToAllRelays(ctx, relayUrls)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -65,7 +65,7 @@ var bunker = &cli.Command{
 		}
 
 		// gather the secret key
-		sec, _, err := gatherSecretKeyOrBunkerFromArguments(c)
+		sec, _, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
@@ -143,9 +143,9 @@ var bunker = &cli.Command{
 		printBunkerInfo()
 
 		// subscribe to relays
-		pool := nostr.NewSimplePool(c.Context)
+		pool := nostr.NewSimplePool(ctx)
 		now := nostr.Now()
-		events := pool.SubMany(c.Context, relayURLs, nostr.Filters{
+		events := pool.SubMany(ctx, relayURLs, nostr.Filters{
 			{
 				Kinds:     []int{nostr.KindNostrConnect},
 				Tags:      nostr.TagMap{"p": []string{pubkey}},
@@ -160,7 +160,7 @@ var bunker = &cli.Command{
 
 		// just a gimmick
 		var cancelPreviousBunkerInfoPrint context.CancelFunc
-		_, cancel := context.WithCancel(c.Context)
+		_, cancel := context.WithCancel(ctx)
 		cancelPreviousBunkerInfoPrint = cancel
 
 		// asking user for authorization
@@ -199,7 +199,7 @@ var bunker = &cli.Command{
 			for _, relayURL := range relayURLs {
 				go func(relayURL string) {
 					if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
-						err := relay.Publish(c.Context, eventResponse)
+						err := relay.Publish(ctx, eventResponse)
 						printLock.Lock()
 						if err == nil {
 							log("* sent response through %s\n", relay.URL)
@@ -215,7 +215,7 @@ var bunker = &cli.Command{
 
 			// just after handling one request we trigger this
 			go func() {
-				ctx, cancel := context.WithCancel(c.Context)
+				ctx, cancel := context.WithCancel(ctx)
 				defer cancel()
 				cancelPreviousBunkerInfoPrint = cancel
 				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
