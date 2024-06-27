@@ -195,7 +195,13 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		})
 		return "", bunker, err
 	}
+
+	// Check in the Env for the secret key first
 	sec := c.String("sec")
+	if env, ok := os.LookupEnv("NOSTR_PRIVATE_KEY"); ok {
+		sec = env
+	}
+
 	if c.Bool("prompt-sec") {
 		if isPiped() {
 			return "", nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
