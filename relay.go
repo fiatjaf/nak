@@ -22,7 +22,9 @@ var relay = &cli.Command{
 				return fmt.Errorf("specify the <relay-url>")
 			}
 
-			if !strings.HasPrefix(url, "wss://") && !strings.HasPrefix(url, "ws://") {
+			if strings.HasPrefix(url, "localhost") == true {
+				url = "ws://" + url
+			} else if !strings.HasPrefix(url, "wss://") && !strings.HasPrefix(url, "ws://") {
 				url = "wss://" + url
 			}
 
