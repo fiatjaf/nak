@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/nbd-wtf/go-nostr/nip11"
 	"github.com/urfave/cli/v3"
@@ -20,10 +19,6 @@ var relay = &cli.Command{
 		for url := range getStdinLinesOrArguments(c.Args()) {
 			if url == "" {
 				return fmt.Errorf("specify the <relay-url>")
-			}
-
-			if !strings.HasPrefix(url, "wss://") && !strings.HasPrefix(url, "ws://") {
-				url = "wss://" + url
 			}
 
 			info, err := nip11.Fetch(ctx, url)
