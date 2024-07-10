@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
@@ -117,13 +118,48 @@ func normalizeAndValidateRelayURLs(wsurls []string) error {
 func connectToAllRelays(
 	ctx context.Context,
 	relayUrls []string,
+	forcePreAuth bool,
 	opts ...nostr.PoolOption,
 ) (*nostr.SimplePool, []*nostr.Relay) {
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 	pool := nostr.NewSimplePool(ctx, opts...)
+relayLoop:
 	for _, url := range relayUrls {
 		log("connecting to %s... ", url)
 		if relay, err := pool.EnsureRelay(url); err == nil {
+			if forcePreAuth {
+				log("waiting for auth challenge... ")
+				signer := opts[0].(nostr.WithAuthHandler)
+				time.Sleep(time.Millisecond * 200)
+			challengeWaitLoop:
+				for {
+					// beginhack
+					// here starts the biggest and ugliest hack of this codebase
+					if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
+						challengeTag := authEvent.Tags.GetFirst([]string{"challenge", ""})
+						if (*challengeTag)[1] == "" {
+							return fmt.Errorf("auth not received yet *****")
+						}
+						return signer(authEvent)
+					}); err == nil {
+						// auth succeeded
+						break challengeWaitLoop
+					} else {
+						// auth failed
+						if strings.HasSuffix(err.Error(), "auth not received yet *****") {
+							// it failed because we didn't receive the challenge yet, so keep waiting
+							time.Sleep(time.Second)
+							continue challengeWaitLoop
+						} else {
+							// it failed for some other reason, so skip this relay
+							log(err.Error() + "\n")
+							continue relayLoop
+						}
+					}
+					// endhack
+				}
+			}
+
 			relays = append(relays, relay)
 			log("ok.\n")
 		} else {

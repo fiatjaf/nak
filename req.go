@@ -104,6 +104,11 @@ example:
 			Name:  "auth",
 			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
 		},
+		&cli.BoolFlag{
+			Name:    "force-pre-auth",
+			Aliases: []string{"fpa"},
+			Usage:   "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
+		},
 		&cli.StringFlag{
 			Name:        "sec",
 			Usage:       "secret key to sign the AUTH challenge, as hex or nsec",
@@ -127,11 +132,12 @@ example:
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		var pool *nostr.SimplePool
+
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
 			var relays []*nostr.Relay
-			pool, relays = connectToAllRelays(ctx, relayUrls, nostr.WithAuthHandler(func(evt *nostr.Event) error {
-				if !c.Bool("auth") {
+			pool, relays = connectToAllRelays(ctx, relayUrls, c.Bool("force-pre-auth"), nostr.WithAuthHandler(func(evt *nostr.Event) error {
+				if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 					return fmt.Errorf("auth not authorized")
 				}
 				sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
@@ -148,7 +154,7 @@ example:
 				} else {
 					pk, _ = nostr.GetPublicKey(sec)
 				}
-				log("performing auth as %s...\n", pk)
+				log("performing auth as %s... ", pk)
 
 				if bunker != nil {
 					return bunker.SignEvent(ctx, evt)
