@@ -38,7 +38,7 @@ var fetch = &cli.Command{
 
 			prefix, value, err := nip19.Decode(code)
 			if err != nil {
-				lineProcessingError(ctx, "failed to decode: %s", err)
+				ctx = lineProcessingError(ctx, "failed to decode: %s", err)
 				continue
 			}
 
@@ -88,7 +88,7 @@ var fetch = &cli.Command{
 			}
 
 			if len(relays) == 0 {
-				lineProcessingError(ctx, "no relay hints found")
+				ctx = lineProcessingError(ctx, "no relay hints found")
 				continue
 			}
 

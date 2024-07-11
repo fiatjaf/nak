@@ -50,7 +50,7 @@ var decode = &cli.Command{
 					decodeResult.HexResult.PrivateKey = hex.EncodeToString(b)
 					decodeResult.HexResult.PublicKey = hex.EncodeToString(b)
 				} else {
-					lineProcessingError(ctx, "hex string with invalid number of bytes: %d", len(b))
+					ctx = lineProcessingError(ctx, "hex string with invalid number of bytes: %d", len(b))
 					continue
 				}
 			} else if evp := sdk.InputToEventPointer(input); evp != nil {
@@ -64,7 +64,7 @@ var decode = &cli.Command{
 				decodeResult.PrivateKey.PrivateKey = value.(string)
 				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
 			} else {
-				lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
+				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
 				continue
 			}
 

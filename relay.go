@@ -23,7 +23,7 @@ var relay = &cli.Command{
 
 			info, err := nip11.Fetch(ctx, url)
 			if err != nil {
-				lineProcessingError(ctx, "failed to fetch '%s' information document: %w", url, err)
+				ctx = lineProcessingError(ctx, "failed to fetch '%s' information document: %w", url, err)
 				continue
 			}
 

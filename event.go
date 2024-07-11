@@ -176,7 +176,7 @@ example:
 
 			if stdinEvent != "" {
 				if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-					lineProcessingError(ctx, "invalid event received from stdin: %s", err)
+					ctx = lineProcessingError(ctx, "invalid event received from stdin: %s", err)
 					continue
 				}
 				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)

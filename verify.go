@@ -20,18 +20,18 @@ it outputs nothing if the verification is successful.`,
 			evt := nostr.Event{}
 			if stdinEvent != "" {
 				if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-					lineProcessingError(ctx, "invalid event: %s", err)
+					ctx = lineProcessingError(ctx, "invalid event: %s", err)
 					continue
 				}
 			}
 
 			if evt.GetID() != evt.ID {
-				lineProcessingError(ctx, "invalid .id, expected %s, got %s", evt.GetID(), evt.ID)
+				ctx = lineProcessingError(ctx, "invalid .id, expected %s, got %s", evt.GetID(), evt.ID)
 				continue
 			}
 
 			if ok, err := evt.CheckSignature(); !ok {
-				lineProcessingError(ctx, "invalid signature: %s", err)
+				ctx = lineProcessingError(ctx, "invalid signature: %s", err)
 				continue
 			}
 		}

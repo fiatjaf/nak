@@ -50,7 +50,7 @@ var public = &cli.Command{
 		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
 			pubkey, err := nostr.GetPublicKey(sec)
 			if err != nil {
-				lineProcessingError(ctx, "failed to derive public key: %s", err)
+				ctx = lineProcessingError(ctx, "failed to derive public key: %s", err)
 				continue
 			}
 			stdout(pubkey)
@@ -88,7 +88,7 @@ var encrypt = &cli.Command{
 		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, keys) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
-				lineProcessingError(ctx, "failed to encrypt: %s", err)
+				ctx = lineProcessingError(ctx, "failed to encrypt: %s", err)
 				continue
 			}
 			stdout(ncryptsec)
@@ -133,7 +133,7 @@ var decrypt = &cli.Command{
 				for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{ncryptsec}) {
 					sec, err := nip49.Decrypt(ncryptsec, password)
 					if err != nil {
-						lineProcessingError(ctx, "failed to decrypt: %s", err)
+						ctx = lineProcessingError(ctx, "failed to decrypt: %s", err)
 						continue
 					}
 					nsec, _ := nip19.EncodePrivateKey(sec)
@@ -264,13 +264,13 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, c *cli.Command, key
 			if strings.HasPrefix(sec, "nsec1") {
 				_, data, err := nip19.Decode(sec)
 				if err != nil {
-					lineProcessingError(ctx, "invalid nsec code: %s", err)
+					ctx = lineProcessingError(ctx, "invalid nsec code: %s", err)
 					continue
 				}
 				sec = data.(string)
 			}
 			if !nostr.IsValid32ByteHex(sec) {
-				lineProcessingError(ctx, "invalid hex key")
+				ctx = lineProcessingError(ctx, "invalid hex key")
 				continue
 			}
 			ch <- sec

@@ -182,7 +182,7 @@ example:
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
 				if err := easyjson.Unmarshal([]byte(stdinFilter), &filter); err != nil {
-					lineProcessingError(ctx, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
+					ctx = lineProcessingError(ctx, "invalid filter '%s' received from stdin: %s", stdinFilter, err)
 					continue
 				}
 			}

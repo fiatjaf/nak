@@ -169,9 +169,9 @@ relayLoop:
 	return pool, relays
 }
 
-func lineProcessingError(ctx context.Context, msg string, args ...any) {
-	ctx = context.WithValue(ctx, LINE_PROCESSING_ERROR, true)
+func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {
 	log(msg+"\n", args...)
+	return context.WithValue(ctx, LINE_PROCESSING_ERROR, true)
 }
 
 func exitIfLineProcessingError(ctx context.Context) {

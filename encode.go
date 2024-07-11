@@ -32,7 +32,7 @@ var encode = &cli.Command{
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValidPublicKey(target); !ok {
-						lineProcessingError(ctx, "invalid public key: %s", target)
+						ctx = lineProcessingError(ctx, "invalid public key: %s", target)
 						continue
 					}
 
@@ -53,7 +53,7 @@ var encode = &cli.Command{
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(ctx, "invalid private key: %s", target)
+						ctx = lineProcessingError(ctx, "invalid private key: %s", target)
 						continue
 					}
 
@@ -81,7 +81,7 @@ var encode = &cli.Command{
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(ctx, "invalid public key: %s", target)
+						ctx = lineProcessingError(ctx, "invalid public key: %s", target)
 						continue
 					}
 
@@ -119,7 +119,7 @@ var encode = &cli.Command{
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(ctx, "invalid event id: %s", target)
+						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
 						continue
 					}
 
@@ -189,7 +189,7 @@ var encode = &cli.Command{
 					if d == "" {
 						d = c.String("identifier")
 						if d == "" {
-							lineProcessingError(ctx, "\"d\" tag identifier can't be empty")
+							ctx = lineProcessingError(ctx, "\"d\" tag identifier can't be empty")
 							continue
 						}
 					}
@@ -216,7 +216,7 @@ var encode = &cli.Command{
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
-						lineProcessingError(ctx, "invalid event id: %s", target)
+						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
 						continue
 					}
 
