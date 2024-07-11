@@ -1,11 +1,20 @@
 package main
 
 import (
+	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
+	"strings"
 
+	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip11"
+	"github.com/nbd-wtf/go-nostr/nip86"
 	"github.com/urfave/cli/v3"
 )
 
@@ -32,4 +41,165 @@ var relay = &cli.Command{
 		}
 		return nil
 	},
+	Commands: (func() []*cli.Command {
+		commands := make([]*cli.Command, 0, 12)
+
+		for _, def := range []struct {
+			method string
+			args   []string
+		}{{"allowpubkey", []string{"pubkey", "reason"}}} {
+			flags := make([]cli.Flag, len(def.args), len(def.args)+4)
+			for i, argName := range def.args {
+				flags[i] = declareFlag(argName)
+			}
+
+			flags = append(flags,
+				&cli.StringFlag{
+					Name:        "sec",
+					Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
+					DefaultText: "the key '1'",
+					Value:       "0000000000000000000000000000000000000000000000000000000000000001",
+				},
+				&cli.BoolFlag{
+					Name:  "prompt-sec",
+					Usage: "prompt the user to paste a hex or nsec with which to sign the event",
+				},
+				&cli.StringFlag{
+					Name:  "connect",
+					Usage: "sign event using NIP-46, expects a bunker://... URL",
+				},
+				&cli.StringFlag{
+					Name:        "connect-as",
+					Usage:       "private key to when communicating with the bunker given on --connect",
+					DefaultText: "a random key",
+				},
+			)
+
+			cmd := &cli.Command{
+				Name:  def.method,
+				Usage: fmt.Sprintf(`the "%s" relay management RPC call`, def.method),
+				Description: fmt.Sprintf(
+					`the "%s" management RPC call, see https://nips.nostr.com/86 for more information`, def.method),
+				Action: func(ctx context.Context, c *cli.Command) error {
+					params := make([]any, len(def.args))
+					for i, argName := range def.args {
+						params[i] = getArgument(c, argName)
+					}
+					req := nip86.Request{Method: def.method, Params: params}
+					reqj, _ := json.Marshal(req)
+
+					relayUrls := c.Args().Slice()
+					if len(relayUrls) == 0 {
+						stdout(string(reqj))
+						return nil
+					}
+
+					sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
+					if err != nil {
+						return err
+					}
+
+					for _, relayUrl := range relayUrls {
+						httpUrl := "http" + nostr.NormalizeURL(relayUrl)[2:]
+						log("calling %s... ", httpUrl)
+						body := bytes.NewBuffer(nil)
+						body.Write(reqj)
+						req, err := http.NewRequestWithContext(ctx, "POST", httpUrl, body)
+						if err != nil {
+							return fmt.Errorf("failed to create request: %w", err)
+						}
+
+						// Authorization
+						hostname := strings.Split(strings.Split(httpUrl, "://")[1], "/")[0]
+						payloadHash := sha256.Sum256(reqj)
+						authEvent := nostr.Event{
+							Kind:      27235,
+							CreatedAt: nostr.Now(),
+							Tags: nostr.Tags{
+								{"host", hostname},
+								{"payload", hex.EncodeToString(payloadHash[:])},
+							},
+						}
+						if bunker != nil {
+							if err := bunker.SignEvent(ctx, &authEvent); err != nil {
+								return fmt.Errorf("failed to sign with bunker: %w", err)
+							}
+						} else if err := authEvent.Sign(sec); err != nil {
+							return fmt.Errorf("error signing with provided key: %w", err)
+						}
+						evtj, _ := json.Marshal(authEvent)
+						req.Header.Set("Authorization", "Nostr "+base64.StdEncoding.EncodeToString(evtj))
+
+						// Content-Type
+						req.Header.Set("Content-Type", "application/nostr+json+rpc")
+
+						// make request to relay
+						resp, err := http.DefaultClient.Do(req)
+						if err != nil {
+							log("failed: %s\n", err)
+							continue
+						}
+						b, err := io.ReadAll(resp.Body)
+						if err != nil {
+							log("failed to read response: %s\n", err)
+							continue
+						}
+						if resp.StatusCode >= 300 {
+							log("failed with status %d\n", resp.StatusCode)
+							bodyPrintable := string(b)
+							if len(bodyPrintable) > 300 {
+								bodyPrintable = bodyPrintable[0:297] + "..."
+							}
+							log(bodyPrintable)
+							continue
+						}
+						var response nip86.Response
+						if err := json.Unmarshal(b, &response); err != nil {
+							log("bad json response: %s\n", err)
+							bodyPrintable := string(b)
+							if len(bodyPrintable) > 300 {
+								bodyPrintable = bodyPrintable[0:297] + "..."
+							}
+							log(bodyPrintable)
+							continue
+						}
+						resp.Body.Close()
+
+						// print the result
+						log("\n")
+						pretty, _ := json.MarshalIndent(response, "", "  ")
+						stdout(string(pretty))
+					}
+
+					return nil
+				},
+				Flags: flags,
+			}
+
+			commands = append(commands, cmd)
+		}
+
+		return commands
+	})(),
+}
+
+func declareFlag(argName string) cli.Flag {
+	usage := "parameter for this management RPC call, see https://nips.nostr.com/86 for more information."
+	switch argName {
+	case "kind":
+		return &cli.IntFlag{Name: argName, Required: true, Usage: usage}
+	case "reason":
+		return &cli.StringFlag{Name: argName, Usage: usage}
+	default:
+		return &cli.StringFlag{Name: argName, Required: true, Usage: usage}
+	}
+}
+
+func getArgument(c *cli.Command, argName string) any {
+	switch argName {
+	case "kind":
+		return c.Int(argName)
+	default:
+		return c.String(argName)
+	}
 }

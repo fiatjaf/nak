@@ -79,8 +79,8 @@ github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovk
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
-github.com/nbd-wtf/go-nostr v0.34.0 h1:E7tDHFx42gvWwFv1Eysn+NxJqGLmo21x/VEwj2+F21E=
-github.com/nbd-wtf/go-nostr v0.34.0/go.mod h1:NZQkxl96ggbO8rvDpVjcsojJqKTPwqhP4i82O7K5DJs=
+github.com/nbd-wtf/go-nostr v0.34.2 h1:9b4qZ29DhQf9xEWN8/7zfDD868r1jFbpjrR3c+BHc+E=
+github.com/nbd-wtf/go-nostr v0.34.2/go.mod h1:NZQkxl96ggbO8rvDpVjcsojJqKTPwqhP4i82O7K5DJs=
 github.com/nbd-wtf/nostr-sdk v0.0.5 h1:rec+FcDizDVO0W25PX0lgYMXvP7zNNOgI3Fu9UCm4BY=
 github.com/nbd-wtf/nostr-sdk v0.0.5/go.mod h1:iJJsikesCGLNFZ9dLqhLPDzdt924EagUmdQxT3w2Lmk=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
