@@ -38,4 +38,4 @@ require (
 	golang.org/x/text v0.8.0 // indirect
 )
 
-replace github.com/urfave/cli/v3 => github.com/fiatjaf/cli/v3 v3.0.0-20240626022047-0fc2565ea728
+replace github.com/urfave/cli/v3 => github.com/fiatjaf/cli/v3 v3.0.0-20240712212113-3a8b0280e2c5
