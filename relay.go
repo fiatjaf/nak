@@ -47,7 +47,28 @@ var relay = &cli.Command{
 		for _, def := range []struct {
 			method string
 			args   []string
-		}{{"allowpubkey", []string{"pubkey", "reason"}}} {
+		}{
+			{"allowpubkey", []string{"pubkey", "reason"}},
+			{"banpubkey", []string{"pubkey", "reason"}},
+			{"listallowedpubkeys", nil},
+			{"allowpubkey", []string{"pubkey", "reason"}},
+			{"listallowedpubkeys", nil},
+			{"listeventsneedingmoderation", nil},
+			{"allowevent", []string{"id", "reason"}},
+			{"banevent", []string{"id", "reason"}},
+			{"listbannedevents", nil},
+			{"changerelayname", []string{"name"}},
+			{"changerelaydescription", []string{"description"}},
+			{"changerelayicon", []string{"icon"}},
+			{"allowkind", []string{"kind"}},
+			{"disallowkind", []string{"kind"}},
+			{"listallowedkinds", nil},
+			{"blockip", []string{"ip", "reason"}},
+			{"unblockip", []string{"ip", "reason"}},
+			{"listblockedips", nil},
+		} {
+			def := def
+
 			flags := make([]cli.Flag, len(def.args), len(def.args)+4)
 			for i, argName := range def.args {
 				flags[i] = declareFlag(argName)
@@ -101,7 +122,7 @@ var relay = &cli.Command{
 
 					for _, relayUrl := range relayUrls {
 						httpUrl := "http" + nostr.NormalizeURL(relayUrl)[2:]
-						log("calling %s... ", httpUrl)
+						log("calling '%s' on %s... ", def.method, httpUrl)
 						body := bytes.NewBuffer(nil)
 						body.Write(reqj)
 						req, err := http.NewRequestWithContext(ctx, "POST", httpUrl, body)
