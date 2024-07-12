@@ -210,7 +210,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to decrypt: %w", err)
 		}
-	} else if bsec, err := hex.DecodeString(strings.Repeat("0", 64-len(sec)) + sec); err == nil {
+	} else if bsec, err := hex.DecodeString(leftPadKey(sec)); err == nil {
 		sec = hex.EncodeToString(bsec)
 	} else if prefix, hexvalue, err := nip19.Decode(sec); err != nil {
 		return "", nil, fmt.Errorf("invalid nsec: %w", err)
@@ -283,4 +283,8 @@ func randString(n int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
+}
+
+func leftPadKey(k string) string {
+	return strings.Repeat("0", 64-len(k)) + k
 }

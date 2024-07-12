@@ -269,6 +269,7 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, c *cli.Command, key
 				}
 				sec = data.(string)
 			}
+			sec = leftPadKey(sec)
 			if !nostr.IsValid32ByteHex(sec) {
 				ctx = lineProcessingError(ctx, "invalid hex key")
 				continue
