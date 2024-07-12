@@ -116,8 +116,7 @@ var decrypt = &cli.Command{
 			if err != nil {
 				return fmt.Errorf("failed to decrypt: %s", err)
 			}
-			nsec, _ := nip19.EncodePrivateKey(sec)
-			stdout(nsec)
+			stdout(sec)
 			return nil
 		case 1:
 			if arg := c.Args().Get(0); strings.HasPrefix(arg, "ncryptsec1") {
@@ -136,8 +135,7 @@ var decrypt = &cli.Command{
 						ctx = lineProcessingError(ctx, "failed to decrypt: %s", err)
 						continue
 					}
-					nsec, _ := nip19.EncodePrivateKey(sec)
-					stdout(nsec)
+					stdout(sec)
 				}
 				return nil
 			}
