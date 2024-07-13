@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 
 	"github.com/mailru/easyjson"
@@ -68,13 +67,13 @@ example:
 			Usage:    "shortcut for --tag d=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.StringFlag{
+		&NaturalTimeFlag{
 			Name:     "since",
 			Aliases:  []string{"s"},
 			Usage:    "only accept events newer than this (unix timestamp)",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.StringFlag{
+		&NaturalTimeFlag{
 			Name:     "until",
 			Aliases:  []string{"u"},
 			Usage:    "only accept events older than this (unix timestamp)",
@@ -229,28 +228,16 @@ example:
 				filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
 			}
 
-			if since := c.String("since"); since != "" {
-				if since == "now" {
-					ts := nostr.Now()
-					filter.Since = &ts
-				} else if i, err := strconv.Atoi(since); err == nil {
-					ts := nostr.Timestamp(i)
-					filter.Since = &ts
-				} else {
-					return fmt.Errorf("parse error: Invalid numeric literal %q", since)
-				}
+			if c.IsSet("since") {
+				nts := getNaturalDate(c, "since")
+				filter.Since = &nts
 			}
-			if until := c.String("until"); until != "" {
-				if until == "now" {
-					ts := nostr.Now()
-					filter.Until = &ts
-				} else if i, err := strconv.Atoi(until); err == nil {
-					ts := nostr.Timestamp(i)
-					filter.Until = &ts
-				} else {
-					return fmt.Errorf("parse error: Invalid numeric literal %q", until)
-				}
+
+			if c.IsSet("until") {
+				nts := getNaturalDate(c, "until")
+				filter.Until = &nts
 			}
+
 			if limit := c.Uint("limit"); limit != 0 {
 				filter.Limit = int(limit)
 			} else if c.IsSet("limit") || c.Bool("stream") {

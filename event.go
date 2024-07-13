@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
-	"strconv"
 	"strings"
 	"time"
 
@@ -126,12 +125,12 @@ example:
 			Usage:    "shortcut for --tag d=<value>",
 			Category: CATEGORY_EVENT_FIELDS,
 		},
-		&cli.StringFlag{
+		&NaturalTimeFlag{
 			Name:        "created-at",
 			Aliases:     []string{"time", "ts"},
 			Usage:       "unix timestamp value for the created_at field",
 			DefaultText: "now",
-			Value:       "",
+			Value:       nostr.Now(),
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
 	},
@@ -225,16 +224,8 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if createdAt := c.String("created-at"); createdAt != "" {
-				ts := time.Now()
-				if createdAt != "now" {
-					if v, err := strconv.ParseInt(createdAt, 10, 64); err != nil {
-						return fmt.Errorf("failed to parse timestamp '%s': %w", createdAt, err)
-					} else {
-						ts = time.Unix(v, 0)
-					}
-				}
-				evt.CreatedAt = nostr.Timestamp(ts.Unix())
+			if c.IsSet("created-at") {
+				evt.CreatedAt = getNaturalDate(c, "created-at")
 				mustRehashAndResign = true
 			} else if evt.CreatedAt == 0 {
 				evt.CreatedAt = nostr.Now()
