@@ -27,9 +27,10 @@ var app = &cli.Command{
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
-			Name:    "quiet",
-			Usage:   "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
-			Aliases: []string{"q"},
+			Name:       "quiet",
+			Usage:      "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
+			Aliases:    []string{"q"},
+			Persistent: true,
 			Action: func(ctx context.Context, c *cli.Command, b bool) error {
 				q := c.Count("quiet")
 				if q >= 1 {
