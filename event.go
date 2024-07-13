@@ -12,7 +12,6 @@ import (
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nson"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/slices"
 )
@@ -89,10 +88,6 @@ example:
 		&cli.BoolFlag{
 			Name:  "nevent",
 			Usage: "print the nevent code (to stderr) after the event is published",
-		},
-		&cli.BoolFlag{
-			Name:  "nson",
-			Usage: "encode the event using NSON",
 		},
 		&cli.IntFlag{
 			Name:        "kind",
@@ -276,8 +271,6 @@ example:
 			if c.Bool("envelope") {
 				j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
 				result = string(j)
-			} else if c.Bool("nson") {
-				result, _ = nson.Marshal(&evt)
 			} else {
 				j, _ := easyjson.Marshal(&evt)
 				result = string(j)
