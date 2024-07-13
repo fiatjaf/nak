@@ -89,7 +89,7 @@ example:
 			Name:  "nevent",
 			Usage: "print the nevent code (to stderr) after the event is published",
 		},
-		&cli.IntFlag{
+		&cli.UintFlag{
 			Name:        "kind",
 			Aliases:     []string{"k"},
 			Usage:       "event kind",
@@ -177,7 +177,7 @@ example:
 				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)
 			}
 
-			if kind := c.Int("kind"); slices.Contains(c.FlagNames(), "kind") {
+			if kind := c.Uint("kind"); slices.Contains(c.FlagNames(), "kind") {
 				evt.Kind = int(kind)
 				mustRehashAndResign = true
 			} else if !kindWasSupplied {

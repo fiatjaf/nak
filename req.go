@@ -80,7 +80,7 @@ example:
 			Usage:    "only accept events older than this (unix timestamp)",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.IntFlag{
+		&cli.UintFlag{
 			Name:     "limit",
 			Aliases:  []string{"l"},
 			Usage:    "only accept up to this number of events",
@@ -251,7 +251,7 @@ example:
 					return fmt.Errorf("parse error: Invalid numeric literal %q", until)
 				}
 			}
-			if limit := c.Int("limit"); limit != 0 {
+			if limit := c.Uint("limit"); limit != 0 {
 				filter.Limit = int(limit)
 			} else if c.IsSet("limit") || c.Bool("stream") {
 				filter.LimitZero = true
