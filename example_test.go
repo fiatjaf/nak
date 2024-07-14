@@ -98,3 +98,21 @@ func ExampleReqIdFromRelay() {
 	// Output:
 	// {"kind":1,"id":"20a6606ed548fe7107533cf3416ce1aa5e957c315c2a40249e12bd9873dca7da","pubkey":"dd664d5e4016433a8cd69f005ae1480804351789b59de5af06276de65633d319","created_at":1720972243,"tags":[["e","bdb2210fe6d9c4b141f08b5d9d1147cd8e1dc1d82f552a889ab171894249d21d","","root"],["e","c2e45f09e7d62ed12afe2b8b1bcf6be823b560a53ef06905365a78979a1b9ee3","","reply"],["p","036533caa872376946d4e4fdea4c1a0441eda38ca2d9d9417bb36006cbaabf58","","mention"]],"content":"Yeah, so bizarre, but I guess most people are meant to be serfs.","sig":"9ea7488415c250d0ac8fcb2219f211cb369dddf2a75c0f63d2db773c6dc1ef9dd9679b8941c0e7551744ea386afebad2024be8ce3ac418d4f47c95e7491af38e"}
 }
+
+func ExampleReqWithFlagsAfter1() {
+	app.Run(ctx, []string{"nak", "req", "nos.lol", "-i", "20a6606ed548fe7107533cf3416ce1aa5e957c315c2a40249e12bd9873dca7da", "--limit", "1"})
+	// Output:
+	// {"kind":1,"id":"20a6606ed548fe7107533cf3416ce1aa5e957c315c2a40249e12bd9873dca7da","pubkey":"dd664d5e4016433a8cd69f005ae1480804351789b59de5af06276de65633d319","created_at":1720972243,"tags":[["e","bdb2210fe6d9c4b141f08b5d9d1147cd8e1dc1d82f552a889ab171894249d21d","","root"],["e","c2e45f09e7d62ed12afe2b8b1bcf6be823b560a53ef06905365a78979a1b9ee3","","reply"],["p","036533caa872376946d4e4fdea4c1a0441eda38ca2d9d9417bb36006cbaabf58","","mention"]],"content":"Yeah, so bizarre, but I guess most people are meant to be serfs.","sig":"9ea7488415c250d0ac8fcb2219f211cb369dddf2a75c0f63d2db773c6dc1ef9dd9679b8941c0e7551744ea386afebad2024be8ce3ac418d4f47c95e7491af38e"}
+}
+
+func ExampleReqWithFlagsAfter2() {
+	app.Run(ctx, []string{"nak", "req", "-e", "893d4c10f1c230240812c6bdf9ad877eed1e29e87029d153820c24680bb183b1", "nostr.mom", "--author", "2a7dcf382bcc96a393ada5c975f500393b3f7be6e466bff220aa161ad6b15eb6", "--limit", "1", "-k", "7"})
+	// Output:
+	// {"kind":7,"id":"9b4868b068ea34ae51092807586c4541b3569d9efc23862aea48ef13de275857","pubkey":"2a7dcf382bcc96a393ada5c975f500393b3f7be6e466bff220aa161ad6b15eb6","created_at":1720987327,"tags":[["e","893d4c10f1c230240812c6bdf9ad877eed1e29e87029d153820c24680bb183b1"],["p","1e978baae414eee990dba992871549ad4a099b9d6f7e71c8059b254ea024dddc"],["k","1"]],"content":"❤️","sig":"7eddd112c642ecdb031330dadc021790642b3c10ecc64158ba3ae63edd798b26afb9b5a3bba72835ce171719a724de1472f65c9b3339b6bead0ce2846f93dfc9"}
+}
+
+func ExampleReqWithFlagsAfter3() {
+	app.Run(ctx, []string{"nak", "req", "--limit", "1", "pyramid.fiatjaf.com", "-a", "3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24", "-qp", "3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24", "-e", "9f3c1121c96edf17d84b9194f74d66d012b28c4e25b3ef190582c76b8546a188"})
+	// Output:
+	// {"kind":1,"id":"101572c80ebdc963dab8440f6307387a3023b6d90f7e495d6c5ee1ef77045a67","pubkey":"3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24","created_at":1720987305,"tags":[["e","ceacdc29fa7a0b51640b30d2424e188215460617db5ba5bb52d3fbf0094eebb3","","root"],["e","9f3c1121c96edf17d84b9194f74d66d012b28c4e25b3ef190582c76b8546a188","","reply"],["p","3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24"],["p","6b96c3eb36c6cd457d906bbaafe7b36cacfb8bcc4ab235be6eab3b71c6669251"]],"content":"Nope. I grew up playing in the woods. Never once saw a bear in the woods. If I did, I'd probably shiy my pants, then scream at it like I was a crazy person with my arms above my head to make me seem huge.","sig":"b098820b4a5635865cada9f9a5813be2bc6dd7180e16e590cf30e07916d8ed6ed98ab38b64f3bfba12d88d37335f229f7ef8c084bc48132e936c664a54d3e650"}
+}

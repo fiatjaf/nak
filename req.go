@@ -249,6 +249,7 @@ example:
 				if c.Bool("stream") {
 					fn = pool.SubMany
 				}
+
 				for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {
 					stdout(ie.Event)
 				}
