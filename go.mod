@@ -46,4 +46,4 @@ require (
 	golang.org/x/text v0.16.0 // indirect
 )
 
-replace github.com/urfave/cli/v3 => github.com/fiatjaf/cli/v3 v3.0.0-20240712212113-3a8b0280e2c5
+replace github.com/urfave/cli/v3 => github.com/fiatjaf/cli/v3 v3.0.0-20240713223955-ebd1e3ed26b9
