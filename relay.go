@@ -10,7 +10,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip11"
@@ -131,13 +130,13 @@ var relay = &cli.Command{
 						}
 
 						// Authorization
-						hostname := strings.Split(strings.Split(httpUrl, "://")[1], "/")[0]
 						payloadHash := sha256.Sum256(reqj)
 						authEvent := nostr.Event{
 							Kind:      27235,
 							CreatedAt: nostr.Now(),
 							Tags: nostr.Tags{
-								{"host", hostname},
+								{"u", httpUrl},
+								{"method", "POST"},
 								{"payload", hex.EncodeToString(payloadHash[:])},
 							},
 						}
