@@ -18,7 +18,8 @@ var encode = &cli.Command{
 		nak encode nprofile --relay <relay-url> <pubkey-hex>
 		nak encode nevent <event-id>
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
-		nak encode nsec <privkey-hex>`,
+		nak encode nsec <privkey-hex>
+		nak encode nrelay <relay>`,
 	Before: func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() < 1 {
 			return fmt.Errorf("expected more than 1 argument.")
@@ -222,6 +223,27 @@ var encode = &cli.Command{
 
 					if note, err := nip19.EncodeNote(target); err == nil {
 						stdout(note)
+					} else {
+						return err
+					}
+				}
+
+				exitIfLineProcessingError(ctx)
+				return nil
+			},
+		},
+		{
+			Name:  "nrelay",
+			Usage: "generate relay codes",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				for target := range getStdinLinesOrArguments(c.Args()) {
+					if ok := nostr.IsValidRelayURL(target); !ok {
+						ctx = lineProcessingError(ctx, "invalid relay URL: %s", target)
+						continue
+					}
+
+					if relay, err := nip19.EncodeRelay(target); err == nil {
+						stdout(relay)
 					} else {
 						return err
 					}

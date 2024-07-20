@@ -19,7 +19,8 @@ var decode = &cli.Command{
 		nak decode npub1uescmd5krhrmj9rcura833xpke5eqzvcz5nxjw74ufeewf2sscxq4g7chm
 		nak decode nevent1qqs29yet5tp0qq5xu5qgkeehkzqh5qu46739axzezcxpj4tjlkx9j7gpr4mhxue69uhkummnw3ez6ur4vgh8wetvd3hhyer9wghxuet5sh59ud
 		nak decode nprofile1qqsrhuxx8l9ex335q7he0f09aej04zpazpl0ne2cgukyawd24mayt8gpz4mhxue69uhk2er9dchxummnw3ezumrpdejqz8thwden5te0dehhxarj94c82c3wwajkcmr0wfjx2u3wdejhgqgcwaehxw309aex2mrp0yhxummnw3exzarf9e3k7mgnp0sh5
-		nak decode nsec1jrmyhtjhgd9yqalps8hf9mayvd58852gtz66m7tqpacjedkp6kxq4dyxsr`,
+		nak decode nsec1jrmyhtjhgd9yqalps8hf9mayvd58852gtz66m7tqpacjedkp6kxq4dyxsr
+        nak decode nrelay1qq28wumn8ghj7un9d3shjtnyv9kh2uewd9hsc5zt2x`,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:    "id",
@@ -57,14 +58,23 @@ var decode = &cli.Command{
 				decodeResult = DecodeResult{EventPointer: evp}
 			} else if pp := sdk.InputToProfile(ctx, input); pp != nil {
 				decodeResult = DecodeResult{ProfilePointer: pp}
-			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
-				ep := value.(nostr.EntityPointer)
-				decodeResult = DecodeResult{EntityPointer: &ep}
-			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
-				decodeResult.PrivateKey.PrivateKey = value.(string)
-				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
+			} else if prefix, value, err := nip19.Decode(input); err == nil {
+				switch prefix {
+				case "naddr":
+					ep := value.(nostr.EntityPointer)
+					decodeResult = DecodeResult{EntityPointer: &ep}
+				case "nsec":
+					decodeResult.PrivateKey.PrivateKey = value.(string)
+					decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
+				case "nrelay":
+					ep := value.(nostr.EntityRelay)
+					decodeResult = DecodeResult{EntityRelay: &ep}
+				default:
+					ctx = lineProcessingError(ctx, "couldn't decode input '%s': %v", input, err)
+					continue
+				}
 			} else {
-				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
+				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %v", input, err)
 				continue
 			}
 
@@ -81,6 +91,7 @@ type DecodeResult struct {
 	*nostr.EventPointer
 	*nostr.ProfilePointer
 	*nostr.EntityPointer
+	*nostr.EntityRelay
 	HexResult struct {
 		PossibleTypes []string `json:"possible_types"`
 		PublicKey     string   `json:"pubkey,omitempty"`
@@ -102,6 +113,8 @@ func (d DecodeResult) JSON() string {
 		j, _ = json.MarshalIndent(d.ProfilePointer, "", "  ")
 	} else if d.EntityPointer != nil {
 		j, _ = json.MarshalIndent(d.EntityPointer, "", "  ")
+	} else if d.EntityRelay != nil {
+		j, _ = json.MarshalIndent(d.EntityRelay, "", "  ")
 	} else if len(d.HexResult.PossibleTypes) > 0 {
 		j, _ = json.MarshalIndent(d.HexResult, "", "  ")
 	} else if d.PrivateKey.PrivateKey != "" {
