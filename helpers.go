@@ -17,7 +17,7 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/nbd-wtf/go-nostr/nip49"
-	"github.com/urfave/cli/v3"
+	"github.com/fiatjaf/cli/v3"
 )
 
 const (

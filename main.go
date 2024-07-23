@@ -4,7 +4,7 @@ import (
 	"context"
 	"os"
 
-	"github.com/urfave/cli/v3"
+	"github.com/fiatjaf/cli/v3"
 )
 
 var app = &cli.Command{
