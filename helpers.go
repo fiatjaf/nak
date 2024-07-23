@@ -196,10 +196,13 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		return "", bunker, err
 	}
 
-	// Check in the Env for the secret key first
 	sec := c.String("sec")
-	if env, ok := os.LookupEnv("NOSTR_PRIVATE_KEY"); ok {
-		sec = env
+
+	// check in the environment for the secret key
+	if sec == "" {
+		if key, ok := os.LookupEnv("NOSTR_PRIVATE_KEY"); ok {
+			sec = key
+		}
 	}
 
 	if c.Bool("prompt-sec") {
