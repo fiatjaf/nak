@@ -7,9 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fiatjaf/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/fiatjaf/cli/v3"
 )
 
 const CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"

@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
-	"github.com/fiatjaf/cli/v3"
 	"golang.org/x/exp/slices"
 )
 

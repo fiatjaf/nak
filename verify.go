@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"github.com/nbd-wtf/go-nostr"
 	"github.com/fiatjaf/cli/v3"
+	"github.com/nbd-wtf/go-nostr"
 )
 
 var verify = &cli.Command{

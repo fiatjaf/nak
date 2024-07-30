@@ -6,9 +6,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/fiatjaf/cli/v3"
 	"github.com/markusmobius/go-dateparser"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/fiatjaf/cli/v3"
 )
 
 type NaturalTimeFlag = cli.FlagBase[nostr.Timestamp, struct{}, naturalTimeValue]

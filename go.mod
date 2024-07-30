@@ -9,6 +9,7 @@ require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fatih/color v1.16.0
+	github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/nbd-wtf/go-nostr v0.34.2
@@ -23,7 +24,6 @@ require (
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.0.1 // indirect
 	github.com/elliotchance/pie/v2 v2.7.0 // indirect
-	github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae // indirect
 	github.com/fiatjaf/eventstore v0.2.16 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect

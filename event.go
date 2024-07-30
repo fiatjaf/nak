@@ -8,10 +8,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/fiatjaf/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/fiatjaf/cli/v3"
 	"golang.org/x/exp/slices"
 )
 

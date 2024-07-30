@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/fiatjaf/cli/v3"
 )
 
 var encode = &cli.Command{
