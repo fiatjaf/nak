@@ -240,7 +240,7 @@ example:
 
 			if limit := c.Uint("limit"); limit != 0 {
 				filter.Limit = int(limit)
-			} else if c.IsSet("limit") || c.Bool("stream") {
+			} else if c.IsSet("limit") {
 				filter.LimitZero = true
 			}
 
