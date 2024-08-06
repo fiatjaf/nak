@@ -261,22 +261,18 @@ func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, e
 		EnableMask:             true,
 		MaskRune:               '*',
 	}
-	return _ask(config, msg, "", shouldAskAgain)
-}
 
-func _ask(config *readline.Config, msg string, defaultValue string, shouldAskAgain func(answer string) bool) (string, error) {
 	rl, err := readline.NewEx(config)
 	if err != nil {
 		return "", err
 	}
 
-	rl.WriteStdin([]byte(defaultValue))
 	for {
 		answer, err := rl.Readline()
 		if err != nil {
 			return "", err
 		}
-		answer = strings.TrimSpace(strings.ToLower(answer))
+		answer = strings.TrimSpace(answer)
 		if shouldAskAgain != nil && shouldAskAgain(answer) {
 			continue
 		}
