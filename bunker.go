@@ -177,7 +177,7 @@ var bunker = &cli.Command{
 				}()
 			}
 
-			return harmless || slices.Contains(authorizedKeys, from) || slices.Contains(authorizedSecrets, secret)
+			return slices.Contains(authorizedKeys, from) || slices.Contains(authorizedSecrets, secret)
 		}
 
 		for ie := range events {
