@@ -18,9 +18,10 @@ import (
 )
 
 var key = &cli.Command{
-	Name:        "key",
-	Usage:       "operations on secret keys: generate, derive, encrypt, decrypt.",
-	Description: ``,
+	Name:                      "key",
+	Usage:                     "operations on secret keys: generate, derive, encrypt, decrypt.",
+	Description:               ``,
+	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
 		generate,
 		public,
@@ -31,9 +32,10 @@ var key = &cli.Command{
 }
 
 var generate = &cli.Command{
-	Name:        "generate",
-	Usage:       "generates a secret key",
-	Description: ``,
+	Name:                      "generate",
+	Usage:                     "generates a secret key",
+	Description:               ``,
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		sec := nostr.GeneratePrivateKey()
 		stdout(sec)
@@ -42,10 +44,11 @@ var generate = &cli.Command{
 }
 
 var public = &cli.Command{
-	Name:        "public",
-	Usage:       "computes a public key from a secret key",
-	Description: ``,
-	ArgsUsage:   "[secret]",
+	Name:                      "public",
+	Usage:                     "computes a public key from a secret key",
+	Description:               ``,
+	ArgsUsage:                 "[secret]",
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
 			pubkey, err := nostr.GetPublicKey(sec)
@@ -60,10 +63,11 @@ var public = &cli.Command{
 }
 
 var encrypt = &cli.Command{
-	Name:        "encrypt",
-	Usage:       "encrypts a secret key and prints an ncryptsec code",
-	Description: `uses the NIP-49 standard.`,
-	ArgsUsage:   "<secret> <password>",
+	Name:                      "encrypt",
+	Usage:                     "encrypts a secret key and prints an ncryptsec code",
+	Description:               `uses the NIP-49 standard.`,
+	ArgsUsage:                 "<secret> <password>",
+	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
 		&cli.IntFlag{
 			Name:        "logn",
@@ -98,10 +102,11 @@ var encrypt = &cli.Command{
 }
 
 var decrypt = &cli.Command{
-	Name:        "decrypt",
-	Usage:       "takes an ncrypsec and a password and decrypts it into an nsec",
-	Description: `uses the NIP-49 standard.`,
-	ArgsUsage:   "<ncryptsec-code> <password>",
+	Name:                      "decrypt",
+	Usage:                     "takes an ncrypsec and a password and decrypts it into an nsec",
+	Description:               `uses the NIP-49 standard.`,
+	ArgsUsage:                 "<ncryptsec-code> <password>",
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		var ncryptsec string
 		var password string
@@ -151,7 +156,8 @@ var combine = &cli.Command{
 	Description: `The public keys must have 33 bytes (66 characters hex), with the 02 or 03 prefix. It is common in Nostr to drop that first byte, so you'll have to derive the public keys again from the private keys in order to get it back.
 
 However, if the intent is to check if two existing Nostr pubkeys match a given combined pubkey, then it might be sufficient to calculate the combined key for all the possible combinations of pubkeys in the input.`,
-	ArgsUsage: "[pubkey...]",
+	ArgsUsage:                 "[pubkey...]",
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		type Combination struct {
 			Variants []string `json:"input_variants"`

@@ -25,10 +25,12 @@ var encode = &cli.Command{
 		}
 		return nil
 	},
+	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
 		{
-			Name:  "npub",
-			Usage: "encode a hex public key into bech32 'npub' format",
+			Name:                      "npub",
+			Usage:                     "encode a hex public key into bech32 'npub' format",
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValidPublicKey(target); !ok {
@@ -48,8 +50,9 @@ var encode = &cli.Command{
 			},
 		},
 		{
-			Name:  "nsec",
-			Usage: "encode a hex private key into bech32 'nsec' format",
+			Name:                      "nsec",
+			Usage:                     "encode a hex private key into bech32 'nsec' format",
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
@@ -78,6 +81,7 @@ var encode = &cli.Command{
 					Usage:   "attach relay hints to nprofile code",
 				},
 			},
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
@@ -116,6 +120,7 @@ var encode = &cli.Command{
 					Usage:   "attach an author pubkey as a hint to the nevent code",
 				},
 			},
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {
@@ -174,6 +179,7 @@ var encode = &cli.Command{
 					Usage:   "attach relay hints to naddr code",
 				},
 			},
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for d := range getStdinLinesOrBlank() {
 					pubkey := c.String("pubkey")
@@ -211,8 +217,9 @@ var encode = &cli.Command{
 			},
 		},
 		{
-			Name:  "note",
-			Usage: "generate note1 event codes (not recommended)",
+			Name:                      "note",
+			Usage:                     "generate note1 event codes (not recommended)",
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if ok := nostr.IsValid32ByteHex(target); !ok {

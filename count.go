@@ -12,9 +12,10 @@ import (
 )
 
 var count = &cli.Command{
-	Name:        "count",
-	Usage:       "generates encoded COUNT messages and optionally use them to talk to relays",
-	Description: `outputs a NIP-45 request (the flags are mostly the same as 'nak req').`,
+	Name:                      "count",
+	Usage:                     "generates encoded COUNT messages and optionally use them to talk to relays",
+	Description:               `outputs a NIP-45 request (the flags are mostly the same as 'nak req').`,
+	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",

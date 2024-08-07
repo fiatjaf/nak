@@ -27,6 +27,7 @@ it can also take a filter from stdin, optionally modify it with flags and send i
 
 example:
 		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
+	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
 		&cli.StringSliceFlag{
 			Name:     "author",

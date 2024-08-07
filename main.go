@@ -8,11 +8,12 @@ import (
 )
 
 var app = &cli.Command{
-	Name:                     "nak",
-	Suggest:                  true,
-	UseShortOptionHandling:   true,
-	AllowFlagsAfterArguments: true,
-	Usage:                    "the nostr army knife command-line tool",
+	Name:                      "nak",
+	Suggest:                   true,
+	UseShortOptionHandling:    true,
+	AllowFlagsAfterArguments:  true,
+	Usage:                     "the nostr army knife command-line tool",
+	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
 		req,
 		count,

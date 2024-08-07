@@ -22,7 +22,8 @@ var relay = &cli.Command{
 	Usage: "gets the relay information document for the given relay, as JSON",
 	Description: `example:
 		nak relay nostr.wine`,
-	ArgsUsage: "<relay-url>",
+	ArgsUsage:                 "<relay-url>",
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for url := range getStdinLinesOrArguments(c.Args()) {
 			if url == "" {

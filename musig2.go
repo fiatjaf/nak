@@ -16,7 +16,7 @@ import (
 )
 
 func performMusig(
-	ctx context.Context,
+	_ context.Context,
 	sec string,
 	evt *nostr.Event,
 	numSigners int,
