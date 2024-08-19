@@ -97,6 +97,20 @@ example:
 			DefaultText: "false, will close on EOSE",
 		},
 		&cli.BoolFlag{
+			Name:        "paginate",
+			Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
+			DefaultText: "false",
+		},
+		&cli.DurationFlag{
+			Name:  "paginate-interval",
+			Usage: "time between queries when using --paginate",
+		},
+		&cli.UintFlag{
+			Name:        "paginate-global-limit",
+			Usage:       "global limit at which --paginate should stop",
+			DefaultText: "uses the value given by --limit/-l or infinite",
+		},
+		&cli.BoolFlag{
 			Name:  "bare",
 			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
 		},
@@ -247,7 +261,9 @@ example:
 
 			if len(relayUrls) > 0 {
 				fn := pool.SubManyEose
-				if c.Bool("stream") {
+				if c.Bool("paginate") {
+					fn = paginateWithPoolAndParams(pool, c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
+				} else if c.Bool("stream") {
 					fn = pool.SubMany
 				}
 

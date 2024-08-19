@@ -173,6 +173,13 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 {"kind":1,"id":"f030fccd90c783858dfcee204af94826cf0f1c85d6fc85a0087e9e5172419393","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1719677535,"tags":[["-"],["e","f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a","wss://relay.whatever.com","root","a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208"],["p","a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208","wss://p-relay.com"]],"content":"I know the future","sig":"8b36a74e29df8bc12bed66896820da6940d4d9409721b3ed2e910c838833a178cb45fd5bb1c6eb6adc66ab2808bfac9f6644a2c55a6570bb2ad90f221c9c7551"}
 ```
 
+### download the latest 50000 notes from a relay, regardless of their natural query limits, by paginating requests
+```shell
+~> nak req -k 1 --limit 50000 --paginate --paginate-interval 2s nos.lol > events.jsonl
+~> wc -l events.jsonl
+50000 events.jsonl
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
