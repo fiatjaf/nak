@@ -25,6 +25,7 @@ var app = &cli.Command{
 		verify,
 		relay,
 		bunker,
+		serve,
 	},
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
@@ -37,7 +38,7 @@ var app = &cli.Command{
 				if q >= 1 {
 					log = func(msg string, args ...any) {}
 					if q >= 2 {
-						stdout = func(a ...any) (int, error) { return 0, nil }
+						stdout = func(_ ...any) (int, error) { return 0, nil }
 					}
 				}
 				return nil

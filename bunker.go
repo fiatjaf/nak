@@ -85,8 +85,8 @@ var bunker = &cli.Command{
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
-		bold := color.New(color.Bold).Sprint
-		italic := color.New(color.Italic).Sprint
+		bold := color.New(color.Bold).Sprintf
+		italic := color.New(color.Italic).Sprintf
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
@@ -132,7 +132,7 @@ var bunker = &cli.Command{
 			)
 
 			log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
-				bold(relayURLs),
+				bold("%v", relayURLs),
 				bold(pubkey),
 				bold(npub),
 				authorizedKeysStr,

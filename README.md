@@ -180,6 +180,20 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 50000 events.jsonl
 ```
 
+### run a somewhat verbose local relay for test purposes
+```shell
+~> nak serve
+> relay running at ws://localhost:10547
+    got request {"kinds":[1],"authors":["79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798"],"since":1724082362}
+    got event {"kind":1,"id":"e3c6bf630d6deea74c0ee2f7f7ba6da55a627498a32f1e72029229bb1810bce3","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724082366,"tags":[],"content":"two","sig":"34261cf226c3fee2df24e55a89f43f5349c98a64bce46bdc46807b0329f334cea93e9e8bc285c1259a5684cf23f5e507c8e6dad47a31a6615d706b1130d09e69"}
+    got event {"kind":1,"id":"0bbb397c8f87ae557650b9d6ee847292df8e530c458ffea1b24bdcb7bed0ec5e","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724082369,"tags":[],"content":"three","sig":"aa1cb7d5f0f03f358fc4c0a4351a4f1c66e3a7627021b618601c56ba598b825b6d95d9c8720a4c60666a7eb21e17018cf326222f9f574a9396f2f2da7f007546"}
+  • events stored: 2, subscriptions opened: 1
+    got event {"kind":1,"id":"029ebff759dd54dbd01b929f879fea5802de297e1c3768ca16d9b97cc8bca38f","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724082371,"tags":[],"content":"four","sig":"9816de517d87d4c3ede57c1c50e3c237486794241afadcd891e1acbba2c5e672286090e6ad3402b047d69bae8095bc4e20e57ac70d92386dfa26db216379330f"}
+    got event {"kind":1,"id":"fe6489fa6fbb925be839377b9b7049d73be755dc2bdad97ff6dd9eecbf8b3a32","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724082383,"tags":[],"content":"five","sig":"865ce5e32eead5bdb950ac1fbc55bc92dde26818ee3136634538ec42914de179a51e672c2d4269d4362176e5e8cd5e08e69b35b91c6c2af867e129b93d607635"}
+    got request {"kinds":[30818]}
+  • events stored: 4, subscriptions opened: 1
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.

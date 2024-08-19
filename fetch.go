@@ -25,10 +25,10 @@ var fetch = &cli.Command{
 	},
 	ArgsUsage: "[nip19code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		pool := nostr.NewSimplePool(ctx)
+		sys := sdk.NewSystem()
 
 		defer func() {
-			pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
+			sys.Pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
 				relay.Close()
 				return true
 			})
@@ -78,13 +78,9 @@ var fetch = &cli.Command{
 			}
 
 			if authorHint != "" {
-				relayList := sdk.FetchRelaysForPubkey(ctx, pool, authorHint,
-					"wss://purplepag.es", "wss://relay.damus.io", "wss://relay.noswhere.com",
-					"wss://nos.lol", "wss://public.relaying.io", "wss://relay.nostr.band")
-				for _, relayListItem := range relayList {
-					if relayListItem.Outbox {
-						relays = append(relays, relayListItem.URL)
-					}
+				relays := sys.FetchOutboxRelays(ctx, authorHint, 3)
+				for _, url := range relays {
+					relays = append(relays, url)
 				}
 			}
 
@@ -93,7 +89,7 @@ var fetch = &cli.Command{
 				continue
 			}
 
-			for ie := range pool.SubManyEose(ctx, relays, nostr.Filters{filter}) {
+			for ie := range sys.Pool.SubManyEose(ctx, relays, nostr.Filters{filter}) {
 				stdout(ie.Event)
 			}
 		}
