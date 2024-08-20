@@ -194,6 +194,12 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
   • events stored: 4, subscriptions opened: 1
 ```
 
+### make an event with a PoW target
+```shell
+~> nak event -c 'hello getwired.app and labour.fiatjaf.com' --pow 24
+{"kind":1,"id":"0000009dcc7c62056eafdb41fac817379ec2becf0ce27c5fbe98d0735d968147","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724160828,"tags":[["nonce","515504","24"]],"content":"hello getwired.app and labour.fiatjaf.com","sig":"7edb988065ccc12779fe99270945b212f3723838f315d76d5e90e9ffa27198f13fa556614295f518d968d55bab81878167d4162b3a7cf81a6b423c6761bd504c"}
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.

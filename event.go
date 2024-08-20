@@ -11,11 +11,16 @@ import (
 	"github.com/fiatjaf/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip13"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"golang.org/x/exp/slices"
 )
 
-const CATEGORY_EVENT_FIELDS = "EVENT FIELDS"
+const (
+	CATEGORY_EVENT_FIELDS = "EVENT FIELDS"
+	CATEGORY_SIGNER       = "SIGNER OPTIONS"
+	CATEGORY_EXTRAS       = "EXTRAS"
+)
 
 var event = &cli.Command{
 	Name:  "event",
@@ -38,19 +43,23 @@ example:
 			Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
 			DefaultText: "the key '1'",
 			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
+			Category:    CATEGORY_SIGNER,
 		},
 		&cli.BoolFlag{
-			Name:  "prompt-sec",
-			Usage: "prompt the user to paste a hex or nsec with which to sign the event",
+			Name:     "prompt-sec",
+			Usage:    "prompt the user to paste a hex or nsec with which to sign the event",
+			Category: CATEGORY_SIGNER,
 		},
 		&cli.StringFlag{
-			Name:  "connect",
-			Usage: "sign event using NIP-46, expects a bunker://... URL",
+			Name:     "connect",
+			Usage:    "sign event using NIP-46, expects a bunker://... URL",
+			Category: CATEGORY_SIGNER,
 		},
 		&cli.StringFlag{
 			Name:        "connect-as",
 			Usage:       "private key to when communicating with the bunker given on --connect",
 			DefaultText: "a random key",
+			Category:    CATEGORY_SIGNER,
 		},
 		// ~ these args are only for the convoluted musig2 signing process
 		// they will be generally copy-shared-pasted across some manual coordination method between participants
@@ -59,6 +68,7 @@ example:
 			Usage:       "number of signers to use for musig2",
 			Value:       1,
 			DefaultText: "1 -- i.e. do not use musig2 at all",
+			Category:    CATEGORY_SIGNER,
 		},
 		&cli.StringSliceFlag{
 			Name:   "musig-pubkey",
@@ -77,17 +87,25 @@ example:
 			Hidden: true,
 		},
 		// ~~~
-		&cli.BoolFlag{
-			Name:  "envelope",
-			Usage: "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
+		&cli.UintFlag{
+			Name:     "pow",
+			Usage:    "NIP-13 difficulty to target when doing hash work on the event id",
+			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{
-			Name:  "auth",
-			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			Name:     "envelope",
+			Usage:    "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
+			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{
-			Name:  "nevent",
-			Usage: "print the nevent code (to stderr) after the event is published",
+			Name:     "auth",
+			Usage:    "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			Category: CATEGORY_EXTRAS,
+		},
+		&cli.BoolFlag{
+			Name:     "nevent",
+			Usage:    "print the nevent code (to stderr) after the event is published",
+			Category: CATEGORY_EXTRAS,
 		},
 		&cli.UintFlag{
 			Name:        "kind",
@@ -193,8 +211,9 @@ example:
 				mustRehashAndResign = true
 			}
 
-			tags := make(nostr.Tags, 0, 5)
-			for _, tagFlag := range c.StringSlice("tag") {
+			tagFlags := c.StringSlice("tag")
+			tags := make(nostr.Tags, 0, len(tagFlags)+2)
+			for _, tagFlag := range tagFlags {
 				// tags are in the format key=value
 				tagName, tagValue, found := strings.Cut(tagFlag, "=")
 				tag := []string{tagName}
@@ -203,20 +222,17 @@ example:
 					tagValues := strings.Split(tagValue, ";")
 					tag = append(tag, tagValues...)
 				}
-				tags = tags.AppendUnique(tag)
+				tags = append(tags, tag)
 			}
 
 			for _, etag := range c.StringSlice("e") {
 				tags = tags.AppendUnique([]string{"e", etag})
-				mustRehashAndResign = true
 			}
 			for _, ptag := range c.StringSlice("p") {
 				tags = tags.AppendUnique([]string{"p", ptag})
-				mustRehashAndResign = true
 			}
 			for _, dtag := range c.StringSlice("d") {
 				tags = tags.AppendUnique([]string{"d", dtag})
-				mustRehashAndResign = true
 			}
 			if len(tags) > 0 {
 				for _, tag := range tags {
@@ -230,6 +246,31 @@ example:
 				mustRehashAndResign = true
 			} else if evt.CreatedAt == 0 {
 				evt.CreatedAt = nostr.Now()
+				mustRehashAndResign = true
+			}
+
+			if difficulty := c.Uint("pow"); difficulty > 0 {
+				// before doing pow we need the pubkey
+				if bunker != nil {
+					evt.PubKey, err = bunker.GetPublicKey(ctx)
+					if err != nil {
+						return fmt.Errorf("can't pow: failed to get public key from bunker: %w", err)
+					}
+				} else if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
+					pubkeys := c.StringSlice("musig-pubkey")
+					if int(numSigners) != len(pubkeys) {
+						return fmt.Errorf("when doing a pow with musig we must know all signer pubkeys upfront")
+					}
+					evt.PubKey, err = getMusigAggregatedKey(ctx, pubkeys)
+					if err != nil {
+						return err
+					}
+				} else {
+					evt.PubKey, _ = nostr.GetPublicKey(sec)
+				}
+
+				// try to generate work with this difficulty -- essentially forever
+				nip13.Generate(&evt, int(difficulty), time.Hour*24*365)
 				mustRehashAndResign = true
 			}
 

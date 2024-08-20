@@ -15,6 +15,31 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 )
 
+func getMusigAggregatedKey(_ context.Context, keys []string) (string, error) {
+	knownSigners := make([]*btcec.PublicKey, len(keys))
+	for i, spk := range keys {
+		bpk, err := hex.DecodeString(spk)
+		if err != nil {
+			return "", fmt.Errorf("'%s' is invalid hex: %w", spk, err)
+		}
+		if len(bpk) == 32 {
+			return "", fmt.Errorf("'%s' is missing the leading parity byte", spk)
+		}
+		pk, err := btcec.ParsePubKey(bpk)
+		if err != nil {
+			return "", fmt.Errorf("'%s' is not a valid pubkey: %w", spk, err)
+		}
+		knownSigners[i] = pk
+	}
+
+	aggpk, _, _, err := musig2.AggregateKeys(knownSigners, true)
+	if err != nil {
+		return "", fmt.Errorf("aggregation failed: %w", err)
+	}
+
+	return hex.EncodeToString(aggpk.FinalKey.SerializeCompressed()[1:]), nil
+}
+
 func performMusig(
 	_ context.Context,
 	sec string,
