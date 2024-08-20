@@ -91,10 +91,10 @@ var fetch = &cli.Command{
 				for _, url := range relays {
 					relays = append(relays, url)
 				}
+			}
 
-				if len(filter.Kinds) == 0 {
-					filter.Kinds = append(filter.Kinds, 0)
-				}
+			if len(filter.Authors) > 0 && len(filter.Kinds) == 0 {
+				filter.Kinds = append(filter.Kinds, 0)
 			}
 
 			if err := applyFlagsToFilter(c, &filter); err != nil {
