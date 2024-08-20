@@ -17,13 +17,13 @@ var fetch = &cli.Command{
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
 	DisableSliceFlagSeparator: true,
-	Flags: []cli.Flag{
+	Flags: append(reqFilterFlags,
 		&cli.StringSliceFlag{
 			Name:    "relay",
 			Aliases: []string{"r"},
 			Usage:   "also use these relays to fetch from",
 		},
-	},
+	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		sys := sdk.NewSystem()
@@ -48,6 +48,7 @@ var fetch = &cli.Command{
 				}
 				authorHint = pp.PublicKey
 				relays = append(relays, pp.Relays...)
+				filter.Authors = append(filter.Authors, pp.PublicKey)
 			} else {
 				prefix, value, err := nip19.Decode(code)
 				if err != nil {
@@ -70,20 +71,17 @@ var fetch = &cli.Command{
 				case "naddr":
 					v := value.(nostr.EntityPointer)
 					filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
-					filter.Kinds = append(filter.Kinds, v.Kind)
 					filter.Authors = append(filter.Authors, v.PublicKey)
 					authorHint = v.PublicKey
 					relays = append(relays, v.Relays...)
 				case "nprofile":
 					v := value.(nostr.ProfilePointer)
 					filter.Authors = append(filter.Authors, v.PublicKey)
-					filter.Kinds = append(filter.Kinds, 0)
 					authorHint = v.PublicKey
 					relays = append(relays, v.Relays...)
 				case "npub":
 					v := value.(string)
 					filter.Authors = append(filter.Authors, v)
-					filter.Kinds = append(filter.Kinds, 0)
 					authorHint = v
 				}
 			}
@@ -93,6 +91,14 @@ var fetch = &cli.Command{
 				for _, url := range relays {
 					relays = append(relays, url)
 				}
+
+				if len(filter.Kinds) == 0 {
+					filter.Kinds = append(filter.Kinds, 0)
+				}
+			}
+
+			if err := applyFlagsToFilter(c, &filter); err != nil {
+				return err
 			}
 
 			if len(relays) == 0 {

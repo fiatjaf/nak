@@ -12,7 +12,10 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 )
 
-const CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"
+const (
+	CATEGORY_FILTER_ATTRIBUTES = "FILTER ATTRIBUTES"
+	// CATEGORY_SIGNER            = "SIGNER OPTIONS" -- defined at event.go as the same (yes, I know)
+)
 
 var req = &cli.Command{
 	Name:  "req",
@@ -28,69 +31,7 @@ it can also take a filter from stdin, optionally modify it with flags and send i
 example:
 		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
 	DisableSliceFlagSeparator: true,
-	Flags: []cli.Flag{
-		&cli.StringSliceFlag{
-			Name:     "author",
-			Aliases:  []string{"a"},
-			Usage:    "only accept events from these authors (pubkey as hex)",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "id",
-			Aliases:  []string{"i"},
-			Usage:    "only accept events with these ids (hex)",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.IntSliceFlag{
-			Name:     "kind",
-			Aliases:  []string{"k"},
-			Usage:    "only accept events with these kind numbers",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "tag",
-			Aliases:  []string{"t"},
-			Usage:    "takes a tag like -t e=<id>, only accept events with these tags",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "e",
-			Usage:    "shortcut for --tag e=<value>",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "p",
-			Usage:    "shortcut for --tag p=<value>",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringSliceFlag{
-			Name:     "d",
-			Usage:    "shortcut for --tag d=<value>",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&NaturalTimeFlag{
-			Name:     "since",
-			Aliases:  []string{"s"},
-			Usage:    "only accept events newer than this (unix timestamp)",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&NaturalTimeFlag{
-			Name:     "until",
-			Aliases:  []string{"u"},
-			Usage:    "only accept events older than this (unix timestamp)",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.UintFlag{
-			Name:     "limit",
-			Aliases:  []string{"l"},
-			Usage:    "only accept up to this number of events",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
-		&cli.StringFlag{
-			Name:     "search",
-			Usage:    "a NIP-50 search query, use it only with relays that explicitly support it",
-			Category: CATEGORY_FILTER_ATTRIBUTES,
-		},
+	Flags: append(reqFilterFlags,
 		&cli.BoolFlag{
 			Name:        "stream",
 			Usage:       "keep the subscription open, printing all events as they are returned",
@@ -119,30 +60,35 @@ example:
 			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
 		},
 		&cli.BoolFlag{
-			Name:    "force-pre-auth",
-			Aliases: []string{"fpa"},
-			Usage:   "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
+			Name:     "force-pre-auth",
+			Aliases:  []string{"fpa"},
+			Usage:    "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
+			Category: CATEGORY_SIGNER,
 		},
 		&cli.StringFlag{
 			Name:        "sec",
 			Usage:       "secret key to sign the AUTH challenge, as hex or nsec",
 			DefaultText: "the key '1'",
 			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
+			Category:    CATEGORY_SIGNER,
 		},
 		&cli.BoolFlag{
-			Name:  "prompt-sec",
-			Usage: "prompt the user to paste a hex or nsec with which to sign the AUTH challenge",
+			Name:     "prompt-sec",
+			Usage:    "prompt the user to paste a hex or nsec with which to sign the AUTH challenge",
+			Category: CATEGORY_SIGNER,
 		},
 		&cli.StringFlag{
-			Name:  "connect",
-			Usage: "sign AUTH using NIP-46, expects a bunker://... URL",
+			Name:     "connect",
+			Usage:    "sign AUTH using NIP-46, expects a bunker://... URL",
+			Category: CATEGORY_SIGNER,
 		},
 		&cli.StringFlag{
 			Name:        "connect-as",
 			Usage:       "private key to when communicating with the bunker given on --connect",
 			DefaultText: "a random key",
+			Category:    CATEGORY_SIGNER,
 		},
-	},
+	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		var pool *nostr.SimplePool
@@ -201,62 +147,8 @@ example:
 				}
 			}
 
-			if authors := c.StringSlice("author"); len(authors) > 0 {
-				filter.Authors = append(filter.Authors, authors...)
-			}
-			if ids := c.StringSlice("id"); len(ids) > 0 {
-				filter.IDs = append(filter.IDs, ids...)
-			}
-			for _, kind64 := range c.IntSlice("kind") {
-				filter.Kinds = append(filter.Kinds, int(kind64))
-			}
-			if search := c.String("search"); search != "" {
-				filter.Search = search
-			}
-			tags := make([][]string, 0, 5)
-			for _, tagFlag := range c.StringSlice("tag") {
-				spl := strings.Split(tagFlag, "=")
-				if len(spl) == 2 && len(spl[0]) == 1 {
-					tags = append(tags, spl)
-				} else {
-					return fmt.Errorf("invalid --tag '%s'", tagFlag)
-				}
-			}
-			for _, etag := range c.StringSlice("e") {
-				tags = append(tags, []string{"e", etag})
-			}
-			for _, ptag := range c.StringSlice("p") {
-				tags = append(tags, []string{"p", ptag})
-			}
-			for _, dtag := range c.StringSlice("d") {
-				tags = append(tags, []string{"d", dtag})
-			}
-
-			if len(tags) > 0 && filter.Tags == nil {
-				filter.Tags = make(nostr.TagMap)
-			}
-
-			for _, tag := range tags {
-				if _, ok := filter.Tags[tag[0]]; !ok {
-					filter.Tags[tag[0]] = make([]string, 0, 3)
-				}
-				filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
-			}
-
-			if c.IsSet("since") {
-				nts := getNaturalDate(c, "since")
-				filter.Since = &nts
-			}
-
-			if c.IsSet("until") {
-				nts := getNaturalDate(c, "until")
-				filter.Until = &nts
-			}
-
-			if limit := c.Uint("limit"); limit != 0 {
-				filter.Limit = int(limit)
-			} else if c.IsSet("limit") {
-				filter.LimitZero = true
+			if err := applyFlagsToFilter(c, &filter); err != nil {
+				return err
 			}
 
 			if len(relayUrls) > 0 {
@@ -287,4 +179,131 @@ example:
 		exitIfLineProcessingError(ctx)
 		return nil
 	},
+}
+
+var reqFilterFlags = []cli.Flag{
+	&cli.StringSliceFlag{
+		Name:     "author",
+		Aliases:  []string{"a"},
+		Usage:    "only accept events from these authors (pubkey as hex)",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringSliceFlag{
+		Name:     "id",
+		Aliases:  []string{"i"},
+		Usage:    "only accept events with these ids (hex)",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.IntSliceFlag{
+		Name:     "kind",
+		Aliases:  []string{"k"},
+		Usage:    "only accept events with these kind numbers",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringSliceFlag{
+		Name:     "tag",
+		Aliases:  []string{"t"},
+		Usage:    "takes a tag like -t e=<id>, only accept events with these tags",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringSliceFlag{
+		Name:     "e",
+		Usage:    "shortcut for --tag e=<value>",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringSliceFlag{
+		Name:     "p",
+		Usage:    "shortcut for --tag p=<value>",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringSliceFlag{
+		Name:     "d",
+		Usage:    "shortcut for --tag d=<value>",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&NaturalTimeFlag{
+		Name:     "since",
+		Aliases:  []string{"s"},
+		Usage:    "only accept events newer than this (unix timestamp)",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&NaturalTimeFlag{
+		Name:     "until",
+		Aliases:  []string{"u"},
+		Usage:    "only accept events older than this (unix timestamp)",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.UintFlag{
+		Name:     "limit",
+		Aliases:  []string{"l"},
+		Usage:    "only accept up to this number of events",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+	&cli.StringFlag{
+		Name:     "search",
+		Usage:    "a NIP-50 search query, use it only with relays that explicitly support it",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
+}
+
+func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
+	if authors := c.StringSlice("author"); len(authors) > 0 {
+		filter.Authors = append(filter.Authors, authors...)
+	}
+	if ids := c.StringSlice("id"); len(ids) > 0 {
+		filter.IDs = append(filter.IDs, ids...)
+	}
+	for _, kind64 := range c.IntSlice("kind") {
+		filter.Kinds = append(filter.Kinds, int(kind64))
+	}
+	if search := c.String("search"); search != "" {
+		filter.Search = search
+	}
+	tags := make([][]string, 0, 5)
+	for _, tagFlag := range c.StringSlice("tag") {
+		spl := strings.Split(tagFlag, "=")
+		if len(spl) == 2 && len(spl[0]) == 1 {
+			tags = append(tags, spl)
+		} else {
+			return fmt.Errorf("invalid --tag '%s'", tagFlag)
+		}
+	}
+	for _, etag := range c.StringSlice("e") {
+		tags = append(tags, []string{"e", etag})
+	}
+	for _, ptag := range c.StringSlice("p") {
+		tags = append(tags, []string{"p", ptag})
+	}
+	for _, dtag := range c.StringSlice("d") {
+		tags = append(tags, []string{"d", dtag})
+	}
+
+	if len(tags) > 0 && filter.Tags == nil {
+		filter.Tags = make(nostr.TagMap)
+	}
+
+	for _, tag := range tags {
+		if _, ok := filter.Tags[tag[0]]; !ok {
+			filter.Tags[tag[0]] = make([]string, 0, 3)
+		}
+		filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
+	}
+
+	if c.IsSet("since") {
+		nts := getNaturalDate(c, "since")
+		filter.Since = &nts
+	}
+
+	if c.IsSet("until") {
+		nts := getNaturalDate(c, "until")
+		filter.Until = &nts
+	}
+
+	if limit := c.Uint("limit"); limit != 0 {
+		filter.Limit = int(limit)
+	} else if c.IsSet("limit") {
+		filter.LimitZero = true
+	}
+
+	return nil
 }
