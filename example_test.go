@@ -116,3 +116,9 @@ func ExampleReqWithFlagsAfter3() {
 	// Output:
 	// {"kind":1,"id":"101572c80ebdc963dab8440f6307387a3023b6d90f7e495d6c5ee1ef77045a67","pubkey":"3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24","created_at":1720987305,"tags":[["e","ceacdc29fa7a0b51640b30d2424e188215460617db5ba5bb52d3fbf0094eebb3","","root"],["e","9f3c1121c96edf17d84b9194f74d66d012b28c4e25b3ef190582c76b8546a188","","reply"],["p","3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24"],["p","6b96c3eb36c6cd457d906bbaafe7b36cacfb8bcc4ab235be6eab3b71c6669251"]],"content":"Nope. I grew up playing in the woods. Never once saw a bear in the woods. If I did, I'd probably shiy my pants, then scream at it like I was a crazy person with my arms above my head to make me seem huge.","sig":"b098820b4a5635865cada9f9a5813be2bc6dd7180e16e590cf30e07916d8ed6ed98ab38b64f3bfba12d88d37335f229f7ef8c084bc48132e936c664a54d3e650"}
 }
+
+func ExampleNaturalTimestamps() {
+	app.Run(ctx, []string{"nak", "event", "-t", "plu=pla", "-e", "3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24", "--ts", "2018-05-19 03:37:19", "-c", "nn"})
+	// Output:
+	// {"kind":1,"id":"0000d199127d5e15046b0a3f2885d464ee18f70968303665ef76326a7d828312","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724160467,"tags":[["plu","pla"],["e","3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24"],["nonce","24783","16"]],"content":"nn","sig":"99471b43ce82ca01fb9b61f36b45ca542870854b2466a9d3884891598f7d7baef36d07f4b02bb194f2f6f781973f24c3d946f702c82321c6cb0c564e76cf43db"}
+}
