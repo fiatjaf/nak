@@ -69,7 +69,6 @@ example:
 			Name:        "sec",
 			Usage:       "secret key to sign the AUTH challenge, as hex or nsec",
 			DefaultText: "the key '1'",
-			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
 			Category:    CATEGORY_SIGNER,
 		},
 		&cli.BoolFlag{

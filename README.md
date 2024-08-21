@@ -200,6 +200,15 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 {"kind":1,"id":"0000009dcc7c62056eafdb41fac817379ec2becf0ce27c5fbe98d0735d968147","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724160828,"tags":[["nonce","515504","24"]],"content":"hello getwired.app and labour.fiatjaf.com","sig":"7edb988065ccc12779fe99270945b212f3723838f315d76d5e90e9ffa27198f13fa556614295f518d968d55bab81878167d4162b3a7cf81a6b423c6761bd504c"}
 ```
 
+### make a nostr event signed with a key given as an environment variable
+
+```shell
+~> export NOSTR_SECRET_KEY=ncryptsec1qggyy9vw0nclmw8ly9caz6aa7f85a4ufhsct64uva337pulsdw00n6twa2lzhzk2znzsyu60urx9s08lx00ke6ual3lszyn5an9zarm6s70lw5lj6dv3mj3f9p4tvp0we6qyz4gp420mapfmvqheuttv
+~> nak event -c 'it supports keys as hex, nsec or ncryptsec'
+type the password to decrypt your secret key: ********
+{"kind":1,"id":"5cbf3feb9a7d99c3ee2a88693a591caca1a8348fea427b3652c27f7a8a76af48","pubkey":"b00bcab55375d8c7b731dd9841f6d805ff1cf6fdc945e7326786deb5ddac6ce4","created_at":1724247924,"tags":[],"content":"it supports keys as hex, nsec or ncryptsec","sig":"fb3fd170bc10e5042322c7a05dd4bbd8ac9947b39026b8a7afd1ee02524e8e3aa1d9554e9c7b6181ca1b45cab01cd06643bdffa5ce678b475e6b185e1c14b085"}
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.

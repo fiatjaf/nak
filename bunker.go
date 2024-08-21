@@ -29,7 +29,6 @@ var bunker = &cli.Command{
 			Name:        "sec",
 			Usage:       "secret key to sign the event, as hex or nsec",
 			DefaultText: "the key '1'",
-			Value:       "0000000000000000000000000000000000000000000000000000000000000001",
 		},
 		&cli.BoolFlag{
 			Name:  "prompt-sec",

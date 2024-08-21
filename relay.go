@@ -79,7 +79,6 @@ var relay = &cli.Command{
 					Name:        "sec",
 					Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
 					DefaultText: "the key '1'",
-					Value:       "0000000000000000000000000000000000000000000000000000000000000001",
 				},
 				&cli.BoolFlag{
 					Name:  "prompt-sec",

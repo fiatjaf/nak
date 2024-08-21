@@ -196,12 +196,13 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		return "", bunker, err
 	}
 
+	// take private from flags, environment variable or default to 1
 	sec := c.String("sec")
-
-	// check in the environment for the secret key
 	if sec == "" {
-		if key, ok := os.LookupEnv("NOSTR_PRIVATE_KEY"); ok {
+		if key, ok := os.LookupEnv("NOSTR_SECRET_KEY"); ok {
 			sec = key
+		} else {
+			sec = "0000000000000000000000000000000000000000000000000000000000000001"
 		}
 	}
 
@@ -214,6 +215,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 			return "", nil, fmt.Errorf("failed to get secret key: %w", err)
 		}
 	}
+
 	if strings.HasPrefix(sec, "ncryptsec1") {
 		sec, err = promptDecrypt(sec)
 		if err != nil {
@@ -230,6 +232,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 	if ok := nostr.IsValid32ByteHex(sec); !ok {
 		return "", nil, fmt.Errorf("invalid secret key")
 	}
+
 	return sec, nil, nil
 }
 
