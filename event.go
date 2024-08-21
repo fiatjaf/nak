@@ -269,8 +269,10 @@ example:
 					evt.PubKey, _ = nostr.GetPublicKey(sec)
 				}
 
-				// try to generate work with this difficulty -- essentially forever
-				nip13.Generate(&evt, int(difficulty), time.Hour*24*365)
+				// try to generate work with this difficulty -- runs forever
+				nonceTag, _ := nip13.DoWork(ctx, evt, int(difficulty))
+				evt.Tags = append(evt.Tags, nonceTag)
+
 				mustRehashAndResign = true
 			}
 
