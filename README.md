@@ -209,6 +209,20 @@ type the password to decrypt your secret key: ********
 {"kind":1,"id":"5cbf3feb9a7d99c3ee2a88693a591caca1a8348fea427b3652c27f7a8a76af48","pubkey":"b00bcab55375d8c7b731dd9841f6d805ff1cf6fdc945e7326786deb5ddac6ce4","created_at":1724247924,"tags":[],"content":"it supports keys as hex, nsec or ncryptsec","sig":"fb3fd170bc10e5042322c7a05dd4bbd8ac9947b39026b8a7afd1ee02524e8e3aa1d9554e9c7b6181ca1b45cab01cd06643bdffa5ce678b475e6b185e1c14b085"}
 ```
 
+### download some helpful `jq` functions for dealing with nostr events
+```shell
+~> nak req -i 412f2d3e73acc312942c055ac2a695dc60bf58ff97e06689a8a79e97796c4cdb relay.westernbtc.com | jq -r .content > ~/.jq
+```
+
+### watch a NIP-53 livestream (zap.stream etc)
+```shell
+~> # this requires the jq utils from the step above
+~> mpv $(nak fetch naddr1qqjxvvm9xscnsdtx95cxvcfk956rsvtx943rje3k95mx2dp389jnwwrp8ymxgqg4waehxw309aex2mrp0yhxgctdw4eju6t09upzpn6956apxcad0mfp8grcuugdysg44eepex68h50t73zcathmfs49qvzqqqrkvu7ed38k | jq -r 'tag_value("streaming")')
+~>
+~> # or without the utils
+~> mpv $(nak fetch naddr1qqjxvvm9xscnsdtx95cxvcfk956rsvtx943rje3k95mx2dp389jnwwrp8ymxgqg4waehxw309aex2mrp0yhxgctdw4eju6t09upzpn6956apxcad0mfp8grcuugdysg44eepex68h50t73zcathmfs49qvzqqqrkvu7ed38k | jq -r '.tags | map(select(.[0] == "streaming") | .[1])[0]')
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
