@@ -223,6 +223,12 @@ type the password to decrypt your secret key: ********
 ~> mpv $(nak fetch naddr1qqjxvvm9xscnsdtx95cxvcfk956rsvtx943rje3k95mx2dp389jnwwrp8ymxgqg4waehxw309aex2mrp0yhxgctdw4eju6t09upzpn6956apxcad0mfp8grcuugdysg44eepex68h50t73zcathmfs49qvzqqqrkvu7ed38k | jq -r '.tags | map(select(.[0] == "streaming") | .[1])[0]')
 ```
 
+### download a NIP-35 torrent from an `nevent`
+```shell
+~> # this requires the jq utils from two steps above
+~> aria2c $(nak fetch nevent1qqsdsg6x7uujekac4ga7k7qa9q9sx8gqj7xzjf5w9us0dm0ghvf4ugspp4mhxue69uhkummn9ekx7mq6dw9y4 | jq -r '"magnet:?xt=urn:btih:\(tag_value("x"))&dn=\(tag_value("title"))&tr=http%3A%2F%2Ftracker.loadpeers.org%3A8080%2FxvRKfvAlnfuf5EfxTT5T0KIVPtbqAHnX%2Fannounce&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=\(tags("tracker") | map(.[1] | @uri) | join("&tr="))"')
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
