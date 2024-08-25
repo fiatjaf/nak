@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
@@ -68,6 +69,8 @@ var fetch = &cli.Command{
 						authorHint = v.Author
 					}
 					relays = append(relays, v.Relays...)
+				case "note":
+					filter.IDs = append(filter.IDs, value.(string))
 				case "naddr":
 					v := value.(nostr.EntityPointer)
 					filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
@@ -83,6 +86,8 @@ var fetch = &cli.Command{
 					v := value.(string)
 					filter.Authors = append(filter.Authors, v)
 					authorHint = v
+				default:
+					return fmt.Errorf("unexpected prefix %s", prefix)
 				}
 			}
 
