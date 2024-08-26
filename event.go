@@ -202,8 +202,8 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if content := c.String("content"); content != "" {
-				evt.Content = content
+			if c.IsSet("content") {
+				evt.Content = c.String("content")
 				mustRehashAndResign = true
 			} else if evt.Content == "" && evt.Kind == 1 {
 				evt.Content = "hello from the nostr army knife"
