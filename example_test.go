@@ -118,7 +118,7 @@ func ExampleReqWithFlagsAfter3() {
 }
 
 func ExampleNaturalTimestamps() {
-	app.Run(ctx, []string{"nak", "event", "-t", "plu=pla", "-e", "3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24", "--ts", "2018-05-19 03:37:19", "-c", "nn"})
+	app.Run(ctx, []string{"nak", "event", "-t", "plu=pla", "-e", "3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24", "--ts", "May 19 2018 03:37:19", "-c", "nn"})
 	// Output:
-	// {"kind":1,"id":"0000d199127d5e15046b0a3f2885d464ee18f70968303665ef76326a7d828312","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724160467,"tags":[["plu","pla"],["e","3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24"],["nonce","24783","16"]],"content":"nn","sig":"99471b43ce82ca01fb9b61f36b45ca542870854b2466a9d3884891598f7d7baef36d07f4b02bb194f2f6f781973f24c3d946f702c82321c6cb0c564e76cf43db"}
+	// {"kind":0,"id":"b10da0095f96aa2accd99fa3d93bf29a76f51d2594cf5a0a52f8e961aecd0b67","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1526711839,"tags":[["plu","pla"],["e","3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24"]],"content":"nn","sig":"988442c97064a041ba5e2bfbd64e84d3f819b2169e865511d9d53e74667949ff165325942acaa2ca233c8b529adedf12cf44088cf04081b56d098c5f4d52dd8f"}
 }
