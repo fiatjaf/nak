@@ -73,6 +73,7 @@ var fetch = &cli.Command{
 					filter.IDs = append(filter.IDs, value.(string))
 				case "naddr":
 					v := value.(nostr.EntityPointer)
+					filter.Kinds = []int{v.Kind}
 					filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
 					filter.Authors = append(filter.Authors, v.PublicKey)
 					authorHint = v.PublicKey
