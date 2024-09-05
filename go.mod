@@ -1,8 +1,8 @@
 module github.com/fiatjaf/nak
 
-go 1.22
+go 1.23
 
-toolchain go1.22.4
+toolchain go1.23.0
 
 require (
 	github.com/bep/debounce v1.2.1
@@ -15,8 +15,8 @@ require (
 	github.com/fiatjaf/khatru v0.7.5
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.34.10
-	github.com/nbd-wtf/nostr-sdk v0.5.0
+	github.com/nbd-wtf/go-nostr v0.34.14
+	github.com/nbd-wtf/nostr-sdk v0.5.3
 	golang.org/x/exp v0.0.0-20240707233637-46b078467d37
 )
 

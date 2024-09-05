@@ -113,10 +113,10 @@ github.com/mattn/go-colorable v0.1.13/go.mod h1:7S9/ev0klgBDR4GtXTXX8a3vIGJpMovk
 github.com/mattn/go-isatty v0.0.16/go.mod h1:kYGgaQfpe5nmfYZH+SKPsOc2e4SrIfOl2e/yFXSvRLM=
 github.com/mattn/go-isatty v0.0.20 h1:xfD0iDuEKnDkl03q4limB+vH+GxLEtL/jb4xVJSWWEY=
 github.com/mattn/go-isatty v0.0.20/go.mod h1:W+V8PltTTMOvKvAeJH7IuucS94S2C6jfK/D7dTCTo3Y=
-github.com/nbd-wtf/go-nostr v0.34.10 h1:scJH45sFk5LOzHJNLw0EFTknCCKfKlo3tK+vdpTHz3Q=
-github.com/nbd-wtf/go-nostr v0.34.10/go.mod h1:NZQkxl96ggbO8rvDpVjcsojJqKTPwqhP4i82O7K5DJs=
-github.com/nbd-wtf/nostr-sdk v0.5.0 h1:zrMxcvMSxkw29RyfXEdF3XW5rUWLuT5Q9oBAhd5dyew=
-github.com/nbd-wtf/nostr-sdk v0.5.0/go.mod h1:MJ7gYv3XiZKU6MHSM0N7oHqQAQhbvpgGQk4Q+XUdIUs=
+github.com/nbd-wtf/go-nostr v0.34.14 h1:o4n2LkuAtdIjNYJ23sFbcx68UXLnji4j8hYR1Sd2wgI=
+github.com/nbd-wtf/go-nostr v0.34.14/go.mod h1:NZQkxl96ggbO8rvDpVjcsojJqKTPwqhP4i82O7K5DJs=
+github.com/nbd-wtf/nostr-sdk v0.5.3 h1:jaiT7xm2h3iksM96PQKlbl5zDpMuZFF3fVj8TknWoJU=
+github.com/nbd-wtf/nostr-sdk v0.5.3/go.mod h1:9zlqzVbIczMHeN3fy3Ib2/fStRupTPVLvy54Htd9FCE=
 github.com/nxadm/tail v1.4.4/go.mod h1:kenIhsEOeOJmVchQTgglprH7qJGnHDVpk1VPCcaMI8A=
 github.com/onsi/ginkgo v1.6.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=
 github.com/onsi/ginkgo v1.7.0/go.mod h1:lLunBs/Ym6LB5Z9jYTR76FiuTmxDTDusOGeTQH+WWjE=

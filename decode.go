@@ -59,8 +59,11 @@ var decode = &cli.Command{
 			} else if pp := sdk.InputToProfile(ctx, input); pp != nil {
 				decodeResult = DecodeResult{ProfilePointer: pp}
 			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
-				ep := value.(nostr.EntityPointer)
-				decodeResult = DecodeResult{EntityPointer: &ep}
+				if ep, ok := value.(nostr.EntityPointer); ok {
+					decodeResult = DecodeResult{EntityPointer: &ep}
+				} else {
+					ctx = lineProcessingError(ctx, "couldn't decode naddr: %s", err)
+				}
 			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
 				decodeResult.PrivateKey.PrivateKey = value.(string)
 				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
