@@ -125,7 +125,7 @@ example:
 		&cli.StringSliceFlag{
 			Name:     "tag",
 			Aliases:  []string{"t"},
-			Usage:    "sets a tag field on the event, takes a value like -t e=<id>",
+			Usage:    "sets a tag field on the event, takes a value like -t e=<id> or -t sometag=\"value one;value two;value three\"",
 			Category: CATEGORY_EVENT_FIELDS,
 		},
 		&cli.StringSliceFlag{
