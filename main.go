@@ -7,6 +7,8 @@ import (
 	"github.com/fiatjaf/cli/v3"
 )
 
+var version string = "debug"
+
 var app = &cli.Command{
 	Name:                      "nak",
 	Suggest:                   true,
@@ -27,6 +29,7 @@ var app = &cli.Command{
 		bunker,
 		serve,
 	},
+	Version: version,
 	Flags: []cli.Flag{
 		&cli.BoolFlag{
 			Name:       "quiet",

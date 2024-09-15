@@ -40,6 +40,7 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
           goarch: ${{ matrix.goarch }}
+          ldflags: -X main.version=${{ github.ref }}
           overwrite: true
           md5sum: false
           sha256sum: false
