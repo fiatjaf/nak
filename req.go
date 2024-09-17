@@ -31,93 +31,67 @@ it can also take a filter from stdin, optionally modify it with flags and send i
 example:
 		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(reqFilterFlags,
-		&cli.BoolFlag{
-			Name:        "stream",
-			Usage:       "keep the subscription open, printing all events as they are returned",
-			DefaultText: "false, will close on EOSE",
-		},
-		&cli.BoolFlag{
-			Name:        "paginate",
-			Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
-			DefaultText: "false",
-		},
-		&cli.DurationFlag{
-			Name:  "paginate-interval",
-			Usage: "time between queries when using --paginate",
-		},
-		&cli.UintFlag{
-			Name:        "paginate-global-limit",
-			Usage:       "global limit at which --paginate should stop",
-			DefaultText: "uses the value given by --limit/-l or infinite",
-		},
-		&cli.BoolFlag{
-			Name:  "bare",
-			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
-		},
-		&cli.BoolFlag{
-			Name:  "auth",
-			Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-		},
-		&cli.BoolFlag{
-			Name:     "force-pre-auth",
-			Aliases:  []string{"fpa"},
-			Usage:    "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
-			Category: CATEGORY_SIGNER,
-		},
-		&cli.StringFlag{
-			Name:        "sec",
-			Usage:       "secret key to sign the AUTH challenge, as hex or nsec",
-			DefaultText: "the key '1'",
-			Category:    CATEGORY_SIGNER,
-		},
-		&cli.BoolFlag{
-			Name:     "prompt-sec",
-			Usage:    "prompt the user to paste a hex or nsec with which to sign the AUTH challenge",
-			Category: CATEGORY_SIGNER,
-		},
-		&cli.StringFlag{
-			Name:     "connect",
-			Usage:    "sign AUTH using NIP-46, expects a bunker://... URL",
-			Category: CATEGORY_SIGNER,
-		},
-		&cli.StringFlag{
-			Name:        "connect-as",
-			Usage:       "private key to when communicating with the bunker given on --connect",
-			DefaultText: "a random key",
-			Category:    CATEGORY_SIGNER,
-		},
+	Flags: append(defaultKeyFlags,
+		append(reqFilterFlags,
+			&cli.BoolFlag{
+				Name:        "stream",
+				Usage:       "keep the subscription open, printing all events as they are returned",
+				DefaultText: "false, will close on EOSE",
+			},
+			&cli.BoolFlag{
+				Name:        "paginate",
+				Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
+				DefaultText: "false",
+			},
+			&cli.DurationFlag{
+				Name:  "paginate-interval",
+				Usage: "time between queries when using --paginate",
+			},
+			&cli.UintFlag{
+				Name:        "paginate-global-limit",
+				Usage:       "global limit at which --paginate should stop",
+				DefaultText: "uses the value given by --limit/-l or infinite",
+			},
+			&cli.BoolFlag{
+				Name:  "bare",
+				Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
+			},
+			&cli.BoolFlag{
+				Name:  "auth",
+				Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			},
+			&cli.BoolFlag{
+				Name:     "force-pre-auth",
+				Aliases:  []string{"fpa"},
+				Usage:    "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
+				Category: CATEGORY_SIGNER,
+			},
+		)...,
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, relayUrls, c.Bool("force-pre-auth"), nostr.WithAuthHandler(func(evt *nostr.Event) error {
-				if !c.Bool("auth") && !c.Bool("force-pre-auth") {
-					return fmt.Errorf("auth not authorized")
-				}
-				sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
-				if err != nil {
-					return err
-				}
+			relays := connectToAllRelays(ctx,
+				relayUrls,
+				c.Bool("force-pre-auth"),
+				nostr.WithAuthHandler(
+					func(authEvent *nostr.Event) error {
+						if !c.Bool("auth") && !c.Bool("force-pre-auth") {
+							return fmt.Errorf("auth not authorized")
+						}
+						kr, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return err
+						}
 
-				var pk string
-				if bunker != nil {
-					pk, err = bunker.GetPublicKey(ctx)
-					if err != nil {
-						return fmt.Errorf("failed to get public key from bunker: %w", err)
-					}
-				} else {
-					pk, _ = nostr.GetPublicKey(sec)
-				}
-				log("performing auth as %s... ", pk)
+						pk := kr.GetPublicKey(ctx)
+						log("performing auth as %s... ", pk)
 
-				if bunker != nil {
-					return bunker.SignEvent(ctx, evt)
-				} else {
-					return evt.Sign(sec)
-				}
-			}))
+						return kr.SignEvent(ctx, authEvent)
+					},
+				),
+			)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)

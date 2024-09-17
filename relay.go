@@ -74,26 +74,7 @@ var relay = &cli.Command{
 				flags[i] = declareFlag(argName)
 			}
 
-			flags = append(flags,
-				&cli.StringFlag{
-					Name:        "sec",
-					Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
-					DefaultText: "the key '1'",
-				},
-				&cli.BoolFlag{
-					Name:  "prompt-sec",
-					Usage: "prompt the user to paste a hex or nsec with which to sign the event",
-				},
-				&cli.StringFlag{
-					Name:  "connect",
-					Usage: "sign event using NIP-46, expects a bunker://... URL",
-				},
-				&cli.StringFlag{
-					Name:        "connect-as",
-					Usage:       "private key to when communicating with the bunker given on --connect",
-					DefaultText: "a random key",
-				},
-			)
+			flags = append(flags, defaultKeyFlags...)
 
 			cmd := &cli.Command{
 				Name:  def.method,
@@ -114,7 +95,7 @@ var relay = &cli.Command{
 						return nil
 					}
 
-					sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
+					kr, err := gatherKeyerFromArguments(ctx, c)
 					if err != nil {
 						return err
 					}
@@ -131,7 +112,7 @@ var relay = &cli.Command{
 
 						// Authorization
 						payloadHash := sha256.Sum256(reqj)
-						authEvent := nostr.Event{
+						tokenEvent := nostr.Event{
 							Kind:      27235,
 							CreatedAt: nostr.Now(),
 							Tags: nostr.Tags{
@@ -140,14 +121,10 @@ var relay = &cli.Command{
 								{"payload", hex.EncodeToString(payloadHash[:])},
 							},
 						}
-						if bunker != nil {
-							if err := bunker.SignEvent(ctx, &authEvent); err != nil {
-								return fmt.Errorf("failed to sign with bunker: %w", err)
-							}
-						} else if err := authEvent.Sign(sec); err != nil {
-							return fmt.Errorf("error signing with provided key: %w", err)
+						if err := kr.SignEvent(ctx, &tokenEvent); err != nil {
+							return fmt.Errorf("failed to sign token event: %w", err)
 						}
-						evtj, _ := json.Marshal(authEvent)
+						evtj, _ := json.Marshal(tokenEvent)
 						req.Header.Set("Authorization", "Nostr "+base64.StdEncoding.EncodeToString(evtj))
 
 						// Content-Type

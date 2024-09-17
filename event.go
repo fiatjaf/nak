@@ -37,29 +37,7 @@ example:
 		echo '{"id":"a889df6a387419ff204305f4c2d296ee328c3cd4f8b62f205648a541b4554dfb","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698623783,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"84876e1ee3e726da84e5d195eb79358b2b3eaa4d9bd38456fde3e8a2af3f1cd4cda23f23fda454869975b3688797d4c66e12f4c51c1b43c6d2997c5e61865661"}' | nak event wss://offchain.pub
 		echo '{"tags": [["t", "spam"]]}' | nak event -c 'this is spam'`,
 	DisableSliceFlagSeparator: true,
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:        "sec",
-			Usage:       "secret key to sign the event, as nsec, ncryptsec or hex",
-			DefaultText: "the key '1'",
-			Category:    CATEGORY_SIGNER,
-		},
-		&cli.BoolFlag{
-			Name:     "prompt-sec",
-			Usage:    "prompt the user to paste a hex or nsec with which to sign the event",
-			Category: CATEGORY_SIGNER,
-		},
-		&cli.StringFlag{
-			Name:     "connect",
-			Usage:    "sign event using NIP-46, expects a bunker://... URL",
-			Category: CATEGORY_SIGNER,
-		},
-		&cli.StringFlag{
-			Name:        "connect-as",
-			Usage:       "private key to when communicating with the bunker given on --connect",
-			DefaultText: "a random key",
-			Category:    CATEGORY_SIGNER,
-		},
+	Flags: append(defaultKeyFlags,
 		// ~ these args are only for the convoluted musig2 signing process
 		// they will be generally copy-shared-pasted across some manual coordination method between participants
 		&cli.UintFlag{
@@ -151,7 +129,7 @@ example:
 			Value:       nostr.Now(),
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
-	},
+	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		// try to connect to the relays here
@@ -170,10 +148,11 @@ example:
 			}
 		}()
 
-		sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
+		kr, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
+		sec, _, _ := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 
 		doAuth := c.Bool("auth")
 
@@ -250,12 +229,7 @@ example:
 
 			if difficulty := c.Uint("pow"); difficulty > 0 {
 				// before doing pow we need the pubkey
-				if bunker != nil {
-					evt.PubKey, err = bunker.GetPublicKey(ctx)
-					if err != nil {
-						return fmt.Errorf("can't pow: failed to get public key from bunker: %w", err)
-					}
-				} else if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
+				if numSigners := c.Uint("musig"); numSigners > 1 {
 					pubkeys := c.StringSlice("musig-pubkey")
 					if int(numSigners) != len(pubkeys) {
 						return fmt.Errorf("when doing a pow with musig we must know all signer pubkeys upfront")
@@ -265,7 +239,7 @@ example:
 						return err
 					}
 				} else {
-					evt.PubKey, _ = nostr.GetPublicKey(sec)
+					evt.PubKey = kr.GetPublicKey(ctx)
 				}
 
 				// try to generate work with this difficulty -- runs forever
@@ -276,11 +250,7 @@ example:
 			}
 
 			if evt.Sig == "" || mustRehashAndResign {
-				if bunker != nil {
-					if err := bunker.SignEvent(ctx, &evt); err != nil {
-						return fmt.Errorf("failed to sign with bunker: %w", err)
-					}
-				} else if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
+				if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
 					pubkeys := c.StringSlice("musig-pubkey")
 					secNonce := c.String("musig-nonce-secret")
 					pubNonces := c.StringSlice("musig-nonce")
@@ -295,7 +265,7 @@ example:
 						// instructions for what to do should have been printed by the performMusig() function
 						return nil
 					}
-				} else if err := evt.Sign(sec); err != nil {
+				} else if err := kr.SignEvent(ctx, &evt); err != nil {
 					return fmt.Errorf("error signing with provided key: %w", err)
 				}
 			}
@@ -332,21 +302,9 @@ example:
 					// error publishing
 					if strings.HasPrefix(err.Error(), "msg: auth-required:") && (sec != "" || bunker != nil) && doAuth {
 						// if the relay is requesting auth and we can auth, let's do it
-						var pk string
-						if bunker != nil {
-							pk, err = bunker.GetPublicKey(ctx)
-							if err != nil {
-								return fmt.Errorf("failed to get public key from bunker: %w", err)
-							}
-						} else {
-							pk, _ = nostr.GetPublicKey(sec)
-						}
-						log("performing auth as %s... ", pk)
-						if err := relay.Auth(ctx, func(evt *nostr.Event) error {
-							if bunker != nil {
-								return bunker.SignEvent(ctx, evt)
-							}
-							return evt.Sign(sec)
+						log("performing auth as %s... ", kr.GetPublicKey(ctx))
+						if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
+							return kr.SignEvent(ctx, authEvent)
 						}); err == nil {
 							// try to publish again, but this time don't try to auth again
 							doAuth = false
