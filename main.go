@@ -28,6 +28,8 @@ var app = &cli.Command{
 		relay,
 		bunker,
 		serve,
+		encrypt,
+		decrypt,
 	},
 	Version: version,
 	Flags: []cli.Flag{

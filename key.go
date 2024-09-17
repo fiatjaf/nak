@@ -25,8 +25,8 @@ var key = &cli.Command{
 	Commands: []*cli.Command{
 		generate,
 		public,
-		encrypt,
-		decrypt,
+		encryptKey,
+		decryptKey,
 		combine,
 	},
 }
@@ -62,7 +62,7 @@ var public = &cli.Command{
 	},
 }
 
-var encrypt = &cli.Command{
+var encryptKey = &cli.Command{
 	Name:                      "encrypt",
 	Usage:                     "encrypts a secret key and prints an ncryptsec code",
 	Description:               `uses the NIP-49 standard.`,
@@ -101,7 +101,7 @@ var encrypt = &cli.Command{
 	},
 }
 
-var decrypt = &cli.Command{
+var decryptKey = &cli.Command{
 	Name:                      "decrypt",
 	Usage:                     "takes an ncrypsec and a password and decrypts it into an nsec",
 	Description:               `uses the NIP-49 standard.`,
