@@ -8,7 +8,6 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip05"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	sdk "github.com/nbd-wtf/nostr-sdk"
 )
 
 var fetch = &cli.Command{
@@ -27,8 +26,6 @@ var fetch = &cli.Command{
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		sys := sdk.NewSystem()
-
 		defer func() {
 			sys.Pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
 				relay.Close()

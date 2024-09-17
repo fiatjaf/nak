@@ -90,12 +90,9 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		var pool *nostr.SimplePool
-
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			var relays []*nostr.Relay
-			pool, relays = connectToAllRelays(ctx, relayUrls, c.Bool("force-pre-auth"), nostr.WithAuthHandler(func(evt *nostr.Event) error {
+			relays := connectToAllRelays(ctx, relayUrls, c.Bool("force-pre-auth"), nostr.WithAuthHandler(func(evt *nostr.Event) error {
 				if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 					return fmt.Errorf("auth not authorized")
 				}
@@ -151,11 +148,11 @@ example:
 			}
 
 			if len(relayUrls) > 0 {
-				fn := pool.SubManyEose
+				fn := sys.Pool.SubManyEose
 				if c.Bool("paginate") {
-					fn = paginateWithPoolAndParams(pool, c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
+					fn = paginateWithParams(c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
 				} else if c.Bool("stream") {
-					fn = pool.SubMany
+					fn = sys.Pool.SubMany
 				}
 
 				for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {

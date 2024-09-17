@@ -120,13 +120,12 @@ func connectToAllRelays(
 	relayUrls []string,
 	forcePreAuth bool,
 	opts ...nostr.PoolOption,
-) (*nostr.SimplePool, []*nostr.Relay) {
+) []*nostr.Relay {
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
-	pool := nostr.NewSimplePool(ctx, opts...)
 relayLoop:
 	for _, url := range relayUrls {
 		log("connecting to %s... ", url)
-		if relay, err := pool.EnsureRelay(url); err == nil {
+		if relay, err := sys.Pool.EnsureRelay(url); err == nil {
 			if forcePreAuth {
 				log("waiting for auth challenge... ")
 				signer := opts[0].(nostr.WithAuthHandler)
@@ -166,7 +165,7 @@ relayLoop:
 			log(err.Error() + "\n")
 		}
 	}
-	return pool, relays
+	return relays
 }
 
 func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {

@@ -50,7 +50,7 @@ var bunker = &cli.Command{
 		qs := url.Values{}
 		relayURLs := make([]string, 0, c.Args().Len())
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			_, relays := connectToAllRelays(ctx, relayUrls, false)
+			relays := connectToAllRelays(ctx, relayUrls, false)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -143,9 +143,8 @@ var bunker = &cli.Command{
 		printBunkerInfo()
 
 		// subscribe to relays
-		pool := nostr.NewSimplePool(ctx)
 		now := nostr.Now()
-		events := pool.SubMany(ctx, relayURLs, nostr.Filters{
+		events := sys.Pool.SubMany(ctx, relayURLs, nostr.Filters{
 			{
 				Kinds:     []int{nostr.KindNostrConnect},
 				Tags:      nostr.TagMap{"p": []string{pubkey}},
@@ -198,7 +197,7 @@ var bunker = &cli.Command{
 			handlerWg.Add(len(relayURLs))
 			for _, relayURL := range relayURLs {
 				go func(relayURL string) {
-					if relay, _ := pool.EnsureRelay(relayURL); relay != nil {
+					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
 						err := relay.Publish(ctx, eventResponse)
 						printLock.Lock()
 						if err == nil {

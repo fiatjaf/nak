@@ -9,7 +9,10 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 )
 
-func paginateWithPoolAndParams(pool *nostr.SimplePool, interval time.Duration, globalLimit uint64) func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.IncomingEvent {
+func paginateWithParams(
+	interval time.Duration,
+	globalLimit uint64,
+) func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.IncomingEvent {
 	return func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.IncomingEvent {
 		// filters will always be just one
 		filter := filters[0]
@@ -39,7 +42,7 @@ func paginateWithPoolAndParams(pool *nostr.SimplePool, interval time.Duration, g
 				time.Sleep(interval)
 
 				keepGoing := false
-				for evt := range pool.SubManyEose(ctx, urls, nostr.Filters{filter}) {
+				for evt := range sys.Pool.SubManyEose(ctx, urls, nostr.Filters{filter}) {
 					if slices.Contains(repeatedCache, evt.ID) {
 						continue
 					}
