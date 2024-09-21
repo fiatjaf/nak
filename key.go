@@ -252,13 +252,13 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 		}
 
 		res, _ := json.MarshalIndent(result, "", "  ")
-		fmt.Println(string(res))
+		stdout(string(res))
 
 		return nil
 	},
 }
 
-func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, c *cli.Command, keys []string) chan string {
+func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, keys []string) chan string {
 	ch := make(chan string)
 	go func() {
 		for sec := range getStdinLinesOrArgumentsFromSlice(keys) {

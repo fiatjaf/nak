@@ -45,7 +45,7 @@ var encrypt = &cli.Command{
 				if err != nil {
 					return err
 				}
-				fmt.Println(ciphertext)
+				stdout(ciphertext)
 			} else {
 				ss, err := nip04.ComputeSharedSecret(target, sec)
 				if err != nil {
@@ -55,7 +55,7 @@ var encrypt = &cli.Command{
 				if err != nil {
 					return fmt.Errorf("failed to encrypt as nip04: %w", err)
 				}
-				fmt.Println(ciphertext)
+				stdout(ciphertext)
 			}
 		} else {
 			kr, err := gatherKeyerFromArguments(ctx, c)
@@ -67,7 +67,7 @@ var encrypt = &cli.Command{
 			if err != nil {
 				return fmt.Errorf("failed to encrypt: %w", err)
 			}
-			fmt.Println(res)
+			stdout(res)
 		}
 
 		return nil
@@ -110,7 +110,7 @@ var decrypt = &cli.Command{
 				if err != nil {
 					return err
 				}
-				fmt.Println(plaintext)
+				stdout(plaintext)
 			} else {
 				ss, err := nip04.ComputeSharedSecret(source, sec)
 				if err != nil {
@@ -120,7 +120,7 @@ var decrypt = &cli.Command{
 				if err != nil {
 					return fmt.Errorf("failed to encrypt as nip04: %w", err)
 				}
-				fmt.Println(plaintext)
+				stdout(plaintext)
 			}
 		} else {
 			kr, err := gatherKeyerFromArguments(ctx, c)
@@ -132,7 +132,7 @@ var decrypt = &cli.Command{
 			if err != nil {
 				return fmt.Errorf("failed to encrypt: %w", err)
 			}
-			fmt.Println(res)
+			stdout(res)
 		}
 
 		return nil
