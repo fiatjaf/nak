@@ -5,7 +5,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/btcsuite/btcd/btcec/v2"
@@ -188,7 +187,7 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 				for i, prefix := range []byte{0x02, 0x03} {
 					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, keyb...))
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "error parsing key %s: %s", keyhex, err)
+						log("error parsing key %s: %s", keyhex, err)
 						continue
 					}
 					group[i] = pubk
@@ -229,7 +228,7 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 
 				agg, _, _, err := musig2.AggregateKeys(combining, true)
 				if err != nil {
-					fmt.Fprintf(os.Stderr, "error aggregating: %s", err)
+					log("error aggregating: %s", err)
 					return
 				}
 

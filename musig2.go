@@ -6,7 +6,6 @@ import (
 	"encoding/base64"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -135,8 +134,8 @@ func performMusig(
 		if err != nil {
 			return false, err
 		}
-		fmt.Fprintf(os.Stderr, "the following code should be saved secretly until the next step an included with --musig-nonce-secret:\n")
-		fmt.Fprintf(os.Stderr, "%s\n\n", base64.StdEncoding.EncodeToString(nonce.SecNonce[:]))
+		log("the following code should be saved secretly until the next step an included with --musig-nonce-secret:\n")
+		log("%s\n\n", base64.StdEncoding.EncodeToString(nonce.SecNonce[:]))
 
 		knownNonces = append(knownNonces, nonce.PubNonce)
 		printPublicCommandForNextPeer(evt, numSigners, knownSigners, knownNonces, nil, false)
@@ -149,7 +148,7 @@ func performMusig(
 	} else {
 		evt.PubKey = hex.EncodeToString(comb.SerializeCompressed()[1:])
 		evt.ID = evt.GetID()
-		fmt.Fprintf(os.Stderr, "combined key: %x\n\n", comb.SerializeCompressed())
+		log("combined key: %x\n\n", comb.SerializeCompressed())
 	}
 
 	// we have all the signers, which means we must also have all the nonces
@@ -244,7 +243,7 @@ func printPublicCommandForNextPeer(
 		maybeNonceSecret = " --musig-nonce-secret '<insert-nonce-secret>'"
 	}
 
-	fmt.Fprintf(os.Stderr, "the next signer and they should call this on their side:\nnak event --sec <insert-secret-key> --musig %d %s%s%s%s%s\n",
+	log("the next signer and they should call this on their side:\nnak event --sec <insert-secret-key> --musig %d %s%s%s%s%s\n",
 		numSigners,
 		eventToCliArgs(evt),
 		signersToCliArgs(knownSigners),

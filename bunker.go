@@ -222,7 +222,7 @@ var bunker = &cli.Command{
 				select {
 				case <-ctx.Done():
 				case <-time.After(time.Minute * 5):
-					fmt.Fprintf(os.Stderr, "\n")
+					log("\n")
 					printBunkerInfo()
 				}
 			}()

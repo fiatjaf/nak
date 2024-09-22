@@ -68,7 +68,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 			clientKey = nostr.GeneratePrivateKey()
 		}
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
-			fmt.Fprintf(color.Error, color.CyanString("[nip46]: open the following URL: %s"), s)
+			log(color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
 		return "", bunker, err
 	}
