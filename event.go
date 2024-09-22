@@ -239,7 +239,7 @@ example:
 						return err
 					}
 				} else {
-					evt.PubKey = kr.GetPublicKey(ctx)
+					evt.PubKey, _ = kr.GetPublicKey(ctx)
 				}
 
 				// try to generate work with this difficulty -- runs forever
@@ -302,7 +302,8 @@ example:
 					// error publishing
 					if strings.HasPrefix(err.Error(), "msg: auth-required:") && (sec != "" || bunker != nil) && doAuth {
 						// if the relay is requesting auth and we can auth, let's do it
-						log("performing auth as %s... ", kr.GetPublicKey(ctx))
+						pk, _ := kr.GetPublicKey(ctx)
+						log("performing auth as %s... ", pk)
 						if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
 							return kr.SignEvent(ctx, authEvent)
 						}); err == nil {

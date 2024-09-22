@@ -76,7 +76,7 @@ example:
 				relayUrls,
 				c.Bool("force-pre-auth"),
 				nostr.WithAuthHandler(
-					func(authEvent *nostr.Event) error {
+					func(ctx context.Context, authEvent nostr.RelayEvent) error {
 						if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 							return fmt.Errorf("auth not authorized")
 						}
@@ -85,10 +85,10 @@ example:
 							return err
 						}
 
-						pk := kr.GetPublicKey(ctx)
+						pk, _ := kr.GetPublicKey(ctx)
 						log("performing auth as %s... ", pk)
 
-						return kr.SignEvent(ctx, authEvent)
+						return kr.SignEvent(ctx, authEvent.Event)
 					},
 				),
 			)

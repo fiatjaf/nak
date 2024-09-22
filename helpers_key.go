@@ -48,10 +48,10 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (keyer.Keyer,
 	if bunker != nil {
 		kr = keyer.NewBunkerSignerFromBunkerClient(bunker)
 	} else {
-		kr = keyer.NewPlainKeySigner(key)
+		kr, err = keyer.NewPlainKeySigner(key)
 	}
 
-	return kr, nil
+	return kr, err
 }
 
 func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (string, *nip46.BunkerClient, error) {

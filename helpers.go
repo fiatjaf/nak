@@ -119,6 +119,13 @@ func connectToAllRelays(
 	forcePreAuth bool,
 	opts ...nostr.PoolOption,
 ) []*nostr.Relay {
+	sys.Pool = nostr.NewSimplePool(context.Background(),
+		append(opts,
+			nostr.WithEventMiddleware(sys.TrackEventHints),
+			nostr.WithPenaltyBox(),
+		)...,
+	)
+
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 relayLoop:
 	for _, url := range relayUrls {
@@ -137,7 +144,7 @@ relayLoop:
 						if (*challengeTag)[1] == "" {
 							return fmt.Errorf("auth not received yet *****")
 						}
-						return signer(authEvent)
+						return signer(ctx, nostr.RelayEvent{Event: authEvent, Relay: relay})
 					}); err == nil {
 						// auth succeeded
 						break challengeWaitLoop

@@ -12,8 +12,8 @@ import (
 func paginateWithParams(
 	interval time.Duration,
 	globalLimit uint64,
-) func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.IncomingEvent {
-	return func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.IncomingEvent {
+) func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.RelayEvent {
+	return func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.RelayEvent {
 		// filters will always be just one
 		filter := filters[0]
 
@@ -29,7 +29,7 @@ func paginateWithParams(
 			}
 		}
 		var globalCount uint64 = 0
-		globalCh := make(chan nostr.IncomingEvent)
+		globalCh := make(chan nostr.RelayEvent)
 
 		repeatedCache := make([]string, 0, 300)
 		nextRepeatedCache := make([]string, 0, 300)

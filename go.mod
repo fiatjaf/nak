@@ -13,7 +13,7 @@ require (
 	github.com/fiatjaf/khatru v0.7.5
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.36.3
+	github.com/nbd-wtf/go-nostr v0.37.2
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 )
 
