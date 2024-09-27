@@ -18,6 +18,12 @@ import (
 
 var sys = sdk.NewSystem()
 
+func init() {
+	sys.Pool = nostr.NewSimplePool(context.Background(),
+		nostr.WithUserAgent("nak/b"),
+	)
+}
+
 const (
 	LINE_PROCESSING_ERROR = iota
 )
@@ -123,6 +129,7 @@ func connectToAllRelays(
 		append(opts,
 			nostr.WithEventMiddleware(sys.TrackEventHints),
 			nostr.WithPenaltyBox(),
+			nostr.WithUserAgent("nak/s"),
 		)...,
 	)
 

@@ -12,8 +12,8 @@ import (
 func paginateWithParams(
 	interval time.Duration,
 	globalLimit uint64,
-) func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.RelayEvent {
-	return func(ctx context.Context, urls []string, filters nostr.Filters) chan nostr.RelayEvent {
+) func(ctx context.Context, urls []string, filters nostr.Filters, opts ...nostr.SubscriptionOption) chan nostr.RelayEvent {
+	return func(ctx context.Context, urls []string, filters nostr.Filters, opts ...nostr.SubscriptionOption) chan nostr.RelayEvent {
 		// filters will always be just one
 		filter := filters[0]
 
@@ -42,7 +42,7 @@ func paginateWithParams(
 				time.Sleep(interval)
 
 				keepGoing := false
-				for evt := range sys.Pool.SubManyEose(ctx, urls, nostr.Filters{filter}) {
+				for evt := range sys.Pool.SubManyEose(ctx, urls, nostr.Filters{filter}, opts...) {
 					if slices.Contains(repeatedCache, evt.ID) {
 						continue
 					}
