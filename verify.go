@@ -32,7 +32,7 @@ it outputs nothing if the verification is successful.`,
 			}
 
 			if ok, err := evt.CheckSignature(); !ok {
-				ctx = lineProcessingError(ctx, "invalid signature: %s", err)
+				ctx = lineProcessingError(ctx, "invalid signature: %v", err)
 				continue
 			}
 		}
