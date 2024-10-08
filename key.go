@@ -48,14 +48,22 @@ var public = &cli.Command{
 	Description:               ``,
 	ArgsUsage:                 "[secret]",
 	DisableSliceFlagSeparator: true,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "with-parity",
+			Usage: "output 33 bytes instead of 32, the first one being either '02' or '03', a prefix indicating whether this pubkey is even or odd.",
+		},
+	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
-			pubkey, err := nostr.GetPublicKey(sec)
-			if err != nil {
-				ctx = lineProcessingError(ctx, "failed to derive public key: %s", err)
-				continue
+			b, _ := hex.DecodeString(sec)
+			_, pk := btcec.PrivKeyFromBytes(b)
+
+			if c.Bool("with-parity") {
+				stdout(hex.EncodeToString(pk.SerializeCompressed()))
+			} else {
+				stdout(hex.EncodeToString(pk.SerializeCompressed()[1:]))
 			}
-			stdout(pubkey)
 		}
 		return nil
 	},
