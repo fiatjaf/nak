@@ -183,7 +183,7 @@ var bunker = &cli.Command{
 			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
 
 			// handle the NIP-46 request event
-			req, resp, eventResponse, err := signer.HandleRequest(ie.Event)
+			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
 			if err != nil {
 				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
 				continue

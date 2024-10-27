@@ -1,6 +1,6 @@
 module github.com/fiatjaf/nak
 
-go 1.23.0
+go 1.23.1
 
 require (
 	github.com/bep/debounce v1.2.1
@@ -13,7 +13,7 @@ require (
 	github.com/fiatjaf/khatru v0.7.5
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.37.5
+	github.com/nbd-wtf/go-nostr v0.40.1
 	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 )
 
@@ -21,18 +21,17 @@ require (
 	github.com/andybalholm/brotli v1.0.5 // indirect
 	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
-	github.com/cespare/xxhash/v2 v2.2.0 // indirect
+	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
+	github.com/dgraph-io/ristretto v1.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/pie/v2 v2.7.0 // indirect
 	github.com/fasthttp/websocket v1.5.7 // indirect
-	github.com/fiatjaf/generic-ristretto v0.0.1 // indirect
 	github.com/gobwas/httphead v0.1.0 // indirect
 	github.com/gobwas/pool v0.2.1 // indirect
 	github.com/gobwas/ws v1.4.0 // indirect
-	github.com/golang/glog v1.1.2 // indirect
 	github.com/graph-gophers/dataloader/v7 v7.1.0 // indirect
 	github.com/hablullah/go-hijri v1.0.2 // indirect
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
@@ -53,8 +52,8 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/wasilibs/go-re2 v1.3.0 // indirect
-	golang.org/x/crypto v0.27.0 // indirect
+	golang.org/x/crypto v0.28.0 // indirect
 	golang.org/x/net v0.22.0 // indirect
-	golang.org/x/sys v0.25.0 // indirect
-	golang.org/x/text v0.18.0 // indirect
+	golang.org/x/sys v0.26.0 // indirect
+	golang.org/x/text v0.19.0 // indirect
 )
