@@ -227,6 +227,10 @@ example:
 				mustRehashAndResign = true
 			}
 
+			if c.IsSet("musig") || c.IsSet("sec") || c.IsSet("prompt-sec") {
+				mustRehashAndResign = true
+			}
+
 			if difficulty := c.Uint("pow"); difficulty > 0 {
 				// before doing pow we need the pubkey
 				if numSigners := c.Uint("musig"); numSigners > 1 {
