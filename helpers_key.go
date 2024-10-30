@@ -38,20 +38,20 @@ var defaultKeyFlags = []cli.Flag{
 	},
 }
 
-func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (keyer.Keyer, error) {
+func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer, string, error) {
 	key, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 	if err != nil {
-		return nil, err
+		return nil, "", err
 	}
 
-	var kr keyer.Keyer
+	var kr nostr.Keyer
 	if bunker != nil {
 		kr = keyer.NewBunkerSignerFromBunkerClient(bunker)
 	} else {
 		kr, err = keyer.NewPlainKeySigner(key)
 	}
 
-	return kr, err
+	return kr, key, err
 }
 
 func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (string, *nip46.BunkerClient, error) {

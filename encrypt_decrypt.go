@@ -58,7 +58,7 @@ var encrypt = &cli.Command{
 				stdout(ciphertext)
 			}
 		} else {
-			kr, err := gatherKeyerFromArguments(ctx, c)
+			kr, _, err := gatherKeyerFromArguments(ctx, c)
 			if err != nil {
 				return err
 			}
@@ -123,7 +123,7 @@ var decrypt = &cli.Command{
 				stdout(plaintext)
 			}
 		} else {
-			kr, err := gatherKeyerFromArguments(ctx, c)
+			kr, _, err := gatherKeyerFromArguments(ctx, c)
 			if err != nil {
 				return err
 			}

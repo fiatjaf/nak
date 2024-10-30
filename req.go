@@ -80,7 +80,7 @@ example:
 						if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 							return fmt.Errorf("auth not authorized")
 						}
-						kr, err := gatherKeyerFromArguments(ctx, c)
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
 						if err != nil {
 							return err
 						}

@@ -95,7 +95,7 @@ var relay = &cli.Command{
 						return nil
 					}
 
-					kr, err := gatherKeyerFromArguments(ctx, c)
+					kr, _, err := gatherKeyerFromArguments(ctx, c)
 					if err != nil {
 						return err
 					}

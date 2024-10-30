@@ -148,11 +148,10 @@ example:
 			}
 		}()
 
-		kr, err := gatherKeyerFromArguments(ctx, c)
+		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
-		sec, _, _ := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 
 		doAuth := c.Bool("auth")
 
@@ -254,7 +253,8 @@ example:
 			}
 
 			if evt.Sig == "" || mustRehashAndResign {
-				if numSigners := c.Uint("musig"); numSigners > 1 && sec != "" {
+				if numSigners := c.Uint("musig"); numSigners > 1 {
+					// must do musig
 					pubkeys := c.StringSlice("musig-pubkey")
 					secNonce := c.String("musig-nonce-secret")
 					pubNonces := c.StringSlice("musig-nonce")
@@ -304,7 +304,7 @@ example:
 					}
 
 					// error publishing
-					if strings.HasPrefix(err.Error(), "msg: auth-required:") && (sec != "" || bunker != nil) && doAuth {
+					if strings.HasPrefix(err.Error(), "msg: auth-required:") && kr != nil && doAuth {
 						// if the relay is requesting auth and we can auth, let's do it
 						pk, _ := kr.GetPublicKey(ctx)
 						log("performing auth as %s... ", pk)
