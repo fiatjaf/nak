@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -277,7 +276,7 @@ example:
 			// print event as json
 			var result string
 			if c.Bool("envelope") {
-				j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
+				j, _ := easyjson.Marshal(nostr.EventEnvelope{Event: evt})
 				result = string(j)
 			} else {
 				j, _ := easyjson.Marshal(&evt)
