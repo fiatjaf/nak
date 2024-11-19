@@ -216,27 +216,5 @@ var encode = &cli.Command{
 				return nil
 			},
 		},
-		{
-			Name:                      "note",
-			Usage:                     "generate note1 event codes (not recommended)",
-			DisableSliceFlagSeparator: true,
-			Action: func(ctx context.Context, c *cli.Command) error {
-				for target := range getStdinLinesOrArguments(c.Args()) {
-					if ok := nostr.IsValid32ByteHex(target); !ok {
-						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
-						continue
-					}
-
-					if note, err := nip19.EncodeNote(target); err == nil {
-						stdout(note)
-					} else {
-						return err
-					}
-				}
-
-				exitIfLineProcessingError(ctx)
-				return nil
-			},
-		},
 	},
 }
