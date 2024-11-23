@@ -70,7 +70,9 @@ func getStdinLinesOrArgumentsFromSlice(args []string) chan string {
 
 	// try the stdin
 	multi := make(chan string)
-	writeStdinLinesOrNothing(multi)
+	if !writeStdinLinesOrNothing(multi) {
+		close(multi)
+	}
 	return multi
 }
 
