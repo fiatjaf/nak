@@ -19,9 +19,13 @@ import (
 
 var relay = &cli.Command{
 	Name:  "relay",
-	Usage: "gets the relay information document for the given relay, as JSON",
-	Description: `example:
-		nak relay nostr.wine`,
+	Usage: "gets the relay information document for the given relay, as JSON -- or allows usage of the relay management API.",
+	Description: `examples:
+	fetching relay information:
+		nak relay nostr.wine
+
+	managing a relay
+		nak relay nostr.wine banevent --sec 1234 --id 037eb3751073770ff17483b1b1ff125866cd5147668271975ef0a8a8e7ee184a --reason "I don't like it"`,
 	ArgsUsage:                 "<relay-url>",
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
