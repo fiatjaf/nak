@@ -232,7 +232,7 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	tags := make([][]string, 0, 5)
 	for _, tagFlag := range c.StringSlice("tag") {
 		spl := strings.SplitN(tagFlag, "=", 2)
-		if len(spl) == 2 && len(spl[0]) == 1 {
+		if len(spl) == 2 {
 			tags = append(tags, spl)
 		} else {
 			return fmt.Errorf("invalid --tag '%s'", tagFlag)
