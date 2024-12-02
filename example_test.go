@@ -67,6 +67,12 @@ func ExampleDecode() {
 	// }
 }
 
+func ExampleDecodePubkey() {
+	app.Run(ctx, []string{"nak", "decode", "-p", "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"})
+	// Output:
+	// 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+}
+
 func ExampleReq() {
 	app.Run(ctx, []string{"nak", "req", "-k", "1", "-l", "18", "-a", "2fa2104d6b38d11b0230010559879124e42ab8dfeff5ff29dc9cdadd4ecacc3f", "-e", "aec4de6d051a7c2b6ca2d087903d42051a31e07fb742f1240970084822de10a6"})
 	// Output:
