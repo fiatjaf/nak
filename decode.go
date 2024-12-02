@@ -56,11 +56,15 @@ var decode = &cli.Command{
 				}
 			} else if evp := sdk.InputToEventPointer(input); evp != nil {
 				decodeResult = DecodeResult{EventPointer: evp}
+				if c.Bool("id") {
+					stdout(evp.ID)
+					continue
+				}
 			} else if pp := sdk.InputToProfile(ctx, input); pp != nil {
 				decodeResult = DecodeResult{ProfilePointer: pp}
 				if c.Bool("pubkey") {
 					stdout(pp.PublicKey)
-					return nil
+					continue
 				}
 			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
 				if ep, ok := value.(nostr.EntityPointer); ok {
@@ -74,6 +78,10 @@ var decode = &cli.Command{
 			} else {
 				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
 				continue
+			}
+
+			if c.Bool("pubkey") || c.Bool("id") {
+				return nil
 			}
 
 			stdout(decodeResult.JSON())
