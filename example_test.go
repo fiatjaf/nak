@@ -68,9 +68,17 @@ func ExampleDecode() {
 }
 
 func ExampleDecodePubkey() {
-	app.Run(ctx, []string{"nak", "decode", "-p", "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d"})
+	app.Run(ctx, []string{"nak", "decode", "-p", "npub10xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqpkge6d", "npub1ccz8l9zpa47k6vz9gphftsrumpw80rjt3nhnefat4symjhrsnmjs38mnyd"})
 	// Output:
 	// 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
+	// c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5
+}
+
+func ExampleDecodeEventId() {
+	app.Run(ctx, []string{"nak", "decode", "-e", "nevent1qyd8wumn8ghj7urewfsk66ty9enxjct5dfskvtnrdakj7qgmwaehxw309aex2mrp0yh8wetnw3jhymnzw33jucm0d5hszxthwden5te0wfjkccte9eekummjwsh8xmmrd9skctcpzamhxue69uhkzarvv9ejumn0wd68ytnvv9hxgtcqyqllp5v5j0nxr74fptqxkhvfv0h3uj870qpk3ln8a58agyxl3fka296ewr8", "nevent1qqswh48lurxs8u0pll9qj2rzctvjncwhstpzlstq59rdtzlty79awns5hl5uf"})
+	// Output:
+	// 3ff0d19493e661faa90ac06b5d8963ef1e48fe780368fe67ed0fd410df8a6dd5
+	// ebd4ffe0cd03f1e1ffca092862c2d929e1d782c22fc160a146d58beb278bd74e
 }
 
 func ExampleReq() {
