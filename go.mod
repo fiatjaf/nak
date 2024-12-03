@@ -11,10 +11,10 @@ require (
 	github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae
 	github.com/fiatjaf/eventstore v0.12.0
 	github.com/fiatjaf/khatru v0.10.0
+	github.com/json-iterator/go v1.1.12
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/nbd-wtf/go-nostr v0.42.2
-	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0
 )
 
 require (
@@ -43,6 +43,8 @@ require (
 	github.com/magefile/mage v1.14.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
+	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
+	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
 	github.com/puzpuzpuz/xsync/v3 v3.4.0 // indirect
 	github.com/rs/cors v1.7.0 // indirect
@@ -55,6 +57,7 @@ require (
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/wasilibs/go-re2 v1.3.0 // indirect
 	golang.org/x/crypto v0.28.0 // indirect
+	golang.org/x/exp v0.0.0-20240909161429-701f63a606c0 // indirect
 	golang.org/x/net v0.30.0 // indirect
 	golang.org/x/sys v0.26.0 // indirect
 	golang.org/x/text v0.19.0 // indirect

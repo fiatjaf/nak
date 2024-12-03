@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"

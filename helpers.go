@@ -12,11 +12,14 @@ import (
 
 	"github.com/fatih/color"
 	"github.com/fiatjaf/cli/v3"
+	jsoniter "github.com/json-iterator/go"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
 var sys = sdk.NewSystem()
+
+var json = jsoniter.ConfigFastest
 
 func init() {
 	sys.Pool = nostr.NewSimplePool(context.Background(),

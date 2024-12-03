@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"encoding/hex"
-	"encoding/json"
 	"strings"
 
 	"github.com/fiatjaf/cli/v3"

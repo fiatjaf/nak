@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -12,7 +13,6 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip13"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"golang.org/x/exp/slices"
 )
 
 const (
@@ -276,7 +276,7 @@ example:
 			// print event as json
 			var result string
 			if c.Bool("envelope") {
-				j, _ := easyjson.Marshal(nostr.EventEnvelope{Event: evt})
+				j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
 				result = string(j)
 			} else {
 				j, _ := easyjson.Marshal(&evt)
