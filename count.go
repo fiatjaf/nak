@@ -2,12 +2,14 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip45"
+	"github.com/nbd-wtf/go-nostr/nip45/hyperloglog"
 )
 
 var count = &cli.Command{
@@ -65,6 +67,32 @@ var count = &cli.Command{
 	},
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
+		biggerUrlSize := 0
+		relayUrls := c.Args().Slice()
+		if len(relayUrls) > 0 {
+			relays := connectToAllRelays(ctx,
+				relayUrls,
+				false,
+			)
+			if len(relays) == 0 {
+				log("failed to connect to any of the given relays.\n")
+				os.Exit(3)
+			}
+			relayUrls = make([]string, len(relays))
+			for i, relay := range relays {
+				relayUrls[i] = relay.URL
+				if len(relay.URL) > biggerUrlSize {
+					biggerUrlSize = len(relay.URL)
+				}
+			}
+
+			defer func() {
+				for _, relay := range relays {
+					relay.Close()
+				}
+			}()
+		}
+
 		filter := nostr.Filter{}
 
 		if authors := c.StringSlice("author"); len(authors) > 0 {
@@ -118,26 +146,35 @@ var count = &cli.Command{
 			filter.Limit = int(limit)
 		}
 
-		relays := c.Args().Slice()
 		successes := 0
-		failures := make([]error, 0, len(relays))
-		if len(relays) > 0 {
-			for _, relayUrl := range relays {
-				relay, err := nostr.RelayConnect(ctx, relayUrl)
+		if len(relayUrls) > 0 {
+			var hll *hyperloglog.HyperLogLog
+			if offset := nip45.HyperLogLogEventPubkeyOffsetForFilter(filter); offset != -1 && len(relayUrls) > 1 {
+				hll = hyperloglog.New(offset)
+			}
+			for _, relayUrl := range relayUrls {
+				relay, _ := sys.Pool.EnsureRelay(relayUrl)
+				count, hllRegisters, err := relay.Count(ctx, nostr.Filters{filter})
+				fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
+
 				if err != nil {
-					failures = append(failures, err)
+					fmt.Fprintf(os.Stderr, "❌ %s\n", err)
 					continue
 				}
-				count, err := relay.Count(ctx, nostr.Filters{filter})
-				if err != nil {
-					failures = append(failures, err)
-					continue
+
+				var hasHLLStr string
+				if hll != nil && len(hllRegisters) == 256 {
+					hll.MergeRegisters(hllRegisters)
+					hasHLLStr = " 📋"
 				}
-				fmt.Printf("%s: %d\n", relay.URL, count)
+
+				fmt.Fprintf(os.Stderr, "%d%s\n", count, hasHLLStr)
 				successes++
 			}
 			if successes == 0 {
-				return errors.Join(failures...)
+				return fmt.Errorf("all relays have failed")
+			} else if hll != nil {
+				fmt.Fprintf(os.Stderr, "📋 HyperLogLog sum: %d\n", hll.Count())
 			}
 		} else {
 			// no relays given, will just print the filter
