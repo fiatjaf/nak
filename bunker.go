@@ -188,9 +188,9 @@ var bunker = &cli.Command{
 				continue
 			}
 
-			jreq, _ := json.MarshalIndent(req, "  ", "  ")
+			jreq, _ := json.MarshalIndent(req, "", "  ")
 			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey), string(jreq))
-			jresp, _ := json.MarshalIndent(resp, "  ", "  ")
+			jresp, _ := json.MarshalIndent(resp, "", "  ")
 			log("~ responding with %s\n", string(jresp))
 
 			handlerWg.Add(len(relayURLs))
