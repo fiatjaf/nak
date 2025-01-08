@@ -7,7 +7,9 @@ import (
 	"os"
 	"strings"
 
+	"crypto/rand"
 	"github.com/chzyer/readline"
+	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/fatih/color"
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
@@ -20,8 +22,8 @@ import (
 var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "sec",
-		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL",
-		DefaultText: "the key '1'",
+		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL, it is better to use the environment variable NOSTR_SECRET_KEY ",
+		DefaultText: "randomly generated",
 		Aliases:     []string{"connect"},
 		Category:    CATEGORY_SIGNER,
 	},
@@ -79,7 +81,13 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		if key, ok := os.LookupEnv("NOSTR_SECRET_KEY"); ok {
 			sec = key
 		} else {
-			sec = "0000000000000000000000000000000000000000000000000000000000000001"
+			// make a random one instead if user has not set one
+			secBytes := make([]byte, secp256k1.PrivKeyBytesLen)
+			if _, err = rand.Read(secBytes); err != nil {
+				// this should never happen anyway
+				panic(err)
+			}
+			sec = hex.EncodeToString(secBytes)
 		}
 	}
 

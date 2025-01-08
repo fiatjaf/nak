@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 
+	"github.com/fatih/color"
 	"github.com/fiatjaf/cli/v3"
 )
 
@@ -53,8 +54,12 @@ var app = &cli.Command{
 }
 
 func main() {
+	defer func() {
+		color.New(color.Reset).Println()
+	}()
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		stdout(err)
+		color.New(color.Reset).Println()
 		os.Exit(1)
 	}
 }
