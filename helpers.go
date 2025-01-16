@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"math/rand"
+	"net/http"
+	"net/textproto"
 	"net/url"
 	"os"
 	"strings"
@@ -23,7 +25,9 @@ var json = jsoniter.ConfigFastest
 
 func init() {
 	sys.Pool = nostr.NewSimplePool(context.Background(),
-		nostr.WithUserAgent("nak/b"),
+		nostr.WithRelayOptions(
+			nostr.WithRequestHeader(http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}}),
+		),
 	)
 }
 
@@ -134,7 +138,9 @@ func connectToAllRelays(
 		append(opts,
 			nostr.WithEventMiddleware(sys.TrackEventHints),
 			nostr.WithPenaltyBox(),
-			nostr.WithUserAgent("nak/s"),
+			nostr.WithRelayOptions(
+				nostr.WithRequestHeader(http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"}}),
+			),
 		)...,
 	)
 
