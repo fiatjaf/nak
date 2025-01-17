@@ -14,7 +14,7 @@ require (
 	github.com/json-iterator/go v1.1.12
 	github.com/mailru/easyjson v0.7.7
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.46.0
+	github.com/nbd-wtf/go-nostr v0.47.0
 )
 
 require (
@@ -53,9 +53,9 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/wasilibs/go-re2 v1.3.0 // indirect
-	golang.org/x/crypto v0.30.0 // indirect
+	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/exp v0.0.0-20241204233417-43b7b7cde48d // indirect
-	golang.org/x/net v0.32.0 // indirect
-	golang.org/x/sys v0.28.0 // indirect
+	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/sys v0.29.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
