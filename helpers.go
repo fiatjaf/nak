@@ -19,17 +19,14 @@ import (
 	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
-var sys = sdk.NewSystem()
+var sys *sdk.System
+
+var (
+	hintsFilePath   string
+	hintsFileExists bool
+)
 
 var json = jsoniter.ConfigFastest
-
-func init() {
-	sys.Pool = nostr.NewSimplePool(context.Background(),
-		nostr.WithRelayOptions(
-			nostr.WithRequestHeader(http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}}),
-		),
-	)
-}
 
 const (
 	LINE_PROCESSING_ERROR = iota
