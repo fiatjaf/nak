@@ -10,9 +10,20 @@ take a look at the help text that comes in it to learn all possibilities, but he
 ### make a nostr event signed with the default key (`01`)
 
 ```shell
-~> nak event
-{"id":"53443506e7d09e55b922a2369b80f926007a8a8a8ea5f09df1db59fe1993335e","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1698632644,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"4bdb609c975b2b61338c2ff4c7ce91d4afe74bea4ed1601a62e1fd125bd4c0ae6e0166cca96e5cfb7e0f50583eb6a0dd0b66072566299b6007742db56278010c"}
+~> nak event {"id":"53443506e7d09e55b922a2369b80f926007a8a8a8ea5f09df1db59fe1993335e","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1698632644,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"4bdb609c975b2b61338c2ff4c7ce91d4afe74bea4ed1601a62e1fd125bd4c0ae6e0166cca96e5cfb7e0f50583eb6a0dd0b66072566299b6007742db56278010c"}
 ```
+
+to do this with a relay that has auth, the most secure method is to set the signing key with the environment variable 
+`NOSTR_SECRET_KEY` like this:
+
+```shell
+export NOSTR_SECRET_KEY=nsec1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq
+```
+
+and same as above except add `-auth`
+
+    nak event -auth {"id":"53443506e7d09e55b922a2369b80f926007a8a8a8ea5f09df1db59fe1993335e","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1698632644,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"4bdb609c975b2b61338c2ff4c7ce91d4afe74bea4ed1601a62e1fd125bd4c0ae6e0166cca96e5cfb7e0f50583eb6a0dd0b66072566299b6007742db56278010c"} wss://mleku.realy.lol
+
 
 ### make a nostr event with custom content and tags, sign it with a different key and publish it to two relays
 ```shell

@@ -306,7 +306,7 @@ example:
 					if strings.HasPrefix(err.Error(), "msg: auth-required:") && kr != nil && doAuth {
 						// if the relay is requesting auth and we can auth, let's do it
 						pk, _ := kr.GetPublicKey(ctx)
-						log("performing auth as %s... ", pk)
+						log("auth to publish event %s...", pk)
 						if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
 							return kr.SignEvent(ctx, authEvent)
 						}); err == nil {

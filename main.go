@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/fatih/color"
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
@@ -118,8 +119,12 @@ var app = &cli.Command{
 }
 
 func main() {
+	defer func() {
+		color.New(color.Reset).Println()
+	}()
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		stdout(err)
+		color.New(color.Reset).Println()
 		os.Exit(1)
 	}
 }
