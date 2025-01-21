@@ -20,7 +20,7 @@ import (
 var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "sec",
-		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL",
+		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL, it is more secure to use the environment variable NOSTR_SECRET_KEY than this flag",
 		DefaultText: "the key '1'",
 		Aliases:     []string{"connect"},
 		Category:    CATEGORY_SIGNER,
