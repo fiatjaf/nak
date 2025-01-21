@@ -11,6 +11,7 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/nbd-wtf/go-nostr/sdk/hints/memoryh"
+	"github.com/fatih/color"
 )
 
 var version string = "debug"
@@ -118,8 +119,12 @@ var app = &cli.Command{
 }
 
 func main() {
+	defer func() {
+		color.New(color.Reset).Println()
+	}()
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		stdout(err)
+		color.New(color.Reset).Println()
 		os.Exit(1)
 	}
 }
