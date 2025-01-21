@@ -8,11 +8,12 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip05"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/sdk/hints"
 )
 
 var fetch = &cli.Command{
 	Name:  "fetch",
-	Usage: "fetches events related to the given nip19 or nip05 code from the included relay hints or the author's NIP-65 relays.",
+	Usage: "fetches events related to the given nip19 or nip05 code from the included relay hints or the author's outbox relays.",
 	Description: `example usage:
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
@@ -90,8 +91,11 @@ var fetch = &cli.Command{
 			}
 
 			if authorHint != "" {
-				relays := sys.FetchOutboxRelays(ctx, authorHint, 3)
 				for _, url := range relays {
+					sys.Hints.Save(authorHint, nostr.NormalizeURL(url), hints.LastInHint, nostr.Now())
+				}
+
+				for _, url := range sys.FetchOutboxRelays(ctx, authorHint, 3) {
 					relays = append(relays, url)
 				}
 			}
