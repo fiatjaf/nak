@@ -85,7 +85,7 @@ example:
 						}
 
 						pk, _ := kr.GetPublicKey(ctx)
-						log("performing auth as %s... ", pk)
+						log("authing for req %s...", pk)
 
 						return kr.SignEvent(ctx, authEvent.Event)
 					},
