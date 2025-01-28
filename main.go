@@ -38,6 +38,7 @@ var app = &cli.Command{
 		encrypt,
 		decrypt,
 		outbox,
+		wallet,
 	},
 	Version: version,
 	Flags: []cli.Flag{

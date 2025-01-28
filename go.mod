@@ -9,18 +9,19 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fatih/color v1.16.0
 	github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae
-	github.com/fiatjaf/eventstore v0.14.2
-	github.com/fiatjaf/khatru v0.14.0
+	github.com/fiatjaf/eventstore v0.15.0
+	github.com/fiatjaf/khatru v0.15.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mailru/easyjson v0.9.0
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.48.0
+	github.com/nbd-wtf/go-nostr v0.49.0
 )
 
 require (
 	fiatjaf.com/lib v0.2.0 // indirect
 	github.com/andybalholm/brotli v1.0.5 // indirect
-	github.com/btcsuite/btcd/btcutil v1.1.3 // indirect
+	github.com/btcsuite/btcd v0.24.2 // indirect
+	github.com/btcsuite/btcd/btcutil v1.1.5 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/logex v1.1.10 // indirect
@@ -30,7 +31,9 @@ require (
 	github.com/dgraph-io/ristretto v1.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/pie/v2 v2.7.0 // indirect
+	github.com/elnosh/gonuts v0.3.1-0.20250123162555-7c0381a585e3 // indirect
 	github.com/fasthttp/websocket v1.5.7 // indirect
+	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/graph-gophers/dataloader/v7 v7.1.0 // indirect
 	github.com/hablullah/go-hijri v1.0.2 // indirect
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
@@ -53,6 +56,7 @@ require (
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.51.0 // indirect
 	github.com/wasilibs/go-re2 v1.3.0 // indirect
+	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/crypto v0.32.0 // indirect
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8 // indirect
 	golang.org/x/net v0.34.0 // indirect
