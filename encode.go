@@ -153,7 +153,7 @@ var encode = &cli.Command{
 		},
 		{
 			Name:  "naddr",
-			Usage: "generate codes for NIP-33 parameterized replaceable events",
+			Usage: "generate codes for addressable events",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "identifier",
@@ -189,7 +189,7 @@ var encode = &cli.Command{
 
 					kind := c.Int("kind")
 					if kind < 30000 || kind >= 40000 {
-						return fmt.Errorf("kind must be between 30000 and 39999, as per NIP-16, got %d", kind)
+						return fmt.Errorf("kind must be between 30000 and 39999, got %d", kind)
 					}
 
 					if d == "" {

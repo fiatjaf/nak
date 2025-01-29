@@ -32,7 +32,7 @@ var defaultKeyFlags = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:        "connect-as",
-		Usage:       "private key to use when communicating with NIP-46 bunkers",
+		Usage:       "private key to use when communicating with nip46 bunkers",
 		DefaultText: "a random key",
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),

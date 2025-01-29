@@ -19,7 +19,7 @@ const (
 var req = &cli.Command{
 	Name:  "req",
 	Usage: "generates encoded REQ messages and optionally use them to talk to relays",
-	Description: `outputs a NIP-01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
+	Description: `outputs a nip01 Nostr filter. when a relay is not given, will print the filter, otherwise will connect to the given relay and send the filter.
 
 example:
 		nak req -k 1 -l 15 wss://nostr.wine wss://nostr-pub.wellorder.net
@@ -57,12 +57,12 @@ example:
 			},
 			&cli.BoolFlag{
 				Name:  "auth",
-				Usage: "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
 			},
 			&cli.BoolFlag{
 				Name:     "force-pre-auth",
 				Aliases:  []string{"fpa"},
-				Usage:    "after connecting, for a NIP-42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
+				Usage:    "after connecting, for a nip42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
 				Category: CATEGORY_SIGNER,
 			},
 		)...,
@@ -210,7 +210,7 @@ var reqFilterFlags = []cli.Flag{
 	},
 	&cli.StringFlag{
 		Name:     "search",
-		Usage:    "a NIP-50 search query, use it only with relays that explicitly support it",
+		Usage:    "a nip50 search query, use it only with relays that explicitly support it",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
 }

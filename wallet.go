@@ -55,7 +55,7 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.WalletStash, err
 
 var wallet = &cli.Command{
 	Name:                      "wallet",
-	Usage:                     "manage NIP-60 Cashu wallets",
+	Usage:                     "manage nip60 Cashu wallets",
 	DisableSliceFlagSeparator: true,
 	Flags:                     defaultKeyFlags,
 	ArgsUsage:                 "<wallet-identifier>",

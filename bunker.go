@@ -19,7 +19,7 @@ import (
 
 var bunker = &cli.Command{
 	Name:                      "bunker",
-	Usage:                     "starts a NIP-46 signer daemon with the given --sec key",
+	Usage:                     "starts a nip46 signer daemon with the given --sec key",
 	ArgsUsage:                 "[relay...]",
 	Description:               ``,
 	DisableSliceFlagSeparator: true,

@@ -65,7 +65,7 @@ example:
 		// ~~~
 		&cli.UintFlag{
 			Name:     "pow",
-			Usage:    "NIP-13 difficulty to target when doing hash work on the event id",
+			Usage:    "nip13 difficulty to target when doing hash work on the event id",
 			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{
@@ -75,7 +75,7 @@ example:
 		},
 		&cli.BoolFlag{
 			Name:     "auth",
-			Usage:    "always perform NIP-42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			Usage:    "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
 			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{

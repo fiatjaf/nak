@@ -71,7 +71,7 @@ var public = &cli.Command{
 var encryptKey = &cli.Command{
 	Name:                      "encrypt",
 	Usage:                     "encrypts a secret key and prints an ncryptsec code",
-	Description:               `uses the NIP-49 standard.`,
+	Description:               `uses the nip49 standard.`,
 	ArgsUsage:                 "<secret> <password>",
 	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
@@ -110,7 +110,7 @@ var encryptKey = &cli.Command{
 var decryptKey = &cli.Command{
 	Name:                      "decrypt",
 	Usage:                     "takes an ncrypsec and a password and decrypts it into an nsec",
-	Description:               `uses the NIP-49 standard.`,
+	Description:               `uses the nip49 standard.`,
 	ArgsUsage:                 "<ncryptsec-code> <password>",
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
