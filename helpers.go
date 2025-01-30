@@ -214,11 +214,13 @@ func leftPadKey(k string) string {
 }
 
 var colors = struct {
+	reset   func(...any) (int, error)
 	italic  func(...any) string
 	italicf func(string, ...any) string
 	bold    func(...any) string
 	boldf   func(string, ...any) string
 }{
+	color.New(color.Reset).Print,
 	color.New(color.Italic).Sprint,
 	color.New(color.Italic).Sprintf,
 	color.New(color.Bold).Sprint,
