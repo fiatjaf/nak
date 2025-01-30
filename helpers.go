@@ -32,11 +32,11 @@ const (
 	LINE_PROCESSING_ERROR = iota
 )
 
-var log = func(msg string, args ...any) {
-	fmt.Fprintf(color.Error, msg, args...)
-}
-
-var stdout = fmt.Println
+var (
+	log        = func(msg string, args ...any) { fmt.Fprintf(color.Error, msg, args...) }
+	logverbose = func(msg string, args ...any) {} // by default do nothing
+	stdout     = fmt.Println
+)
 
 func isPiped() bool {
 	stat, _ := os.Stdin.Stat()

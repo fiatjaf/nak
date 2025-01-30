@@ -63,6 +63,19 @@ var app = &cli.Command{
 				return nil
 			},
 		},
+		&cli.BoolFlag{
+			Name:       "verbose",
+			Usage:      "print more stuff than normally",
+			Aliases:    []string{"v"},
+			Persistent: true,
+			Action: func(ctx context.Context, c *cli.Command, b bool) error {
+				v := c.Count("verbose")
+				if v >= 1 {
+					logverbose = log
+				}
+				return nil
+			},
+		},
 	},
 	Before: func(ctx context.Context, c *cli.Command) error {
 		configPath := c.String("config-path")
