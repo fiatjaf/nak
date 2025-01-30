@@ -81,24 +81,21 @@ var serve = &cli.Command{
 			exited <- err
 		}()
 
-		bold := color.New(color.Bold).Sprintf
-		italic := color.New(color.Italic).Sprint
-
 		var printStatus func()
 
 		// relay logging
 		rl.RejectFilter = append(rl.RejectFilter, func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
-			log("    got %s %v\n", color.HiYellowString("request"), italic(filter))
+			log("    got %s %v\n", color.HiYellowString("request"), colors.italic(filter))
 			printStatus()
 			return false, ""
 		})
 		rl.RejectCountFilter = append(rl.RejectCountFilter, func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
-			log("    got %s %v\n", color.HiCyanString("count request"), italic(filter))
+			log("    got %s %v\n", color.HiCyanString("count request"), colors.italic(filter))
 			printStatus()
 			return false, ""
 		})
 		rl.RejectEvent = append(rl.RejectEvent, func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
-			log("    got %s %v\n", color.BlueString("event"), italic(event))
+			log("    got %s %v\n", color.BlueString("event"), colors.italic(event))
 			printStatus()
 			return false, ""
 		})
@@ -118,7 +115,7 @@ var serve = &cli.Command{
 		}
 
 		<-started
-		log("%s relay running at %s\n", color.HiRedString(">"), bold("ws://%s:%d", hostname, port))
+		log("%s relay running at %s\n", color.HiRedString(">"), colors.boldf("ws://%s:%d", hostname, port))
 
 		return <-exited
 	},

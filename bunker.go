@@ -83,8 +83,6 @@ var bunker = &cli.Command{
 			return err
 		}
 		npub, _ := nip19.EncodePublicKey(pubkey)
-		bold := color.New(color.Bold).Sprint
-		italic := color.New(color.Italic).Sprint
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
@@ -93,12 +91,12 @@ var bunker = &cli.Command{
 
 			authorizedKeysStr := ""
 			if len(authorizedKeys) != 0 {
-				authorizedKeysStr = "\n  authorized keys:\n    - " + italic(strings.Join(authorizedKeys, "\n    - "))
+				authorizedKeysStr = "\n  authorized keys:\n    - " + colors.italic(strings.Join(authorizedKeys, "\n    - "))
 			}
 
 			authorizedSecretsStr := ""
 			if len(authorizedSecrets) != 0 {
-				authorizedSecretsStr = "\n  authorized secrets:\n    - " + italic(strings.Join(authorizedSecrets, "\n    - "))
+				authorizedSecretsStr = "\n  authorized secrets:\n    - " + colors.italic(strings.Join(authorizedSecrets, "\n    - "))
 			}
 
 			preauthorizedFlags := ""
@@ -130,13 +128,13 @@ var bunker = &cli.Command{
 			)
 
 			log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
-				bold(relayURLs),
-				bold(pubkey),
-				bold(npub),
+				colors.bold(relayURLs),
+				colors.bold(pubkey),
+				colors.bold(npub),
 				authorizedKeysStr,
 				authorizedSecretsStr,
 				color.CyanString(restartCommand),
-				bold(bunkerURI),
+				colors.bold(bunkerURI),
 			)
 		}
 		printBunkerInfo()

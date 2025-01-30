@@ -212,3 +212,15 @@ func randString(n int) string {
 func leftPadKey(k string) string {
 	return strings.Repeat("0", 64-len(k)) + k
 }
+
+var colors = struct {
+	italic  func(...any) string
+	italicf func(string, ...any) string
+	bold    func(...any) string
+	boldf   func(string, ...any) string
+}{
+	color.New(color.Italic).Sprint,
+	color.New(color.Italic).Sprintf,
+	color.New(color.Bold).Sprint,
+	color.New(color.Bold).Sprintf,
+}
