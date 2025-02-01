@@ -38,6 +38,7 @@ var app = &cli.Command{
 		decrypt,
 		outbox,
 		wallet,
+		mcpServer,
 	},
 	Version: version,
 	Flags: []cli.Flag{

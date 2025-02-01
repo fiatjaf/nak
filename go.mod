@@ -1,6 +1,8 @@
 module github.com/fiatjaf/nak
 
-go 1.23.1
+go 1.23.3
+
+toolchain go1.23.4
 
 require (
 	github.com/bep/debounce v1.2.1
@@ -13,6 +15,7 @@ require (
 	github.com/fiatjaf/khatru v0.15.0
 	github.com/json-iterator/go v1.1.12
 	github.com/mailru/easyjson v0.9.0
+	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/nbd-wtf/go-nostr v0.49.2
 )
@@ -34,6 +37,7 @@ require (
 	github.com/elnosh/gonuts v0.3.1-0.20250123162555-7c0381a585e3 // indirect
 	github.com/fasthttp/websocket v1.5.7 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
+	github.com/google/uuid v1.6.0 // indirect
 	github.com/graph-gophers/dataloader/v7 v7.1.0 // indirect
 	github.com/hablullah/go-hijri v1.0.2 // indirect
 	github.com/hablullah/go-juliandays v1.0.0 // indirect
