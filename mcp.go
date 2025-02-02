@@ -10,6 +10,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 var mcpServer = &cli.Command{
@@ -82,6 +83,52 @@ var mcpServer = &cli.Command{
 			return mcp.NewToolResultText("event was successfully published with id " + evt.ID), nil
 		})
 
+		s.AddTool(mcp.NewTool("resolve_nostr_uri",
+			mcp.WithDescription("Resolve URIs prefixed with nostr:, including nostr:nevent1..., nostr:npub1..., nostr:nprofile1... and nostr:naddr1..."),
+			mcp.WithString("uri",
+				mcp.Required(),
+				mcp.Description("URI to be resolved"),
+			),
+		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			uri, _ := request.Params.Arguments["uri"].(string)
+			if strings.HasPrefix(uri, "nostr:") {
+				uri = uri[6:]
+			}
+
+			prefix, data, err := nip19.Decode(uri)
+			if err != nil {
+				return mcp.NewToolResultError("this Nostr uri is invalid"), nil
+			}
+
+			switch prefix {
+			case "npub":
+				pm := sys.FetchProfileMetadata(ctx, data.(string))
+				return mcp.NewToolResultText(
+					fmt.Sprintf("this is a Nostr profile named '%s', their public key is '%s'",
+						pm.ShortName(), pm.PubKey),
+				), nil
+			case "nprofile":
+				pm, _ := sys.FetchProfileFromInput(ctx, uri)
+				return mcp.NewToolResultText(
+					fmt.Sprintf("this is a Nostr profile named '%s', their public key is '%s'",
+						pm.ShortName(), pm.PubKey),
+				), nil
+			case "nevent":
+				event, _, err := sys.FetchSpecificEventFromInput(ctx, uri, false)
+				if err != nil {
+					return mcp.NewToolResultError("Couldn't find this event anywhere"), nil
+				}
+
+				return mcp.NewToolResultText(
+					fmt.Sprintf("this is a Nostr event: %s", event),
+				), nil
+			case "naddr":
+				return mcp.NewToolResultError("For now we can't handle this kind of Nostr uri"), nil
+			default:
+				return mcp.NewToolResultError("We don't know how to handle this Nostr uri"), nil
+			}
+		})
+
 		s.AddTool(mcp.NewTool("search_profile",
 			mcp.WithDescription("Search for the public key of a Nostr user given their name"),
 			mcp.WithString("name",
@@ -115,7 +162,7 @@ var mcpServer = &cli.Command{
 		})
 
 		s.AddTool(mcp.NewTool("read_events_from_relay",
-			mcp.WithDescription("Makes a REQ query to one relay using the specified parameters"),
+			mcp.WithDescription("Makes a REQ query to one relay using the specified parameters, this can be used to fetch notes from a profile"),
 			mcp.WithNumber("kind",
 				mcp.Required(),
 				mcp.Description("event kind number to include in the 'kinds' field"),
@@ -151,12 +198,18 @@ var mcpServer = &cli.Command{
 
 			events := sys.Pool.SubManyEose(ctx, []string{relay}, nostr.Filters{filter})
 
-			results := make([]string, 0, limit)
+
+			result := strings.Builder{}
 			for ie := range events {
-				results = append(results, ie.String())
+				result.WriteString("author public key: ")
+				result.WriteString(ie.PubKey)
+				result.WriteString("content: '")
+				result.WriteString(ie.Content)
+				result.WriteString("'")
+				result.WriteString("\n---\n")
 			}
 
-			return mcp.NewToolResultText(strings.Join(results, "\n\n")), nil
+			return mcp.NewToolResultText(result.String()), nil
 		})
 
 		return server.ServeStdio(s)
