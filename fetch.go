@@ -100,12 +100,12 @@ var fetch = &cli.Command{
 				}
 			}
 
-			if len(filter.Authors) > 0 && len(filter.Kinds) == 0 {
-				filter.Kinds = append(filter.Kinds, 0)
-			}
-
 			if err := applyFlagsToFilter(c, &filter); err != nil {
 				return err
+			}
+
+			if len(filter.Authors) > 0 && len(filter.Kinds) == 0 {
+				filter.Kinds = append(filter.Kinds, 0)
 			}
 
 			if len(relays) == 0 {
