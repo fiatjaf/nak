@@ -17,7 +17,7 @@ require (
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.49.2
+	github.com/nbd-wtf/go-nostr v0.49.3
 )
 
 require (

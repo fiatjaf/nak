@@ -17,7 +17,7 @@ import (
 
 var key = &cli.Command{
 	Name:                      "key",
-	Usage:                     "operations on secret keys: generate, derive, encrypt, decrypt.",
+	Usage:                     "operations on secret keys: generate, derive, encrypt, decrypt",
 	Description:               ``,
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{

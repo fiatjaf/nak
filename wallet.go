@@ -10,9 +10,10 @@ import (
 	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip60"
+	"github.com/nbd-wtf/go-nostr/nip61"
 )
 
-func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.WalletStash, func(), error) {
+func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), error) {
 	kr, _, err := gatherKeyerFromArguments(ctx, c)
 	if err != nil {
 		return nil, nil, err
@@ -24,12 +25,12 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.WalletStash, fun
 	}
 
 	relays := sys.FetchOutboxRelays(ctx, pk, 3)
-	wl := nip60.LoadStash(ctx, kr, sys.Pool, relays)
-	if wl == nil {
-		return nil, nil, fmt.Errorf("error loading wallet stash")
+	w := nip60.LoadWallet(ctx, kr, sys.Pool, relays)
+	if w == nil {
+		return nil, nil, fmt.Errorf("error loading walle")
 	}
 
-	wl.Processed = func(evt *nostr.Event, err error) {
+	w.Processed = func(evt *nostr.Event, err error) {
 		if err == nil {
 			logverbose("processed event %s\n", evt)
 		} else {
@@ -37,17 +38,20 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.WalletStash, fun
 		}
 	}
 
-	wl.PublishUpdate = func(event nostr.Event, deleted, received, change *nip60.Token, isHistory bool) {
+	w.PublishUpdate = func(event nostr.Event, deleted, received, change *nip60.Token, isHistory bool) {
 		desc := "wallet"
 		if received != nil {
+			mint, _ := strings.CutPrefix(received.Mint, "https://")
 			desc = fmt.Sprintf("received from %s with %d proofs totalling %d",
-				received.Mint, len(received.Proofs), received.Proofs.Amount())
+				mint, len(received.Proofs), received.Proofs.Amount())
 		} else if change != nil {
+			mint, _ := strings.CutPrefix(change.Mint, "https://")
 			desc = fmt.Sprintf("change from %s with %d proofs totalling %d",
-				change.Mint, len(change.Proofs), change.Proofs.Amount())
+				mint, len(change.Proofs), change.Proofs.Amount())
 		} else if deleted != nil {
+			mint, _ := strings.CutPrefix(deleted.Mint, "https://")
 			desc = fmt.Sprintf("deleting a used token from %s with %d proofs totalling %d",
-				deleted.Mint, len(deleted.Proofs), deleted.Proofs.Amount())
+				mint, len(deleted.Proofs), deleted.Proofs.Amount())
 		} else if isHistory {
 			desc = "history entry"
 		}
@@ -74,82 +78,102 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.WalletStash, fun
 		log("\n")
 	}
 
-	<-wl.Stable
+	<-w.Stable
 
-	return wl, func() {
-		wl.Close()
+	return w, func() {
+		w.Close()
 	}, nil
 }
 
 var wallet = &cli.Command{
 	Name:                      "wallet",
-	Usage:                     "manage nip60 cashu wallets (see subcommands)",
+	Usage:                     "displays the current wallet balance",
 	Description:               "all wallet data is stored on Nostr relays, signed and encrypted with the given key, and reloaded again from relays on every call.\n\nthe same data can be accessed by other compatible nip60 clients.",
 	DisableSliceFlagSeparator: true,
 	Flags:                     defaultKeyFlags,
-	ArgsUsage:                 "<wallet-identifier>",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		args := c.Args().Slice()
-		if len(args) != 1 {
-			return fmt.Errorf("must be called as `nak wallet <wallet-id>")
-		}
-
-		wl, closewl, err := prepareWallet(ctx, c)
+		w, closew, err := prepareWallet(ctx, c)
 		if err != nil {
 			return err
 		}
 
-		for w := range wl.Wallets() {
-			if w.Identifier == args[0] {
-				stdout(w.DisplayName(), w.Balance())
-				break
-			}
-		}
+		stdout(w.Balance())
 
-		closewl()
+		closew()
 		return nil
 	},
 	Commands: []*cli.Command{
 		{
-			Name:                      "list",
-			Usage:                     "lists existing wallets with their balances",
+			Name:                      "mints",
+			Usage:                     "lists, adds or remove default mints from the wallet",
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				wl, closewl, err := prepareWallet(ctx, c)
+				w, closew, err := prepareWallet(ctx, c)
 				if err != nil {
 					return err
 				}
 
-				for w := range wl.Wallets() {
-					stdout(w.DisplayName(), w.Balance())
+				for _, url := range w.Mints {
+					stdout(strings.Split(url, "://")[1])
 				}
 
-				closewl()
+				closew()
 				return nil
+			},
+			Commands: []*cli.Command{
+				{
+					Name:                      "add",
+					DisableSliceFlagSeparator: true,
+					ArgsUsage:                 "<mint>...",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						w, closew, err := prepareWallet(ctx, c)
+						if err != nil {
+							return err
+						}
+
+						if err := w.AddMint(ctx, c.Args().Slice()...); err != nil {
+							return err
+						}
+
+						closew()
+						return nil
+					},
+				},
+				{
+					Name:                      "remove",
+					DisableSliceFlagSeparator: true,
+					ArgsUsage:                 "<mint>...",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						w, closew, err := prepareWallet(ctx, c)
+						if err != nil {
+							return err
+						}
+
+						if err := w.RemoveMint(ctx, c.Args().Slice()...); err != nil {
+							return err
+						}
+
+						closew()
+						return nil
+					},
+				},
 			},
 		},
 		{
 			Name:                      "tokens",
-			Usage:                     "lists existing tokens in this wallet with their mints and aggregated amounts",
+			Usage:                     "lists existing tokens with their mints and aggregated amounts",
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				wl, closewl, err := prepareWallet(ctx, c)
+				w, closew, err := prepareWallet(ctx, c)
 				if err != nil {
 					return err
 				}
-
-				args := c.Args().Slice()
-				if len(args) != 1 {
-					return fmt.Errorf("must be called as `nak wallet <wallet-id> tokens")
-				}
-
-				w := wl.EnsureWallet(ctx, args[0])
 
 				for _, token := range w.Tokens {
 					stdout(token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
 				}
 
-				closewl()
+				closew()
 				return nil
 			},
 		},
@@ -158,24 +182,38 @@ var wallet = &cli.Command{
 			Usage:                     "takes a cashu token string as an argument and adds it to the wallet",
 			ArgsUsage:                 "<token>",
 			DisableSliceFlagSeparator: true,
+			Flags: []cli.Flag{
+				&cli.StringSliceFlag{
+					Name:  "mint",
+					Usage: "mint to swap the token into",
+				},
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args().Slice()
-				if len(args) != 2 {
-					return fmt.Errorf("must be called as `nak wallet <wallet-id> receive <token>")
+				if len(args) != 1 {
+					return fmt.Errorf("must be called as `nak wallet receive <token>")
 				}
 
-				wl, closewl, err := prepareWallet(ctx, c)
+				w, closew, err := prepareWallet(ctx, c)
 				if err != nil {
 					return err
 				}
 
-				w := wl.EnsureWallet(ctx, args[0])
-
-				if err := w.ReceiveToken(ctx, args[1]); err != nil {
+				proofs, mint, err := nip60.GetProofsAndMint(args[0])
+				if err != nil {
 					return err
 				}
 
-				closewl()
+				opts := make([]nip60.ReceiveOption, 0, 1)
+				for _, url := range c.StringSlice("mint") {
+					opts = append(opts, nip60.WithMintDestination(url))
+				}
+
+				if err := w.Receive(ctx, proofs, mint, opts...); err != nil {
+					return err
+				}
+
+				closew()
 				return nil
 			},
 		},
@@ -192,34 +230,32 @@ var wallet = &cli.Command{
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args().Slice()
-				if len(args) != 2 {
-					return fmt.Errorf("must be called as `nak wallet <wallet-id> send <amount>")
+				if len(args) != 1 {
+					return fmt.Errorf("must be called as `nak wallet send <amount>")
 				}
-				amount, err := strconv.ParseUint(args[1], 10, 64)
+				amount, err := strconv.ParseUint(args[0], 10, 64)
 				if err != nil {
-					return fmt.Errorf("amount '%s' is invalid", args[1])
+					return fmt.Errorf("amount '%s' is invalid", args[0])
 				}
 
-				wl, closewl, err := prepareWallet(ctx, c)
+				w, closew, err := prepareWallet(ctx, c)
 				if err != nil {
 					return err
 				}
-
-				w := wl.EnsureWallet(ctx, args[0])
 
 				opts := make([]nip60.SendOption, 0, 1)
 				if mint := c.String("mint"); mint != "" {
 					mint = "http" + nostr.NormalizeURL(mint)[2:]
 					opts = append(opts, nip60.WithMint(mint))
 				}
-				token, err := w.SendToken(ctx, amount, opts...)
+				proofs, mint, err := w.Send(ctx, amount, opts...)
 				if err != nil {
 					return err
 				}
 
-				stdout(token)
+				stdout(nip60.MakeTokenString(proofs, mint))
 
-				closewl()
+				closew()
 				return nil
 			},
 		},
@@ -236,16 +272,14 @@ var wallet = &cli.Command{
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args().Slice()
-				if len(args) != 2 {
-					return fmt.Errorf("must be called as `nak wallet <wallet-id> pay <invoice>")
+				if len(args) != 1 {
+					return fmt.Errorf("must be called as `nak wallet pay <invoice>")
 				}
 
-				wl, closewl, err := prepareWallet(ctx, c)
+				w, closew, err := prepareWallet(ctx, c)
 				if err != nil {
 					return err
 				}
-
-				w := wl.EnsureWallet(ctx, args[0])
 
 				opts := make([]nip60.SendOption, 0, 1)
 				if mint := c.String("mint"); mint != "" {
@@ -253,15 +287,200 @@ var wallet = &cli.Command{
 					opts = append(opts, nip60.WithMint(mint))
 				}
 
-				preimage, err := w.PayBolt11(ctx, args[1], opts...)
+				preimage, err := w.PayBolt11(ctx, args[0], opts...)
 				if err != nil {
 					return err
 				}
 
 				stdout(preimage)
 
-				closewl()
+				closew()
 				return nil
+			},
+		},
+		{
+			Name:                      "nutzap",
+			Usage:                     "sends a nip61 nutzap to one or more Nostr profiles and/or events",
+			ArgsUsage:                 "<amount> <target>",
+			Description:               "<amount> is in satoshis, <target> can be an npub, nprofile, nevent or hex pubkey.",
+			DisableSliceFlagSeparator: true,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "mint",
+					Usage: "send from a specific mint",
+				},
+				&cli.StringFlag{
+					Name:  "message",
+					Usage: "attach a message to the nutzap",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args().Slice()
+				if len(args) >= 2 {
+					return fmt.Errorf("must be called as `nak wallet send <amount> <target>...")
+				}
+
+				w, closew, err := prepareWallet(ctx, c)
+				if err != nil {
+					return err
+				}
+
+				amount := c.Uint("amount")
+				target := c.String("target")
+
+				var evt *nostr.Event
+				var eventId string
+
+				if strings.HasPrefix(target, "nevent1") {
+					evt, _, err = sys.FetchSpecificEventFromInput(ctx, target, false)
+					if err != nil {
+						return err
+					}
+					eventId = evt.ID
+					target = evt.PubKey
+				}
+
+				pm, err := sys.FetchProfileFromInput(ctx, target)
+				if err != nil {
+					return err
+				}
+
+				log("sending %d sat to '%s' (%s)", amount, pm.ShortName(), pm.Npub())
+
+				opts := make([]nip60.SendOption, 0, 1)
+				if mint := c.String("mint"); mint != "" {
+					mint = "http" + nostr.NormalizeURL(mint)[2:]
+					opts = append(opts, nip60.WithMint(mint))
+				}
+
+				kr, _, _ := gatherKeyerFromArguments(ctx, c)
+				results, err := nip61.SendNutzap(
+					ctx,
+					kr,
+					w,
+					sys.Pool,
+					pm.PubKey,
+					sys.FetchInboxRelays,
+					sys.FetchOutboxRelays(ctx, pm.PubKey, 3),
+					eventId,
+					amount,
+					c.String("message"),
+				)
+				if err != nil {
+					return err
+				}
+
+				log("- publishing nutzap... ")
+				first := true
+				for res := range results {
+					cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
+					if !ok {
+						cleanUrl = res.RelayURL
+					}
+
+					if !first {
+						log(", ")
+					}
+					first = false
+					if res.Error != nil {
+						log("%s: %s", color.RedString(cleanUrl), res.Error)
+					} else {
+						log("%s: ok", color.GreenString(cleanUrl))
+					}
+				}
+
+				closew()
+				return nil
+			},
+			Commands: []*cli.Command{
+				{
+					Name:                      "setup",
+					Usage:                     "setup your wallet private key and kind:10019 event for receiving nutzaps",
+					DisableSliceFlagSeparator: true,
+					Flags: []cli.Flag{
+						&cli.StringSliceFlag{
+							Name:  "mint",
+							Usage: "mints to receive nutzaps in",
+						},
+						&cli.StringFlag{
+							Name:  "private-key",
+							Usage: "private key used for receiving nutzaps",
+						},
+						&cli.BoolFlag{
+							Name:    "force",
+							Aliases: []string{"f"},
+							Usage:   "forces replacement of private-key",
+						},
+					},
+					Action: func(ctx context.Context, c *cli.Command) error {
+						w, closew, err := prepareWallet(ctx, c)
+						if err != nil {
+							return err
+						}
+
+						if w.PrivateKey == nil {
+							if sk := c.String("private-key"); sk != "" {
+								if err := w.SetPrivateKey(ctx, sk); err != nil {
+									return err
+								}
+							} else {
+								return fmt.Errorf("missing --private-key")
+							}
+						} else if sk := c.String("private-key"); sk != "" && !c.Bool("force") {
+							return fmt.Errorf("refusing to replace existing private key, use the --force flag")
+						}
+
+						kr, _, _ := gatherKeyerFromArguments(ctx, c)
+						pk, _ := kr.GetPublicKey(ctx)
+						relays := sys.FetchWriteRelays(ctx, pk, 6)
+
+						info := nip61.Info{}
+						ie := sys.Pool.QuerySingle(ctx, relays, nostr.Filter{
+							Kinds:   []int{10019},
+							Authors: []string{pk},
+							Limit:   1,
+						})
+						if ie != nil {
+							info.ParseEvent(ie.Event)
+						}
+
+						if mints := c.StringSlice("mints"); len(mints) == 0 && len(info.Mints) == 0 {
+							info.Mints = w.Mints
+						}
+						if len(info.Mints) == 0 {
+							return fmt.Errorf("missing --mint")
+						}
+
+						evt := nostr.Event{}
+						if err := info.ToEvent(ctx, kr, &evt); err != nil {
+							return err
+						}
+
+						stdout(evt)
+						log("- saving kind:10019 event... ")
+						first := true
+						for res := range sys.Pool.PublishMany(ctx, relays, evt) {
+							cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
+							if !ok {
+								cleanUrl = res.RelayURL
+							}
+
+							if !first {
+								log(", ")
+							}
+							first = false
+
+							if res.Error != nil {
+								log("%s: %s", color.RedString(cleanUrl), res.Error)
+							} else {
+								log("%s: ok", color.GreenString(cleanUrl))
+							}
+						}
+
+						closew()
+						return nil
+					},
+				},
 			},
 		},
 	},
