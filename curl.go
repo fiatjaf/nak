@@ -32,15 +32,16 @@ var curl = &cli.Command{
 
 		nextIsMethod := false
 		for _, f := range curlFlags {
-			if strings.HasPrefix(f, "https://") || strings.HasPrefix(f, "http://") {
-				url = f
-			} else if f == "--request" || f == "-X" {
-				nextIsMethod = true
-			} else if nextIsMethod {
+			if nextIsMethod {
 				method = f
 				method, _ = strings.CutPrefix(method, `"`)
 				method, _ = strings.CutSuffix(method, `"`)
 				method = strings.ToUpper(method)
+			} else if strings.HasPrefix(f, "https://") || strings.HasPrefix(f, "http://") {
+				url = f
+			} else if f == "--request" || f == "-X" {
+				nextIsMethod = true
+				continue
 			}
 			nextIsMethod = false
 		}
@@ -77,7 +78,7 @@ var curl = &cli.Command{
 }
 
 func realCurl() error {
-	curlFlags = make([]string, 2, len(os.Args)-4)
+	curlFlags = make([]string, 2, max(len(os.Args)-4, 2))
 	keyFlags := make([]string, 0, 5)
 
 	for i := 0; i < len(os.Args[2:]); i++ {
