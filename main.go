@@ -39,6 +39,7 @@ var app = &cli.Command{
 		outbox,
 		wallet,
 		mcpServer,
+		curl,
 	},
 	Version: version,
 	Flags: []cli.Flag{
@@ -138,6 +139,16 @@ func main() {
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:  "version",
 		Usage: "prints the version",
+	}
+
+	// a megahack to enable this curl command proxy
+	if len(os.Args) > 2 && os.Args[1] == "curl" {
+		if err := realCurl(); err != nil {
+			stdout(err)
+			colors.reset()
+			os.Exit(1)
+		}
+		return
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
