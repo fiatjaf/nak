@@ -28,7 +28,22 @@ var curl = &cli.Command{
 
 		// cowboy parsing of curl flags to get the data we need for nip98
 		var url string
-		method := "GET"
+		var method string
+		var presumedMethod string
+
+		curlBodyBuildingFlags := []string{
+			"-d",
+			"--data",
+			"--data-binary",
+			"--data-ascii",
+			"--data-raw",
+			"--data-urlencode",
+			"-F",
+			"--form",
+			"--form-string",
+			"--form-escape",
+			"--upload-file",
+		}
 
 		nextIsMethod := false
 		for _, f := range curlFlags {
@@ -42,12 +57,25 @@ var curl = &cli.Command{
 			} else if f == "--request" || f == "-X" {
 				nextIsMethod = true
 				continue
+			} else if slices.Contains(curlBodyBuildingFlags, f) ||
+				slices.ContainsFunc(curlBodyBuildingFlags, func(s string) bool {
+					return strings.HasPrefix(f, s)
+				}) {
+				presumedMethod = "POST"
 			}
 			nextIsMethod = false
 		}
 
 		if url == "" {
 			return fmt.Errorf("can't create nip98 event: target url is empty")
+		}
+
+		if method == "" {
+			if presumedMethod != "" {
+				method = presumedMethod
+			} else {
+				method = "GET"
+			}
 		}
 
 		// make and sign event
