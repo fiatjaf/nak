@@ -154,21 +154,20 @@ example:
 
 		doAuth := c.Bool("auth")
 
-		// then process input and generate events
-		for stdinEvent := range getStdinLinesOrBlank() {
-			evt := nostr.Event{
-				Tags: make(nostr.Tags, 0, 3),
-			}
+		// then process input and generate events:
 
-			kindWasSupplied := false
+		// will reuse this
+		var evt nostr.Event
+
+		// this is called when we have a valid json from stdin
+		handleEvent := func(stdinEvent string) error {
+			evt.Content = ""
+
+			kindWasSupplied := strings.Contains(stdinEvent, `"kind"`)
 			mustRehashAndResign := false
 
-			if stdinEvent != "" {
-				if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
-					ctx = lineProcessingError(ctx, "invalid event received from stdin: %s", err)
-					continue
-				}
-				kindWasSupplied = strings.Contains(stdinEvent, `"kind"`)
+			if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
+				return fmt.Errorf("invalid event received from stdin: %s", err)
 			}
 
 			if kind := c.Uint("kind"); slices.Contains(c.FlagNames(), "kind") {
@@ -323,6 +322,14 @@ example:
 					nevent, _ := nip19.EncodeEvent(evt.ID, successRelays, evt.PubKey)
 					log(nevent + "\n")
 				}
+			}
+
+			return nil
+		}
+
+		for stdinEvent := range getJsonsOrBlank() {
+			if err := handleEvent(stdinEvent); err != nil {
+				ctx = lineProcessingError(ctx, err.Error())
 			}
 		}
 

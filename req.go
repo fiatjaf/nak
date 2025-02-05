@@ -107,7 +107,7 @@ example:
 			}()
 		}
 
-		for stdinFilter := range getStdinLinesOrBlank() {
+		for stdinFilter := range getJsonsOrBlank() {
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
 				if err := easyjson.Unmarshal([]byte(stdinFilter), &filter); err != nil {

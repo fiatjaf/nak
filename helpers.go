@@ -4,11 +4,13 @@ import (
 	"bufio"
 	"context"
 	"fmt"
+	"iter"
 	"math/rand"
 	"net/http"
 	"net/textproto"
 	"net/url"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -43,59 +45,71 @@ func isPiped() bool {
 	return stat.Mode()&os.ModeCharDevice == 0
 }
 
-func getStdinLinesOrBlank() chan string {
-	multi := make(chan string)
-	if hasStdinLines := writeStdinLinesOrNothing(multi); !hasStdinLines {
-		single := make(chan string, 1)
-		single <- ""
-		close(single)
-		return single
-	} else {
-		return multi
+func getJsonsOrBlank() iter.Seq[string] {
+	var curr strings.Builder
+
+	return func(yield func(string) bool) {
+		for stdinLine := range getStdinLinesOrBlank() {
+			// we're look for an event, but it may be in multiple lines, so if json parsing fails
+			// we'll try the next line until we're successful
+			curr.WriteString(stdinLine)
+			stdinEvent := curr.String()
+
+			var dummy any
+			if err := json.Unmarshal([]byte(stdinEvent), &dummy); err != nil {
+				continue
+			}
+
+			if !yield(stdinEvent) {
+				return
+			}
+
+			curr.Reset()
+		}
 	}
 }
 
-func getStdinLinesOrArguments(args cli.Args) chan string {
+func getStdinLinesOrBlank() iter.Seq[string] {
+	return func(yield func(string) bool) {
+		if hasStdinLines := writeStdinLinesOrNothing(yield); !hasStdinLines {
+			return
+		} else {
+			return
+		}
+	}
+}
+
+func getStdinLinesOrArguments(args cli.Args) iter.Seq[string] {
 	return getStdinLinesOrArgumentsFromSlice(args.Slice())
 }
 
-func getStdinLinesOrArgumentsFromSlice(args []string) chan string {
+func getStdinLinesOrArgumentsFromSlice(args []string) iter.Seq[string] {
 	// try the first argument
 	if len(args) > 0 {
-		argsCh := make(chan string, 1)
-		go func() {
-			for _, arg := range args {
-				argsCh <- arg
-			}
-			close(argsCh)
-		}()
-		return argsCh
+		return slices.Values(args)
 	}
 
 	// try the stdin
-	multi := make(chan string)
-	if !writeStdinLinesOrNothing(multi) {
-		close(multi)
+	return func(yield func(string) bool) {
+		writeStdinLinesOrNothing(yield)
 	}
-	return multi
 }
 
-func writeStdinLinesOrNothing(ch chan string) (hasStdinLines bool) {
+func writeStdinLinesOrNothing(yield func(string) bool) (hasStdinLines bool) {
 	if isPiped() {
 		// piped
-		go func() {
-			scanner := bufio.NewScanner(os.Stdin)
-			scanner.Buffer(make([]byte, 16*1024*1024), 256*1024*1024)
-			hasEmittedAtLeastOne := false
-			for scanner.Scan() {
-				ch <- strings.TrimSpace(scanner.Text())
-				hasEmittedAtLeastOne = true
+		scanner := bufio.NewScanner(os.Stdin)
+		scanner.Buffer(make([]byte, 16*1024*1024), 256*1024*1024)
+		hasEmittedAtLeastOne := false
+		for scanner.Scan() {
+			if !yield(strings.TrimSpace(scanner.Text())) {
+				return
 			}
-			if !hasEmittedAtLeastOne {
-				ch <- ""
-			}
-			close(ch)
-		}()
+			hasEmittedAtLeastOne = true
+		}
+		if !hasEmittedAtLeastOne {
+			yield("")
+		}
 		return true
 	} else {
 		// not piped
