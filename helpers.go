@@ -49,7 +49,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 	var curr strings.Builder
 
 	return func(yield func(string) bool) {
-		for stdinLine := range getStdinLinesOrBlank() {
+		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			// we're look for an event, but it may be in multiple lines, so if json parsing fails
 			// we'll try the next line until we're successful
 			curr.WriteString(stdinLine)
@@ -57,24 +57,34 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 			var dummy any
 			if err := json.Unmarshal([]byte(stdinEvent), &dummy); err != nil {
-				continue
+				return true
 			}
 
 			if !yield(stdinEvent) {
-				return
+				return false
 			}
 
 			curr.Reset()
+			return true
+		})
+
+		if !hasStdin {
+			yield("{}")
 		}
 	}
 }
 
 func getStdinLinesOrBlank() iter.Seq[string] {
 	return func(yield func(string) bool) {
-		if hasStdinLines := writeStdinLinesOrNothing(yield); !hasStdinLines {
-			return
-		} else {
-			return
+		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
+			if !yield(stdinLine) {
+				return false
+			}
+			return true
+		})
+
+		if !hasStdin {
+			yield("")
 		}
 	}
 }
@@ -107,10 +117,7 @@ func writeStdinLinesOrNothing(yield func(string) bool) (hasStdinLines bool) {
 			}
 			hasEmittedAtLeastOne = true
 		}
-		if !hasEmittedAtLeastOne {
-			yield("")
-		}
-		return true
+		return hasEmittedAtLeastOne
 	} else {
 		// not piped
 		return false
