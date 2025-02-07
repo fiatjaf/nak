@@ -27,6 +27,9 @@ var mcpServer = &cli.Command{
 
 		s.AddTool(mcp.NewTool("publish_note",
 			mcp.WithDescription("Publish a short note event to Nostr with the given text content"),
+			mcp.WithString("relay",
+				mcp.Description("Relay to publish the note to"),
+			),
 			mcp.WithString("content",
 				mcp.Required(),
 				mcp.Description("Arbitrary string to be published"),
@@ -38,6 +41,11 @@ var mcpServer = &cli.Command{
 		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			content, _ := request.Params.Arguments["content"].(string)
 			mention, _ := request.Params.Arguments["mention"].(string)
+			relayI, ok := request.Params.Arguments["relay"]
+			var relay string
+			if ok {
+				relay, _ = relayI.(string)
+			}
 
 			if mention != "" && !nostr.IsValidPublicKey(mention) {
 				return mcp.NewToolResultError("the given mention isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
@@ -71,16 +79,33 @@ var mcpServer = &cli.Command{
 				relays = []string{"nos.lol", "relay.damus.io"}
 			}
 
-			for res := range sys.Pool.PublishMany(ctx, []string{"nos.lol"}, evt) {
+			// extra relay specified
+			relays = append(relays, relay)
+
+			result := strings.Builder{}
+			result.WriteString(
+				fmt.Sprintf("the event we generated has id '%s', kind '%d' and is signed by pubkey '%s'. ",
+					evt.ID,
+					evt.Kind,
+					evt.PubKey,
+				),
+			)
+
+			for res := range sys.Pool.PublishMany(ctx, relays, evt) {
 				if res.Error != nil {
-					return mcp.NewToolResultError(
-						fmt.Sprintf("there was an error publishing the event to the relay %s",
+					result.WriteString(
+						fmt.Sprintf("there was an error publishing the event to the relay %s. ",
 							res.RelayURL),
-					), nil
+					)
+				} else {
+					result.WriteString(
+						fmt.Sprintf("the event was successfully published to the relay %s. ",
+							res.RelayURL),
+					)
 				}
 			}
 
-			return mcp.NewToolResultText("event was successfully published with id " + evt.ID), nil
+			return mcp.NewToolResultText(result.String()), nil
 		})
 
 		s.AddTool(mcp.NewTool("resolve_nostr_uri",
@@ -152,13 +177,9 @@ var mcpServer = &cli.Command{
 				mcp.Description("Public key of Nostr user we want to know the relay from where to read"),
 			),
 		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			name, _ := request.Params.Arguments["name"].(string)
-			re := sys.Pool.QuerySingle(ctx, []string{"relay.nostr.band", "nostr.wine"}, nostr.Filter{Search: name, Kinds: []int{0}})
-			if re == nil {
-				return mcp.NewToolResultError("couldn't find anyone with that name"), nil
-			}
-
-			return mcp.NewToolResultText(re.PubKey), nil
+			pubkey, _ := request.Params.Arguments["pubkey"].(string)
+			res := sys.FetchOutboxRelays(ctx, pubkey, 1)
+			return mcp.NewToolResultText(res[0]), nil
 		})
 
 		s.AddTool(mcp.NewTool("read_events_from_relay",
@@ -182,7 +203,11 @@ var mcpServer = &cli.Command{
 			relay, _ := request.Params.Arguments["relay"].(string)
 			limit, _ := request.Params.Arguments["limit"].(int)
 			kind, _ := request.Params.Arguments["kind"].(int)
-			pubkey, _ := request.Params.Arguments["pubkey"].(string)
+			pubkeyI, ok := request.Params.Arguments["pubkey"]
+			var pubkey string
+			if ok {
+				pubkey, _ = pubkeyI.(string)
+			}
 
 			if pubkey != "" && !nostr.IsValidPublicKey(pubkey) {
 				return mcp.NewToolResultError("the given pubkey isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
@@ -197,7 +222,6 @@ var mcpServer = &cli.Command{
 			}
 
 			events := sys.Pool.SubManyEose(ctx, []string{relay}, nostr.Filters{filter})
-
 
 			result := strings.Builder{}
 			for ie := range events {
