@@ -9,6 +9,7 @@ import (
 	"github.com/fiatjaf/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip77"
 )
 
 const (
@@ -32,6 +33,10 @@ example:
 	DisableSliceFlagSeparator: true,
 	Flags: append(defaultKeyFlags,
 		append(reqFilterFlags,
+			&cli.BoolFlag{
+				Name:  "ids-only",
+				Usage: "use nip77 to fetch just a list of ids",
+			},
 			&cli.BoolFlag{
 				Name:        "stream",
 				Usage:       "keep the subscription open, printing all events as they are returned",
@@ -121,15 +126,33 @@ example:
 			}
 
 			if len(relayUrls) > 0 {
-				fn := sys.Pool.SubManyEose
-				if c.Bool("paginate") {
-					fn = paginateWithParams(c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
-				} else if c.Bool("stream") {
-					fn = sys.Pool.SubMany
-				}
+				if c.Bool("ids-only") {
+					seen := make(map[string]struct{}, max(500, filter.Limit))
+					for _, url := range relayUrls {
+						ch, err := nip77.FetchIDsOnly(ctx, url, filter)
+						if err != nil {
+							log("negentropy call to %s failed: %s", url, err)
+							continue
+						}
+						for id := range ch {
+							if _, ok := seen[id]; ok {
+								continue
+							}
+							seen[id] = struct{}{}
+							stdout(id)
+						}
+					}
+				} else {
+					fn := sys.Pool.SubManyEose
+					if c.Bool("paginate") {
+						fn = paginateWithParams(c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
+					} else if c.Bool("stream") {
+						fn = sys.Pool.SubMany
+					}
 
-				for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {
-					stdout(ie.Event)
+					for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {
+						stdout(ie.Event)
+					}
 				}
 			} else {
 				// no relays given, will just print the filter
