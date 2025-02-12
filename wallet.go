@@ -316,8 +316,8 @@ var wallet = &cli.Command{
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args().Slice()
-				if len(args) >= 2 {
-					return fmt.Errorf("must be called as `nak wallet send <amount> <target>...")
+				if len(args) < 2 {
+					return fmt.Errorf("must be called as `nak wallet nutzap <amount> <target>...")
 				}
 
 				w, closew, err := prepareWallet(ctx, c)
