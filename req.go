@@ -143,14 +143,14 @@ example:
 						}
 					}
 				} else {
-					fn := sys.Pool.SubManyEose
+					fn := sys.Pool.FetchMany
 					if c.Bool("paginate") {
-						fn = paginateWithParams(c.Duration("paginate-interval"), c.Uint("paginate-global-limit"))
+						fn = sys.Pool.PaginatorWithInterval(c.Duration("paginate-interval"))
 					} else if c.Bool("stream") {
-						fn = sys.Pool.SubMany
+						fn = sys.Pool.SubscribeMany
 					}
 
-					for ie := range fn(ctx, relayUrls, nostr.Filters{filter}) {
+					for ie := range fn(ctx, relayUrls, filter) {
 						stdout(ie.Event)
 					}
 				}

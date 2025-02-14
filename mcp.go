@@ -221,7 +221,7 @@ var mcpServer = &cli.Command{
 				filter.Authors = []string{pubkey}
 			}
 
-			events := sys.Pool.SubManyEose(ctx, []string{relay}, nostr.Filters{filter})
+			events := sys.Pool.FetchMany(ctx, []string{relay}, filter)
 
 			result := strings.Builder{}
 			for ie := range events {

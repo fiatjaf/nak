@@ -113,7 +113,7 @@ var fetch = &cli.Command{
 				continue
 			}
 
-			for ie := range sys.Pool.SubManyEose(ctx, relays, nostr.Filters{filter}) {
+			for ie := range sys.Pool.FetchMany(ctx, relays, filter) {
 				stdout(ie.Event)
 			}
 		}

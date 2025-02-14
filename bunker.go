@@ -141,13 +141,11 @@ var bunker = &cli.Command{
 
 		// subscribe to relays
 		now := nostr.Now()
-		events := sys.Pool.SubMany(ctx, relayURLs, nostr.Filters{
-			{
-				Kinds:     []int{nostr.KindNostrConnect},
-				Tags:      nostr.TagMap{"p": []string{pubkey}},
-				Since:     &now,
-				LimitZero: true,
-			},
+		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
+			Kinds:     []int{nostr.KindNostrConnect},
+			Tags:      nostr.TagMap{"p": []string{pubkey}},
+			Since:     &now,
+			LimitZero: true,
 		})
 
 		signer := nip46.NewStaticKeySigner(sec)
@@ -226,5 +224,24 @@ var bunker = &cli.Command{
 		}
 
 		return nil
+	},
+	Commands: []*cli.Command{
+		{
+			Name:      "connect",
+			Usage:     "use the client-initiated NostrConnect flow of NIP46",
+			ArgsUsage: "<nostrconnect-uri>",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				if c.Args().Len() != 1 {
+					return fmt.Errorf("must be called with a nostrconnect://... uri")
+				}
+
+				uri, err := url.Parse(c.Args().First())
+				if err != nil || uri.Scheme != "nostrconnect" || !nostr.IsValidPublicKey(uri.Host) {
+					return fmt.Errorf("invalid uri")
+				}
+
+				return nil
+			},
+		},
 	},
 }
