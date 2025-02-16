@@ -66,8 +66,6 @@ github.com/fasthttp/websocket v1.5.7 h1:0a6o2OfeATvtGgoMKleURhLT6JqWPg7fYfWnH4KH
 github.com/fasthttp/websocket v1.5.7/go.mod h1:bC4fxSono9czeXHQUVKxsC0sNjbm7lPJR04GDFqClfU=
 github.com/fatih/color v1.16.0 h1:zmkK9Ngbjj+K0yRhTVONQh1p/HknKYSlNT+vZCzyokM=
 github.com/fatih/color v1.16.0/go.mod h1:fL2Sau1YI5c0pdGEVCbKQbLXB6edEj1ZgiY4NijnWvE=
-github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae h1:0B/1dU3YECIbPoBIRTQ4c0scZCNz9TVHtQpiODGrTTo=
-github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae/go.mod h1:aAWPO4bixZZxPtOnH6K3q4GbQ0jftUNDW9Oa861IRew=
 github.com/fiatjaf/eventstore v0.15.0 h1:5UXe0+vIb30/cYcOWipks8nR3g+X8W224TFy5yPzivk=
 github.com/fiatjaf/eventstore v0.15.0/go.mod h1:KAsld5BhkmSck48aF11Txu8X+OGNmoabw4TlYVWqInc=
 github.com/fiatjaf/khatru v0.15.0 h1:0aLWiTrdzoKD4WmW35GWL/Jsn4dACCUw325JKZg/AmI=
@@ -164,6 +162,8 @@ github.com/tidwall/match v1.1.1/go.mod h1:eRSPERbgtNPcGhD8UCthc6PmLEQXEWd3PRB5JT
 github.com/tidwall/pretty v1.2.0/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
 github.com/tidwall/pretty v1.2.1 h1:qjsOFOWWQl+N3RsoF5/ssm1pHmJJwhjlSbZ51I6wMl4=
 github.com/tidwall/pretty v1.2.1/go.mod h1:ITEVvHYasfjBbM0u2Pg8T2nJnzm8xPwvNhhsoaGGjNU=
+github.com/urfave/cli/v3 v3.0.0-beta1 h1:6DTaaUarcM0wX7qj5Hcvs+5Dm3dyUTBbEwIWAjcw9Zg=
+github.com/urfave/cli/v3 v3.0.0-beta1/go.mod h1:FnIeEMYu+ko8zP1F9Ypr3xkZMIDqW3DR92yUtY39q1Y=
 github.com/valyala/bytebufferpool v1.0.0 h1:GqA5TC/0021Y/b9FG4Oi9Mr3q7XYx6KllzawFIhcdPw=
 github.com/valyala/bytebufferpool v1.0.0/go.mod h1:6bBcMArwyJ5K/AmCkWv1jt77kVWyCJ6HpOuEn7z0Csc=
 github.com/valyala/fasthttp v1.51.0 h1:8b30A5JlZ6C7AS81RsWjYMQmrZG6feChmgAolCl1SqA=

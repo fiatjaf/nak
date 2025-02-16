@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/urfave/cli/v3"
 )
 
 var encode = &cli.Command{
@@ -19,11 +19,11 @@ var encode = &cli.Command{
 		nak encode nevent <event-id>
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
 		nak encode nsec <privkey-hex>`,
-	Before: func(ctx context.Context, c *cli.Command) error {
+	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		if c.Args().Len() < 1 {
-			return fmt.Errorf("expected more than 1 argument.")
+			return ctx, fmt.Errorf("expected more than 1 argument.")
 		}
-		return nil
+		return ctx, nil
 	},
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{

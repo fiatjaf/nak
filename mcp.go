@@ -6,7 +6,7 @@ import (
 	"os"
 	"strings"
 
-	"github.com/fiatjaf/cli/v3"
+	"github.com/urfave/cli/v3"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nbd-wtf/go-nostr"

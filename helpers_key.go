@@ -9,7 +9,7 @@ import (
 
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/cli/v3"
+	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/keyer"
 	"github.com/nbd-wtf/go-nostr/nip19"

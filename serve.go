@@ -10,7 +10,7 @@ import (
 
 	"github.com/bep/debounce"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/cli/v3"
+	"github.com/urfave/cli/v3"
 	"github.com/fiatjaf/eventstore/slicestore"
 	"github.com/fiatjaf/khatru"
 	"github.com/nbd-wtf/go-nostr"

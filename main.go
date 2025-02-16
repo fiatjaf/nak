@@ -7,10 +7,10 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/fiatjaf/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/nbd-wtf/go-nostr/sdk/hints/memoryh"
+	"github.com/urfave/cli/v3"
 )
 
 var version string = "debug"
@@ -19,7 +19,6 @@ var app = &cli.Command{
 	Name:                      "nak",
 	Suggest:                   true,
 	UseShortOptionHandling:    true,
-	AllowFlagsAfterArguments:  true,
 	Usage:                     "the nostr army knife command-line tool",
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
@@ -44,15 +43,13 @@ var app = &cli.Command{
 	Version: version,
 	Flags: []cli.Flag{
 		&cli.StringFlag{
-			Name:       "config-path",
-			Hidden:     true,
-			Persistent: true,
+			Name:   "config-path",
+			Hidden: true,
 		},
 		&cli.BoolFlag{
-			Name:       "quiet",
-			Usage:      "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
-			Aliases:    []string{"q"},
-			Persistent: true,
+			Name:    "quiet",
+			Usage:   "do not print logs and info messages to stderr, use -qq to also not print anything to stdout",
+			Aliases: []string{"q"},
 			Action: func(ctx context.Context, c *cli.Command, b bool) error {
 				q := c.Count("quiet")
 				if q >= 1 {
@@ -65,10 +62,9 @@ var app = &cli.Command{
 			},
 		},
 		&cli.BoolFlag{
-			Name:       "verbose",
-			Usage:      "print more stuff than normally",
-			Aliases:    []string{"v"},
-			Persistent: true,
+			Name:    "verbose",
+			Usage:   "print more stuff than normally",
+			Aliases: []string{"v"},
 			Action: func(ctx context.Context, c *cli.Command, b bool) error {
 				v := c.Count("verbose")
 				if v >= 1 {
@@ -78,7 +74,7 @@ var app = &cli.Command{
 			},
 		},
 	},
-	Before: func(ctx context.Context, c *cli.Command) error {
+	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		configPath := c.String("config-path")
 		if configPath == "" {
 			if home, err := os.UserHomeDir(); err == nil {
@@ -117,7 +113,7 @@ var app = &cli.Command{
 			),
 		)
 
-		return nil
+		return ctx, nil
 	},
 	After: func(ctx context.Context, c *cli.Command) error {
 		// save hints database on exit

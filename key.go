@@ -9,7 +9,7 @@ import (
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr/musig2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
-	"github.com/fiatjaf/cli/v3"
+	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip49"

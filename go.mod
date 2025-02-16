@@ -10,7 +10,6 @@ require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fatih/color v1.16.0
-	github.com/fiatjaf/cli/v3 v3.0.0-20240723181502-e7dd498b16ae
 	github.com/fiatjaf/eventstore v0.15.0
 	github.com/fiatjaf/khatru v0.15.0
 	github.com/json-iterator/go v1.1.12
@@ -18,6 +17,7 @@ require (
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/nbd-wtf/go-nostr v0.50.0
+	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250106191152-7588d65b2ba8
 )
 

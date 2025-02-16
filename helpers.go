@@ -15,7 +15,7 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/fiatjaf/cli/v3"
+	"github.com/urfave/cli/v3"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
