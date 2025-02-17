@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/urfave/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip77"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -80,7 +80,16 @@ example:
 				relayUrls,
 				c.Bool("force-pre-auth"),
 				nostr.WithAuthHandler(
-					func(ctx context.Context, authEvent nostr.RelayEvent) error {
+					func(ctx context.Context, authEvent nostr.RelayEvent) (err error) {
+						defer func() {
+							if err != nil {
+								log("auth to %s failed: %s\n",
+									(*authEvent.Tags.GetFirst([]string{"relay", ""}))[1],
+									err,
+								)
+							}
+						}()
+
 						if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 							return fmt.Errorf("auth not authorized")
 						}
