@@ -7,10 +7,11 @@ import (
 	"strings"
 
 	"github.com/fatih/color"
-	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip60"
 	"github.com/nbd-wtf/go-nostr/nip61"
+	"github.com/nbd-wtf/go-nostr/sdk"
+	"github.com/urfave/cli/v3"
 )
 
 func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), error) {
@@ -332,7 +333,9 @@ var wallet = &cli.Command{
 				var eventId string
 
 				if strings.HasPrefix(target, "nevent1") {
-					evt, _, err = sys.FetchSpecificEventFromInput(ctx, target, false)
+					evt, _, err = sys.FetchSpecificEventFromInput(ctx, target, sdk.FetchSpecificEventParameters{
+						WithRelays: false,
+					})
 					if err != nil {
 						return err
 					}

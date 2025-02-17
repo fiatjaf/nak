@@ -6,11 +6,12 @@ import (
 	"os"
 	"strings"
 
-	"github.com/urfave/cli/v3"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/nbd-wtf/go-nostr/sdk"
+	"github.com/urfave/cli/v3"
 )
 
 var mcpServer = &cli.Command{
@@ -139,7 +140,9 @@ var mcpServer = &cli.Command{
 						pm.ShortName(), pm.PubKey),
 				), nil
 			case "nevent":
-				event, _, err := sys.FetchSpecificEventFromInput(ctx, uri, false)
+				event, _, err := sys.FetchSpecificEventFromInput(ctx, uri, sdk.FetchSpecificEventParameters{
+					WithRelays: false,
+				})
 				if err != nil {
 					return mcp.NewToolResultError("Couldn't find this event anywhere"), nil
 				}
