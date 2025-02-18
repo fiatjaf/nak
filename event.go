@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/urfave/cli/v3"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip13"
 	"github.com/nbd-wtf/go-nostr/nip19"
+	"github.com/urfave/cli/v3"
 )
 
 const (
@@ -94,7 +94,7 @@ example:
 		&cli.StringFlag{
 			Name:        "content",
 			Aliases:     []string{"c"},
-			Usage:       "event content",
+			Usage:       "event content (if it starts with an '@' will read from a file)",
 			DefaultText: "hello from the nostr army knife",
 			Value:       "",
 			Category:    CATEGORY_EVENT_FIELDS,
@@ -179,7 +179,16 @@ example:
 			}
 
 			if c.IsSet("content") {
-				evt.Content = c.String("content")
+				content := c.String("content")
+				if strings.HasPrefix(content, "@") {
+					filedata, err := os.ReadFile(content[1:])
+					if err != nil {
+						return fmt.Errorf("failed to read file '%s' for content: %w", content[1:], err)
+					}
+					evt.Content = string(filedata)
+				} else {
+					evt.Content = content
+				}
 				mustRehashAndResign = true
 			} else if evt.Content == "" && evt.Kind == 1 {
 				evt.Content = "hello from the nostr army knife"
