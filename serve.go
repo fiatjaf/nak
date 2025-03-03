@@ -10,10 +10,10 @@ import (
 
 	"github.com/bep/debounce"
 	"github.com/fatih/color"
-	"github.com/urfave/cli/v3"
 	"github.com/fiatjaf/eventstore/slicestore"
 	"github.com/fiatjaf/khatru"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/urfave/cli/v3"
 )
 
 var serve = &cli.Command{
@@ -65,6 +65,12 @@ var serve = &cli.Command{
 		}
 
 		rl := khatru.NewRelay()
+
+		rl.Info.Name = "nak serve"
+		rl.Info.Description = "a local relay for testing, debugging and development."
+		rl.Info.Software = "https://github.com/fiatjaf/nak"
+		rl.Info.Version = version
+
 		rl.QueryEvents = append(rl.QueryEvents, db.QueryEvents)
 		rl.CountEvents = append(rl.CountEvents, db.CountEvents)
 		rl.DeleteEvent = append(rl.DeleteEvent, db.DeleteEvent)
