@@ -14,10 +14,8 @@ import (
 )
 
 var dvm = &cli.Command{
-	Name:  "dvm",
-	Usage: "deal with nip90 data-vending-machine things (experimental)",
-	Description: `example usage:
-	nak dvm 5001 --input "What is the capital of France?" --input-type text --output "text/plain" --bid 1000 wss://relay.example.com`,
+	Name:                      "dvm",
+	Usage:                     "deal with nip90 data-vending-machine things (experimental)",
 	DisableSliceFlagSeparator: true,
 	Flags: append(defaultKeyFlags,
 		&cli.StringSliceFlag{
@@ -27,8 +25,9 @@ var dvm = &cli.Command{
 	),
 	Commands: append([]*cli.Command{
 		{
-			Name:  "list",
-			Usage: "find DVMs that have announced themselves for a specific kind",
+			Name:                      "list",
+			Usage:                     "find DVMs that have announced themselves for a specific kind",
+			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				return fmt.Errorf("we don't know how to do this yet")
 			},
@@ -41,6 +40,7 @@ var dvm = &cli.Command{
 			if job.InputType != "" {
 				flags = append(flags, &cli.StringSliceFlag{
 					Name:     "input",
+					Aliases:  []string{"i"},
 					Category: "INPUT",
 				})
 			}
@@ -53,10 +53,11 @@ var dvm = &cli.Command{
 			}
 
 			commands[i] = &cli.Command{
-				Name:        strconv.Itoa(job.InputKind),
-				Usage:       job.Name,
-				Description: job.Description,
-				Flags:       flags,
+				Name:                      strconv.Itoa(job.InputKind),
+				Usage:                     job.Name,
+				Description:               job.Description,
+				DisableSliceFlagSeparator: true,
+				Flags:                     flags,
 				Action: func(ctx context.Context, c *cli.Command) error {
 					relayUrls := c.StringSlice("relay")
 					relays := connectToAllRelays(ctx, relayUrls, false)
@@ -97,6 +98,8 @@ var dvm = &cli.Command{
 						return err
 					}
 
+					logverbose("%s", evt)
+
 					log("- publishing job request... ")
 					first := true
 					for res := range sys.Pool.PublishMany(ctx, relayUrls, evt) {
@@ -117,7 +120,7 @@ var dvm = &cli.Command{
 						}
 					}
 
-					log("\n- waiting for response...")
+					log("\n- waiting for response...\n")
 					for ie := range sys.Pool.SubscribeMany(ctx, relayUrls, nostr.Filter{
 						Kinds: []int{7000, job.OutputKind},
 						Tags:  nostr.TagMap{"e": []string{evt.ID}},

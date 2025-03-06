@@ -8,18 +8,19 @@ import (
 	"os/exec"
 	"strings"
 
-	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/slices"
 )
 
 var curlFlags []string
 
 var curl = &cli.Command{
-	Name:        "curl",
-	Usage:       "calls curl but with a nip98 header",
-	Description: "accepts all flags and arguments exactly as they would be passed to curl.",
-	Flags:       defaultKeyFlags,
+	Name:                      "curl",
+	Usage:                     "calls curl but with a nip98 header",
+	Description:               "accepts all flags and arguments exactly as they would be passed to curl.",
+	Flags:                     defaultKeyFlags,
+	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {

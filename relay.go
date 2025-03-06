@@ -85,6 +85,8 @@ var relay = &cli.Command{
 				Usage: fmt.Sprintf(`the "%s" relay management RPC call`, def.method),
 				Description: fmt.Sprintf(
 					`the "%s" management RPC call, see https://nips.nostr.com/86 for more information`, def.method),
+				Flags:                     flags,
+				DisableSliceFlagSeparator: true,
 				Action: func(ctx context.Context, c *cli.Command) error {
 					params := make([]any, len(def.args))
 					for i, argName := range def.args {
@@ -174,7 +176,6 @@ var relay = &cli.Command{
 
 					return nil
 				},
-				Flags: flags,
 			}
 
 			commands = append(commands, cmd)
