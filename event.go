@@ -140,7 +140,6 @@ example:
 				os.Exit(3)
 			}
 		}
-
 		defer func() {
 			for _, relay := range relays {
 				relay.Close()

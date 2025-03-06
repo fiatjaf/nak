@@ -40,6 +40,7 @@ var app = &cli.Command{
 		wallet,
 		mcpServer,
 		curl,
+		dvm,
 	},
 	Version: version,
 	Flags: []cli.Flag{

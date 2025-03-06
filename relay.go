@@ -10,10 +10,10 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip11"
 	"github.com/nbd-wtf/go-nostr/nip86"
+	"github.com/urfave/cli/v3"
 )
 
 var relay = &cli.Command{
@@ -45,9 +45,7 @@ var relay = &cli.Command{
 		return nil
 	},
 	Commands: (func() []*cli.Command {
-		commands := make([]*cli.Command, 0, 12)
-
-		for _, def := range []struct {
+		methods := []struct {
 			method string
 			args   []string
 		}{
@@ -69,7 +67,10 @@ var relay = &cli.Command{
 			{"blockip", []string{"ip", "reason"}},
 			{"unblockip", []string{"ip", "reason"}},
 			{"listblockedips", nil},
-		} {
+		}
+
+		commands := make([]*cli.Command, 0, len(methods))
+		for _, def := range methods {
 			def := def
 
 			flags := make([]cli.Flag, len(def.args), len(def.args)+4)
