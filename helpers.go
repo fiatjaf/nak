@@ -11,7 +11,6 @@ import (
 	"net/url"
 	"os"
 	"slices"
-	"strconv"
 	"strings"
 	"time"
 
@@ -233,11 +232,6 @@ func randString(n int) string {
 
 func leftPadKey(k string) string {
 	return strings.Repeat("0", 64-len(k)) + k
-}
-
-func hexToUint64(hexStr string) uint64 {
-	v, _ := strconv.ParseUint(hexStr[0:16], 16, 64)
-	return v
 }
 
 var colors = struct {
