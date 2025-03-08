@@ -13,7 +13,10 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var version string = "debug"
+var (
+	version   string = "debug"
+	isVerbose bool   = false
+)
 
 var app = &cli.Command{
 	Name:                      "nak",
@@ -41,6 +44,7 @@ var app = &cli.Command{
 		mcpServer,
 		curl,
 		dvm,
+		fsCmd,
 	},
 	Version: version,
 	Flags: []cli.Flag{
@@ -71,6 +75,7 @@ var app = &cli.Command{
 				v := c.Count("verbose")
 				if v >= 1 {
 					logverbose = log
+					isVerbose = true
 				}
 				return nil
 			},

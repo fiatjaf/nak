@@ -11,14 +11,15 @@ import (
 	"net/url"
 	"os"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/urfave/cli/v3"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
+	"github.com/urfave/cli/v3"
 )
 
 var sys *sdk.System
@@ -232,6 +233,11 @@ func randString(n int) string {
 
 func leftPadKey(k string) string {
 	return strings.Repeat("0", 64-len(k)) + k
+}
+
+func hexToUint64(hexStr string) uint64 {
+	v, _ := strconv.ParseUint(hexStr[0:16], 16, 64)
+	return v
 }
 
 var colors = struct {
