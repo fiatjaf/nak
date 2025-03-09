@@ -18,8 +18,8 @@ type NpubDir struct {
 	fetched atomic.Bool
 }
 
-func CreateNpubDir(ctx context.Context, parent fs.InodeEmbedder, pointer nostr.ProfilePointer) *fs.Inode {
-	npubdir := &NpubDir{pointer: pointer}
+func CreateNpubDir(ctx context.Context, sys *sdk.System, parent fs.InodeEmbedder, pointer nostr.ProfilePointer) *fs.Inode {
+	npubdir := &NpubDir{ctx: ctx, sys: sys, pointer: pointer}
 	return parent.EmbeddedInode().NewPersistentInode(
 		ctx,
 		npubdir,

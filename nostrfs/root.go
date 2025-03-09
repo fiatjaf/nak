@@ -39,17 +39,32 @@ func (r *NostrRoot) OnAdd(context.Context) {
 		return
 	}
 
+	// add our contacts
 	fl := r.sys.FetchFollowList(r.ctx, r.rootPubKey)
-
 	for _, f := range fl.Items {
-		h := r.NewPersistentInode(
-			r.ctx,
-			&NpubDir{sys: r.sys, pointer: nostr.ProfilePointer{PublicKey: f.Pubkey, Relays: []string{f.Relay}}},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		)
+		pointer := nostr.ProfilePointer{PublicKey: f.Pubkey, Relays: []string{f.Relay}}
 		npub, _ := nip19.EncodePublicKey(f.Pubkey)
-		r.AddChild(npub, h, true)
+		r.AddChild(
+			npub,
+			CreateNpubDir(r.ctx, r.sys, r, pointer),
+			true,
+		)
 	}
+
+	// add ourselves
+	npub, _ := nip19.EncodePublicKey(r.rootPubKey)
+	if r.GetChild(npub) == nil {
+		pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
+		r.AddChild(
+			npub,
+			CreateNpubDir(r.ctx, r.sys, r, pointer),
+			true,
+		)
+	}
+
+	// add a link to ourselves
+	me := r.NewPersistentInode(r.ctx, &fs.MemSymlink{Data: []byte(npub)}, fs.StableAttr{Mode: syscall.S_IFLNK})
+	r.AddChild("@me", me, true)
 }
 
 func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
@@ -66,7 +81,7 @@ func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 	switch p := pointer.(type) {
 	case nostr.ProfilePointer:
-		npubdir := CreateNpubDir(ctx, r, p)
+		npubdir := CreateNpubDir(ctx, r.sys, r, p)
 		return npubdir, fs.OK
 	case nostr.EventPointer:
 		eventdir, err := FetchAndCreateEventDir(ctx, r, r.sys, p)
