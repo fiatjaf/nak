@@ -23,7 +23,7 @@ func CreateNpubDir(ctx context.Context, sys *sdk.System, parent fs.InodeEmbedder
 	return parent.EmbeddedInode().NewPersistentInode(
 		ctx,
 		npubdir,
-		fs.StableAttr{Mode: syscall.S_IFDIR},
+		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(pointer.PublicKey)},
 	)
 }
 

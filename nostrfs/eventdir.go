@@ -42,7 +42,7 @@ func CreateEventDir(
 	h := parent.EmbeddedInode().NewPersistentInode(
 		ctx,
 		&EventDir{ctx: ctx, evt: event},
-		fs.StableAttr{Mode: syscall.S_IFDIR},
+		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(event.ID)},
 	)
 
 	eventj, _ := easyjson.Marshal(event)
