@@ -13,12 +13,14 @@ import (
 
 type ViewDir struct {
 	fs.Inode
-	ctx     context.Context
-	sys     *sdk.System
-	wd      string
-	fetched atomic.Bool
-	filter  nostr.Filter
-	relays  []string
+	ctx      context.Context
+	sys      *sdk.System
+	wd       string
+	fetched  atomic.Bool
+	filter   nostr.Filter
+	paginate bool
+	relays   []string
+	create   func(context.Context, *ViewDir, *nostr.Event) (string, *fs.Inode)
 }
 
 var (
@@ -33,6 +35,7 @@ func (n *ViewDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOu
 	}
 	aMonthAgo := now - 30*24*60*60
 	out.Mtime = uint64(aMonthAgo)
+
 	return fs.OK
 }
 
@@ -41,32 +44,39 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 		return fs.OK
 	}
 
-	now := nostr.Now()
-	if n.filter.Until != nil {
-		now = *n.filter.Until
+	if n.paginate {
+		now := nostr.Now()
+		if n.filter.Until != nil {
+			now = *n.filter.Until
+		}
+		aMonthAgo := now - 30*24*60*60
+		n.filter.Since = &aMonthAgo
+
+		for ie := range n.sys.Pool.FetchMany(ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(ctx, n, ie.Event)
+			n.AddChild(basename, inode, true)
+		}
+
+		filter := n.filter
+		filter.Until = &aMonthAgo
+
+		n.AddChild("@previous", n.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx:    n.ctx,
+				sys:    n.sys,
+				filter: filter,
+				wd:     n.wd,
+				relays: n.relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		), true)
+	} else {
+		for ie := range n.sys.Pool.FetchMany(ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(ctx, n, ie.Event)
+			n.AddChild(basename, inode, true)
+		}
 	}
-	aMonthAgo := now - 30*24*60*60
-	n.filter.Since = &aMonthAgo
-
-	for ie := range n.sys.Pool.FetchMany(ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-		e := CreateEventDir(ctx, n, n.wd, ie.Event)
-		n.AddChild(ie.Event.ID, e, true)
-	}
-
-	filter := n.filter
-	filter.Until = &aMonthAgo
-
-	n.AddChild("@previous", n.NewPersistentInode(
-		ctx,
-		&ViewDir{
-			ctx:    n.ctx,
-			sys:    n.sys,
-			filter: filter,
-			wd:     n.wd,
-			relays: n.relays,
-		},
-		fs.StableAttr{Mode: syscall.S_IFDIR},
-	), true)
 
 	return fs.OK
 }

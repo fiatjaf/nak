@@ -8,40 +8,47 @@ import (
 	"io"
 	"net/http"
 	"path/filepath"
+	"strconv"
 	"syscall"
 	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip10"
 	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip22"
 	"github.com/nbd-wtf/go-nostr/nip27"
 	"github.com/nbd-wtf/go-nostr/nip92"
 	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
 
-type EventDir struct {
+type EntityDir struct {
 	fs.Inode
 	ctx context.Context
 	wd  string
 	evt *nostr.Event
 }
 
-var _ = (fs.NodeGetattrer)((*EventDir)(nil))
+var _ = (fs.NodeGetattrer)((*EntityDir)(nil))
 
-func (e *EventDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	out.Mtime = uint64(e.evt.CreatedAt)
+func (e *EntityDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+	publishedAt := uint64(e.evt.CreatedAt)
+	out.Ctime = publishedAt
+
+	if tag := e.evt.Tags.Find("published_at"); tag != nil {
+		publishedAt, _ = strconv.ParseUint(tag[1], 10, 64)
+	}
+	out.Mtime = publishedAt
+
 	return fs.OK
 }
 
-func FetchAndCreateEventDir(
+func FetchAndCreateEntityDir(
 	ctx context.Context,
 	parent fs.InodeEmbedder,
 	wd string,
+	extension string,
 	sys *sdk.System,
-	pointer nostr.EventPointer,
+	pointer nostr.EntityPointer,
 ) (*fs.Inode, error) {
 	event, _, err := sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{
 		WithRelays: false,
@@ -50,20 +57,26 @@ func FetchAndCreateEventDir(
 		return nil, fmt.Errorf("failed to fetch: %w", err)
 	}
 
-	return CreateEventDir(ctx, parent, wd, event), nil
+	return CreateEntityDir(ctx, parent, wd, extension, event), nil
 }
 
-func CreateEventDir(
+func CreateEntityDir(
 	ctx context.Context,
 	parent fs.InodeEmbedder,
 	wd string,
+	extension string,
 	event *nostr.Event,
 ) *fs.Inode {
 	h := parent.EmbeddedInode().NewPersistentInode(
 		ctx,
-		&EventDir{ctx: ctx, wd: wd, evt: event},
+		&EntityDir{ctx: ctx, wd: wd, evt: event},
 		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(event.ID)},
 	)
+
+	var publishedAt uint64
+	if tag := event.Tags.Find("published_at"); tag != nil {
+		publishedAt, _ = strconv.ParseUint(tag[1], 10, 64)
+	}
 
 	npub, _ := nip19.EncodePublicKey(event.PubKey)
 	h.AddChild("@author", h.NewPersistentInode(
@@ -82,35 +95,51 @@ func CreateEventDir(
 			Attr: fuse.Attr{
 				Mode:  0444,
 				Ctime: uint64(event.CreatedAt),
-				Mtime: uint64(event.CreatedAt),
+				Mtime: uint64(publishedAt),
 				Size:  uint64(len(event.Content)),
 			},
 		},
 		fs.StableAttr{},
 	), true)
 
-	h.AddChild("id", h.NewPersistentInode(
+	h.AddChild("identifier", h.NewPersistentInode(
 		ctx,
 		&fs.MemRegularFile{
-			Data: []byte(event.ID),
+			Data: []byte(event.Tags.GetD()),
 			Attr: fuse.Attr{
 				Mode:  0444,
 				Ctime: uint64(event.CreatedAt),
-				Mtime: uint64(event.CreatedAt),
-				Size:  uint64(64),
+				Mtime: uint64(publishedAt),
+				Size:  uint64(len(event.Tags.GetD())),
 			},
 		},
 		fs.StableAttr{},
 	), true)
 
-	h.AddChild("content.txt", h.NewPersistentInode(
+	if tag := event.Tags.Find("title"); tag != nil {
+		h.AddChild("title", h.NewPersistentInode(
+			ctx,
+			&fs.MemRegularFile{
+				Data: []byte(tag[1]),
+				Attr: fuse.Attr{
+					Mode:  0444,
+					Ctime: uint64(event.CreatedAt),
+					Mtime: uint64(publishedAt),
+					Size:  uint64(len(tag[1])),
+				},
+			},
+			fs.StableAttr{},
+		), true)
+	}
+
+	h.AddChild("content"+extension, h.NewPersistentInode(
 		ctx,
 		&fs.MemRegularFile{
 			Data: []byte(event.Content),
 			Attr: fuse.Attr{
 				Mode:  0444,
 				Ctime: uint64(event.CreatedAt),
-				Mtime: uint64(event.CreatedAt),
+				Mtime: uint64(publishedAt),
 				Size:  uint64(len(event.Content)),
 			},
 		},
@@ -135,24 +164,20 @@ func CreateEventDir(
 	}
 
 	var imagesdir *fs.Inode
-	images := nip92.ParseTags(event.Tags)
-	for _, imeta := range images {
-		if imeta.URL == "" {
-			continue
-		}
+	addImage := func(url string) {
 		if imagesdir == nil {
 			in := &fs.Inode{}
 			imagesdir = h.NewPersistentInode(ctx, in, fs.StableAttr{Mode: syscall.S_IFDIR})
 			h.AddChild("images", imagesdir, true)
 		}
-		imagesdir.AddChild(filepath.Base(imeta.URL), imagesdir.NewPersistentInode(
+		imagesdir.AddChild(filepath.Base(url), imagesdir.NewPersistentInode(
 			ctx,
 			&AsyncFile{
 				ctx: ctx,
 				load: func() ([]byte, nostr.Timestamp) {
 					ctx, cancel := context.WithTimeout(ctx, time.Second*20)
 					defer cancel()
-					r, err := http.NewRequestWithContext(ctx, "GET", imeta.URL, nil)
+					r, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 					if err != nil {
 						return nil, 0
 					}
@@ -173,68 +198,16 @@ func CreateEventDir(
 		), true)
 	}
 
-	if event.Kind == 1 {
-		if pointer := nip10.GetThreadRoot(event.Tags); pointer != nil {
-			nevent := nip19.EncodePointer(*pointer)
-			h.AddChild("@root", h.NewPersistentInode(
-				ctx,
-				&fs.MemSymlink{
-					Data: []byte(wd + "/" + nevent),
-				},
-				fs.StableAttr{Mode: syscall.S_IFLNK},
-			), true)
+	images := nip92.ParseTags(event.Tags)
+	for _, imeta := range images {
+		if imeta.URL == "" {
+			continue
 		}
-		if pointer := nip10.GetImmediateParent(event.Tags); pointer != nil {
-			nevent := nip19.EncodePointer(*pointer)
-			h.AddChild("@parent", h.NewPersistentInode(
-				ctx,
-				&fs.MemSymlink{
-					Data: []byte(wd + "/" + nevent),
-				},
-				fs.StableAttr{Mode: syscall.S_IFLNK},
-			), true)
-		}
-	} else if event.Kind == 1111 {
-		if pointer := nip22.GetThreadRoot(event.Tags); pointer != nil {
-			if xp, ok := pointer.(nostr.ExternalPointer); ok {
-				h.AddChild("@root", h.NewPersistentInode(
-					ctx,
-					&fs.MemRegularFile{
-						Data: []byte(`<!doctype html><meta http-equiv="refresh" content="0; url=` + xp.Thing + `" />`),
-					},
-					fs.StableAttr{},
-				), true)
-			} else {
-				nevent := nip19.EncodePointer(pointer)
-				h.AddChild("@parent", h.NewPersistentInode(
-					ctx,
-					&fs.MemSymlink{
-						Data: []byte(wd + "/" + nevent),
-					},
-					fs.StableAttr{Mode: syscall.S_IFLNK},
-				), true)
-			}
-		}
-		if pointer := nip22.GetImmediateParent(event.Tags); pointer != nil {
-			if xp, ok := pointer.(nostr.ExternalPointer); ok {
-				h.AddChild("@parent", h.NewPersistentInode(
-					ctx,
-					&fs.MemRegularFile{
-						Data: []byte(`<!doctype html><meta http-equiv="refresh" content="0; url=` + xp.Thing + `" />`),
-					},
-					fs.StableAttr{},
-				), true)
-			} else {
-				nevent := nip19.EncodePointer(pointer)
-				h.AddChild("@parent", h.NewPersistentInode(
-					ctx,
-					&fs.MemSymlink{
-						Data: []byte(wd + "/" + nevent),
-					},
-					fs.StableAttr{Mode: syscall.S_IFLNK},
-				), true)
-			}
-		}
+		addImage(imeta.URL)
+	}
+
+	if tag := event.Tags.Find("image"); tag != nil {
+		addImage(tag[1])
 	}
 
 	return h

@@ -2,10 +2,10 @@ package nostrfs
 
 import (
 	"context"
-	"encoding/json"
 	"sync/atomic"
 	"syscall"
 
+	"github.com/bytedance/sonic"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/nbd-wtf/go-nostr"
@@ -43,6 +43,27 @@ func CreateNpubDir(
 	), true)
 
 	h.AddChild(
+		"metadata.json",
+		h.NewPersistentInode(
+			ctx,
+			&AsyncFile{
+				ctx: ctx,
+				load: func() ([]byte, nostr.Timestamp) {
+					pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
+					jsonb, _ := sonic.ConfigFastest.MarshalIndent(pm, "", "  ")
+					var ts nostr.Timestamp
+					if pm.Event != nil {
+						ts = pm.Event.CreatedAt
+					}
+					return jsonb, ts
+				},
+			},
+			fs.StableAttr{},
+		),
+		true,
+	)
+
+	h.AddChild(
 		"notes",
 		h.NewPersistentInode(
 			ctx,
@@ -54,7 +75,11 @@ func CreateNpubDir(
 					Kinds:   []int{1},
 					Authors: []string{pointer.PublicKey},
 				},
-				relays: relays,
+				paginate: true,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -73,7 +98,11 @@ func CreateNpubDir(
 					Kinds:   []int{1111},
 					Authors: []string{pointer.PublicKey},
 				},
-				relays: relays,
+				paginate: true,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -92,7 +121,11 @@ func CreateNpubDir(
 					Kinds:   []int{20},
 					Authors: []string{pointer.PublicKey},
 				},
-				relays: relays,
+				paginate: true,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -111,7 +144,11 @@ func CreateNpubDir(
 					Kinds:   []int{21, 22},
 					Authors: []string{pointer.PublicKey},
 				},
-				relays: relays,
+				paginate: true,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -130,7 +167,11 @@ func CreateNpubDir(
 					Kinds:   []int{9802},
 					Authors: []string{pointer.PublicKey},
 				},
-				relays: relays,
+				paginate: true,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -138,22 +179,47 @@ func CreateNpubDir(
 	)
 
 	h.AddChild(
-		"metadata.json",
+		"articles",
 		h.NewPersistentInode(
 			ctx,
-			&AsyncFile{
+			&ViewDir{
 				ctx: ctx,
-				load: func() ([]byte, nostr.Timestamp) {
-					pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
-					jsonb, _ := json.MarshalIndent(pm.Event, "", "  ")
-					var ts nostr.Timestamp
-					if pm.Event != nil {
-						ts = pm.Event.CreatedAt
-					}
-					return jsonb, ts
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{30023},
+					Authors: []string{pointer.PublicKey},
+				},
+				paginate: false,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.Tags.GetD(), CreateEntityDir(ctx, n, n.wd, ".md", event)
 				},
 			},
-			fs.StableAttr{},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
+
+	h.AddChild(
+		"wiki",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{30818},
+					Authors: []string{pointer.PublicKey},
+				},
+				paginate: false,
+				relays:   relays,
+				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.Tags.GetD(), CreateEntityDir(ctx, n, n.wd, ".adoc", event)
+				},
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
 		true,
 	)
