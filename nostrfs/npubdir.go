@@ -1,13 +1,18 @@
 package nostrfs
 
 import (
+	"bytes"
 	"context"
+	"io"
+	"net/http"
 	"sync/atomic"
 	"syscall"
+	"time"
 
 	"github.com/bytedance/sonic"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
+	"github.com/liamg/magic"
 	"github.com/nbd-wtf/go-nostr"
 	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
@@ -42,26 +47,60 @@ func CreateNpubDir(
 		fs.StableAttr{},
 	), true)
 
-	h.AddChild(
-		"metadata.json",
-		h.NewPersistentInode(
-			ctx,
-			&AsyncFile{
-				ctx: ctx,
-				load: func() ([]byte, nostr.Timestamp) {
-					pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
-					jsonb, _ := sonic.ConfigFastest.MarshalIndent(pm, "", "  ")
-					var ts nostr.Timestamp
-					if pm.Event != nil {
-						ts = pm.Event.CreatedAt
-					}
-					return jsonb, ts
+	go func() {
+		pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
+		if pm.Event == nil {
+			return
+		}
+
+		metadataj, _ := sonic.ConfigFastest.MarshalIndent(pm, "", "  ")
+		h.AddChild(
+			"metadata.json",
+			h.NewPersistentInode(
+				ctx,
+				&fs.MemRegularFile{
+					Data: metadataj,
+					Attr: fuse.Attr{
+						Mtime: uint64(pm.Event.CreatedAt),
+						Mode:  0444,
+					},
 				},
-			},
-			fs.StableAttr{},
-		),
-		true,
-	)
+				fs.StableAttr{},
+			),
+			true,
+		)
+
+		ctx, cancel := context.WithTimeout(ctx, time.Second*20)
+		defer cancel()
+		r, err := http.NewRequestWithContext(ctx, "GET", pm.Picture, nil)
+		if err == nil {
+			resp, err := http.DefaultClient.Do(r)
+			if err == nil {
+				defer resp.Body.Close()
+				if resp.StatusCode < 300 {
+					b := &bytes.Buffer{}
+					io.Copy(b, resp.Body)
+
+					ext := "png"
+					if ft, err := magic.Lookup(b.Bytes()); err == nil {
+						ext = ft.Extension
+					}
+
+					h.AddChild("picture."+ext, h.NewPersistentInode(
+						ctx,
+						&fs.MemRegularFile{
+							Data: b.Bytes(),
+							Attr: fuse.Attr{
+								Mtime: uint64(pm.Event.CreatedAt),
+								Mode:  0444,
+							},
+						},
+						fs.StableAttr{},
+					), true)
+				}
+			}
+		}
+	}()
 
 	h.AddChild(
 		"notes",
@@ -193,7 +232,11 @@ func CreateNpubDir(
 				paginate: false,
 				relays:   relays,
 				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.Tags.GetD(), CreateEntityDir(ctx, n, n.wd, ".md", event)
+					d := event.Tags.GetD()
+					if d == "" {
+						d = "_"
+					}
+					return d, CreateEntityDir(ctx, n, n.wd, ".md", event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -216,7 +259,11 @@ func CreateNpubDir(
 				paginate: false,
 				relays:   relays,
 				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.Tags.GetD(), CreateEntityDir(ctx, n, n.wd, ".adoc", event)
+					d := event.Tags.GetD()
+					if d == "" {
+						d = "_"
+					}
+					return d, CreateEntityDir(ctx, n, n.wd, ".adoc", event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
