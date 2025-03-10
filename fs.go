@@ -41,15 +41,21 @@ var fsCmd = &cli.Command{
 			return fmt.Errorf("must be called with a directory path to serve as the mountpoint as an argument")
 		}
 
-		root := nostrfs.NewNostrRoot(ctx, sys, keyer.NewReadOnlyUser(c.String("pubkey")))
+		root := nostrfs.NewNostrRoot(
+			ctx,
+			sys,
+			keyer.NewReadOnlyUser(c.String("pubkey")),
+			mountpoint,
+		)
 
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
 		timeout := time.Second * 120
 		server, err := fs.Mount(mountpoint, root, &fs.Options{
 			MountOptions: fuse.MountOptions{
-				Debug: isVerbose,
-				Name:  "nak",
+				Debug:  isVerbose,
+				Name:   "nak",
+				FsName: "nak",
 			},
 			AttrTimeout:  &timeout,
 			EntryTimeout: &timeout,

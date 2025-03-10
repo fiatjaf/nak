@@ -17,7 +17,7 @@ require (
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.50.5
+	github.com/nbd-wtf/go-nostr v0.51.0
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
 )
@@ -36,7 +36,6 @@ require (
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
 	github.com/cloudwego/base64x v0.1.5 // indirect
 	github.com/coder/websocket v1.8.12 // indirect
-	github.com/colduction/nocopy v0.2.0 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
 	github.com/dgraph-io/ristretto v1.0.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
@@ -77,5 +76,3 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.21.0 // indirect
 )
-
-replace github.com/nbd-wtf/go-nostr => ../go-nostr

@@ -2,35 +2,41 @@ package nostrfs
 
 import (
 	"context"
+	"path/filepath"
 	"syscall"
+	"time"
 
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip05"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type NostrRoot struct {
-	sys *sdk.System
 	fs.Inode
 
+	ctx        context.Context
+	wd         string
+	sys        *sdk.System
 	rootPubKey string
 	signer     nostr.Signer
-	ctx        context.Context
 }
 
 var _ = (fs.NodeOnAdder)((*NostrRoot)(nil))
 
-func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User) *NostrRoot {
+func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpoint string) *NostrRoot {
 	pubkey, _ := user.GetPublicKey(ctx)
 	signer, _ := user.(nostr.Signer)
+	abs, _ := filepath.Abs(mountpoint)
 
 	return &NostrRoot{
-		sys:        sys,
 		ctx:        ctx,
+		sys:        sys,
 		rootPubKey: pubkey,
 		signer:     signer,
+		wd:         abs,
 	}
 }
 
@@ -46,7 +52,7 @@ func (r *NostrRoot) OnAdd(context.Context) {
 		npub, _ := nip19.EncodePublicKey(f.Pubkey)
 		r.AddChild(
 			npub,
-			CreateNpubDir(r.ctx, r.sys, r, pointer),
+			CreateNpubDir(r.ctx, r.sys, r, r.wd, pointer),
 			true,
 		)
 	}
@@ -57,21 +63,30 @@ func (r *NostrRoot) OnAdd(context.Context) {
 		pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
 		r.AddChild(
 			npub,
-			CreateNpubDir(r.ctx, r.sys, r, pointer),
+			CreateNpubDir(r.ctx, r.sys, r, r.wd, pointer),
 			true,
 		)
 	}
 
 	// add a link to ourselves
-	me := r.NewPersistentInode(r.ctx, &fs.MemSymlink{Data: []byte(npub)}, fs.StableAttr{Mode: syscall.S_IFLNK})
-	r.AddChild("@me", me, true)
+	r.AddChild("@me", r.NewPersistentInode(
+		r.ctx,
+		&fs.MemSymlink{Data: []byte(r.wd + "/" + npub)},
+		fs.StableAttr{Mode: syscall.S_IFLNK},
+	), true)
 }
 
 func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
-	// check if we already have this npub
+	out.SetEntryTimeout(time.Minute * 5)
+
 	child := r.GetChild(name)
 	if child != nil {
 		return child, fs.OK
+	}
+
+	if pp, err := nip05.QueryIdentifier(ctx, name); err == nil {
+		npubdir := CreateNpubDir(ctx, r.sys, r, r.wd, *pp)
+		return npubdir, fs.OK
 	}
 
 	pointer, err := nip19.ToPointer(name)
@@ -81,10 +96,10 @@ func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 	switch p := pointer.(type) {
 	case nostr.ProfilePointer:
-		npubdir := CreateNpubDir(ctx, r.sys, r, p)
+		npubdir := CreateNpubDir(ctx, r.sys, r, r.wd, p)
 		return npubdir, fs.OK
 	case nostr.EventPointer:
-		eventdir, err := FetchAndCreateEventDir(ctx, r, r.sys, p)
+		eventdir, err := FetchAndCreateEventDir(ctx, r, r.wd, r.sys, p)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}

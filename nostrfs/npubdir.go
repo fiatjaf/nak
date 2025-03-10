@@ -2,10 +2,12 @@ package nostrfs
 
 import (
 	"context"
+	"encoding/json"
 	"sync/atomic"
 	"syscall"
 
 	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/nbd-wtf/go-nostr"
 	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
@@ -18,29 +20,143 @@ type NpubDir struct {
 	fetched atomic.Bool
 }
 
-func CreateNpubDir(ctx context.Context, sys *sdk.System, parent fs.InodeEmbedder, pointer nostr.ProfilePointer) *fs.Inode {
+func CreateNpubDir(
+	ctx context.Context,
+	sys *sdk.System,
+	parent fs.InodeEmbedder,
+	wd string,
+	pointer nostr.ProfilePointer,
+) *fs.Inode {
 	npubdir := &NpubDir{ctx: ctx, sys: sys, pointer: pointer}
-	return parent.EmbeddedInode().NewPersistentInode(
+	h := parent.EmbeddedInode().NewPersistentInode(
 		ctx,
 		npubdir,
 		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(pointer.PublicKey)},
 	)
-}
 
-var _ = (fs.NodeOpendirer)((*NpubDir)(nil))
+	relays := sys.FetchOutboxRelays(ctx, pointer.PublicKey, 2)
 
-func (n *NpubDir) Opendir(ctx context.Context) syscall.Errno {
-	if n.fetched.CompareAndSwap(true, true) {
-		return fs.OK
-	}
+	h.AddChild("pubkey", h.NewPersistentInode(
+		ctx,
+		&fs.MemRegularFile{Data: []byte(pointer.PublicKey + "\n"), Attr: fuse.Attr{Mode: 0444}},
+		fs.StableAttr{},
+	), true)
 
-	for ie := range n.sys.Pool.FetchMany(ctx, n.sys.FetchOutboxRelays(ctx, n.pointer.PublicKey, 2), nostr.Filter{
-		Kinds:   []int{1},
-		Authors: []string{n.pointer.PublicKey},
-	}, nostr.WithLabel("nak-fs-feed")) {
-		e := CreateEventDir(ctx, n, ie.Event)
-		n.AddChild(ie.Event.ID, e, true)
-	}
+	h.AddChild(
+		"notes",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{1},
+					Authors: []string{pointer.PublicKey},
+				},
+				relays: relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
 
-	return fs.OK
+	h.AddChild(
+		"comments",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{1111},
+					Authors: []string{pointer.PublicKey},
+				},
+				relays: relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
+
+	h.AddChild(
+		"pictures",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{20},
+					Authors: []string{pointer.PublicKey},
+				},
+				relays: relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
+
+	h.AddChild(
+		"videos",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{21, 22},
+					Authors: []string{pointer.PublicKey},
+				},
+				relays: relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
+
+	h.AddChild(
+		"highlights",
+		h.NewPersistentInode(
+			ctx,
+			&ViewDir{
+				ctx: ctx,
+				sys: sys,
+				wd:  wd,
+				filter: nostr.Filter{
+					Kinds:   []int{9802},
+					Authors: []string{pointer.PublicKey},
+				},
+				relays: relays,
+			},
+			fs.StableAttr{Mode: syscall.S_IFDIR},
+		),
+		true,
+	)
+
+	h.AddChild(
+		"metadata.json",
+		h.NewPersistentInode(
+			ctx,
+			&AsyncFile{
+				ctx: ctx,
+				load: func() ([]byte, nostr.Timestamp) {
+					pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
+					jsonb, _ := json.MarshalIndent(pm.Event, "", "  ")
+					var ts nostr.Timestamp
+					if pm.Event != nil {
+						ts = pm.Event.CreatedAt
+					}
+					return jsonb, ts
+				},
+			},
+			fs.StableAttr{},
+		),
+		true,
+	)
+
+	return h
 }
