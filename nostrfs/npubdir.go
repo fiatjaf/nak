@@ -3,13 +3,13 @@ package nostrfs
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"io"
 	"net/http"
 	"sync/atomic"
 	"syscall"
 	"time"
 
-	"github.com/bytedance/sonic"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/liamg/magic"
@@ -53,7 +53,7 @@ func CreateNpubDir(
 			return
 		}
 
-		metadataj, _ := sonic.ConfigFastest.MarshalIndent(pm, "", "  ")
+		metadataj, _ := json.MarshalIndent(pm, "", "  ")
 		h.AddChild(
 			"metadata.json",
 			h.NewPersistentInode(

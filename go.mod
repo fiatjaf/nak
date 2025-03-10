@@ -5,7 +5,6 @@ go 1.24.1
 require (
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
-	github.com/bytedance/sonic v1.13.1
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
 	github.com/fatih/color v1.16.0
@@ -17,7 +16,7 @@ require (
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.51.1
+	github.com/nbd-wtf/go-nostr v0.51.2
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
 )
@@ -29,6 +28,7 @@ require (
 	github.com/btcsuite/btcd v0.24.2 // indirect
 	github.com/btcsuite/btcd/btcutil v1.1.5 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
+	github.com/bytedance/sonic v1.13.1 // indirect
 	github.com/bytedance/sonic/loader v0.2.4 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/logex v1.1.10 // indirect
