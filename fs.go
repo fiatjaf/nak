@@ -22,7 +22,7 @@ var fsCmd = &cli.Command{
 	Usage:       "mount a FUSE filesystem that exposes Nostr events as files.",
 	Description: `(experimental)`,
 	ArgsUsage:   "<mountpoint>",
-	Flags: []cli.Flag{
+	Flags: append(defaultKeyFlags,
 		&cli.StringFlag{
 			Name:  "pubkey",
 			Usage: "public key from where to to prepopulate directories",
@@ -33,7 +33,7 @@ var fsCmd = &cli.Command{
 				return fmt.Errorf("invalid public key '%s'", pk)
 			},
 		},
-	},
+	),
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		mountpoint := c.Args().First()
@@ -41,10 +41,17 @@ var fsCmd = &cli.Command{
 			return fmt.Errorf("must be called with a directory path to serve as the mountpoint as an argument")
 		}
 
+		var kr nostr.User
+		if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
+			kr = signer
+		} else {
+			kr = keyer.NewReadOnlyUser(c.String("pubkey"))
+		}
+
 		root := nostrfs.NewNostrRoot(
 			context.WithValue(ctx, "log", log),
 			sys,
-			keyer.NewReadOnlyUser(c.String("pubkey")),
+			kr,
 			mountpoint,
 		)
 

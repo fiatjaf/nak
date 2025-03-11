@@ -14,41 +14,37 @@ import (
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/liamg/magic"
 	"github.com/nbd-wtf/go-nostr"
-	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type NpubDir struct {
-	sys *sdk.System
 	fs.Inode
+	root    *NostrRoot
 	pointer nostr.ProfilePointer
-	ctx     context.Context
 	fetched atomic.Bool
 }
 
-func CreateNpubDir(
-	ctx context.Context,
-	sys *sdk.System,
+func (r *NostrRoot) CreateNpubDir(
 	parent fs.InodeEmbedder,
-	wd string,
 	pointer nostr.ProfilePointer,
+	signer nostr.Signer,
 ) *fs.Inode {
-	npubdir := &NpubDir{ctx: ctx, sys: sys, pointer: pointer}
+	npubdir := &NpubDir{root: r, pointer: pointer}
 	h := parent.EmbeddedInode().NewPersistentInode(
-		ctx,
+		r.ctx,
 		npubdir,
 		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(pointer.PublicKey)},
 	)
 
-	relays := sys.FetchOutboxRelays(ctx, pointer.PublicKey, 2)
+	relays := r.sys.FetchOutboxRelays(r.ctx, pointer.PublicKey, 2)
 
 	h.AddChild("pubkey", h.NewPersistentInode(
-		ctx,
+		r.ctx,
 		&fs.MemRegularFile{Data: []byte(pointer.PublicKey + "\n"), Attr: fuse.Attr{Mode: 0444}},
 		fs.StableAttr{},
 	), true)
 
 	go func() {
-		pm := sys.FetchProfileMetadata(ctx, pointer.PublicKey)
+		pm := r.sys.FetchProfileMetadata(r.ctx, pointer.PublicKey)
 		if pm.Event == nil {
 			return
 		}
@@ -57,7 +53,7 @@ func CreateNpubDir(
 		h.AddChild(
 			"metadata.json",
 			h.NewPersistentInode(
-				ctx,
+				r.ctx,
 				&fs.MemRegularFile{
 					Data: metadataj,
 					Attr: fuse.Attr{
@@ -70,7 +66,7 @@ func CreateNpubDir(
 			true,
 		)
 
-		ctx, cancel := context.WithTimeout(ctx, time.Second*20)
+		ctx, cancel := context.WithTimeout(r.ctx, time.Second*20)
 		defer cancel()
 		r, err := http.NewRequestWithContext(ctx, "GET", pm.Picture, nil)
 		if err == nil {
@@ -105,19 +101,17 @@ func CreateNpubDir(
 	h.AddChild(
 		"notes",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{1},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: true,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, r.CreateEventDir(n, event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -128,19 +122,17 @@ func CreateNpubDir(
 	h.AddChild(
 		"comments",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{1111},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: true,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, r.CreateEventDir(n, event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -151,19 +143,17 @@ func CreateNpubDir(
 	h.AddChild(
 		"photos",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{20},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: true,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, r.CreateEventDir(n, event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -174,19 +164,17 @@ func CreateNpubDir(
 	h.AddChild(
 		"videos",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{21, 22},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: false,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, r.CreateEventDir(n, event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -197,19 +185,17 @@ func CreateNpubDir(
 	h.AddChild(
 		"highlights",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{9802},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: false,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, CreateEventDir(ctx, n, n.wd, event)
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+					return event.ID, r.CreateEventDir(n, event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -220,23 +206,21 @@ func CreateNpubDir(
 	h.AddChild(
 		"articles",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{30023},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: false,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
 					d := event.Tags.GetD()
 					if d == "" {
 						d = "_"
 					}
-					return d, CreateEntityDir(ctx, n, n.wd, ".md", event)
+					return d, r.CreateEntityDir(n, ".md", event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -247,23 +231,21 @@ func CreateNpubDir(
 	h.AddChild(
 		"wiki",
 		h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&ViewDir{
-				ctx: ctx,
-				sys: sys,
-				wd:  wd,
+				root: r,
 				filter: nostr.Filter{
 					Kinds:   []int{30818},
 					Authors: []string{pointer.PublicKey},
 				},
 				paginate: false,
 				relays:   relays,
-				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
+				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
 					d := event.Tags.GetD()
 					if d == "" {
 						d = "_"
 					}
-					return d, CreateEntityDir(ctx, n, n.wd, ".adoc", event)
+					return d, r.CreateEntityDir(n, ".adoc", event)
 				},
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},

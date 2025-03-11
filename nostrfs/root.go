@@ -28,8 +28,12 @@ var _ = (fs.NodeOnAdder)((*NostrRoot)(nil))
 
 func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpoint string) *NostrRoot {
 	pubkey, _ := user.GetPublicKey(ctx)
-	signer, _ := user.(nostr.Signer)
 	abs, _ := filepath.Abs(mountpoint)
+
+	var signer nostr.Signer
+	if user != nil {
+		signer, _ = user.(nostr.Signer)
+	}
 
 	return &NostrRoot{
 		ctx:        ctx,
@@ -52,7 +56,7 @@ func (r *NostrRoot) OnAdd(_ context.Context) {
 		npub, _ := nip19.EncodePublicKey(f.Pubkey)
 		r.AddChild(
 			npub,
-			CreateNpubDir(r.ctx, r.sys, r, r.wd, pointer),
+			r.CreateNpubDir(r, pointer, nil),
 			true,
 		)
 	}
@@ -61,9 +65,10 @@ func (r *NostrRoot) OnAdd(_ context.Context) {
 	npub, _ := nip19.EncodePublicKey(r.rootPubKey)
 	if r.GetChild(npub) == nil {
 		pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
+
 		r.AddChild(
 			npub,
-			CreateNpubDir(r.ctx, r.sys, r, r.wd, pointer),
+			r.CreateNpubDir(r, pointer, r.signer),
 			true,
 		)
 	}
@@ -85,8 +90,11 @@ func (r *NostrRoot) Lookup(_ context.Context, name string, out *fuse.EntryOut) (
 	}
 
 	if pp, err := nip05.QueryIdentifier(r.ctx, name); err == nil {
-		npubdir := CreateNpubDir(r.ctx, r.sys, r, r.wd, *pp)
-		return npubdir, fs.OK
+		return r.NewPersistentInode(
+			r.ctx,
+			&fs.MemSymlink{Data: []byte(r.wd + "/" + nip19.EncodePointer(*pp))},
+			fs.StableAttr{Mode: syscall.S_IFLNK},
+		), fs.OK
 	}
 
 	pointer, err := nip19.ToPointer(name)
@@ -96,10 +104,10 @@ func (r *NostrRoot) Lookup(_ context.Context, name string, out *fuse.EntryOut) (
 
 	switch p := pointer.(type) {
 	case nostr.ProfilePointer:
-		npubdir := CreateNpubDir(r.ctx, r.sys, r, r.wd, p)
+		npubdir := r.CreateNpubDir(r, p, nil)
 		return npubdir, fs.OK
 	case nostr.EventPointer:
-		eventdir, err := FetchAndCreateEventDir(r.ctx, r, r.wd, r.sys, p)
+		eventdir, err := r.FetchAndCreateEventDir(r, p)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}

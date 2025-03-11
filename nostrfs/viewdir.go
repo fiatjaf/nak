@@ -8,19 +8,16 @@ import (
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/nbd-wtf/go-nostr"
-	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type ViewDir struct {
 	fs.Inode
-	ctx      context.Context
-	sys      *sdk.System
-	wd       string
+	root     *NostrRoot
 	fetched  atomic.Bool
 	filter   nostr.Filter
 	paginate bool
 	relays   []string
-	create   func(context.Context, *ViewDir, *nostr.Event) (string, *fs.Inode)
+	create   func(*ViewDir, *nostr.Event) (string, *fs.Inode)
 }
 
 var (
@@ -52,8 +49,8 @@ func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 		aMonthAgo := now - 30*24*60*60
 		n.filter.Since = &aMonthAgo
 
-		for ie := range n.sys.Pool.FetchMany(n.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(n.ctx, n, ie.Event)
+		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(n, ie.Event)
 			n.AddChild(basename, inode, true)
 		}
 
@@ -61,19 +58,17 @@ func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 		filter.Until = &aMonthAgo
 
 		n.AddChild("@previous", n.NewPersistentInode(
-			n.ctx,
+			n.root.ctx,
 			&ViewDir{
-				ctx:    n.ctx,
-				sys:    n.sys,
+				root:   n.root,
 				filter: filter,
-				wd:     n.wd,
 				relays: n.relays,
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		), true)
 	} else {
-		for ie := range n.sys.Pool.FetchMany(n.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(n.ctx, n, ie.Event)
+		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(n, ie.Event)
 			n.AddChild(basename, inode, true)
 		}
 	}

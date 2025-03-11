@@ -42,36 +42,31 @@ func (e *EntityDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOu
 	return fs.OK
 }
 
-func FetchAndCreateEntityDir(
-	ctx context.Context,
+func (r *NostrRoot) FetchAndCreateEntityDir(
 	parent fs.InodeEmbedder,
-	wd string,
 	extension string,
-	sys *sdk.System,
 	pointer nostr.EntityPointer,
 ) (*fs.Inode, error) {
-	event, _, err := sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{
+	event, _, err := r.sys.FetchSpecificEvent(r.ctx, pointer, sdk.FetchSpecificEventParameters{
 		WithRelays: false,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch: %w", err)
 	}
 
-	return CreateEntityDir(ctx, parent, wd, extension, event), nil
+	return r.CreateEntityDir(parent, extension, event), nil
 }
 
-func CreateEntityDir(
-	ctx context.Context,
+func (r *NostrRoot) CreateEntityDir(
 	parent fs.InodeEmbedder,
-	wd string,
 	extension string,
 	event *nostr.Event,
 ) *fs.Inode {
-	log := ctx.Value("log").(func(msg string, args ...any))
+	log := r.ctx.Value("log").(func(msg string, args ...any))
 
 	h := parent.EmbeddedInode().NewPersistentInode(
-		ctx,
-		&EntityDir{ctx: ctx, wd: wd, evt: event},
+		r.ctx,
+		&EntityDir{ctx: r.ctx, wd: r.wd, evt: event},
 		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(event.ID)},
 	)
 
@@ -82,16 +77,16 @@ func CreateEntityDir(
 
 	npub, _ := nip19.EncodePublicKey(event.PubKey)
 	h.AddChild("@author", h.NewPersistentInode(
-		ctx,
+		r.ctx,
 		&fs.MemSymlink{
-			Data: []byte(wd + "/" + npub),
+			Data: []byte(r.wd + "/" + npub),
 		},
 		fs.StableAttr{Mode: syscall.S_IFLNK},
 	), true)
 
 	eventj, _ := json.MarshalIndent(event, "", "  ")
 	h.AddChild("event.json", h.NewPersistentInode(
-		ctx,
+		r.ctx,
 		&fs.MemRegularFile{
 			Data: eventj,
 			Attr: fuse.Attr{
@@ -105,7 +100,7 @@ func CreateEntityDir(
 	), true)
 
 	h.AddChild("identifier", h.NewPersistentInode(
-		ctx,
+		r.ctx,
 		&fs.MemRegularFile{
 			Data: []byte(event.Tags.GetD()),
 			Attr: fuse.Attr{
@@ -120,7 +115,7 @@ func CreateEntityDir(
 
 	if tag := event.Tags.Find("title"); tag != nil {
 		h.AddChild("title", h.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&fs.MemRegularFile{
 				Data: []byte(tag[1]),
 				Attr: fuse.Attr{
@@ -135,7 +130,7 @@ func CreateEntityDir(
 	}
 
 	h.AddChild("content"+extension, h.NewPersistentInode(
-		ctx,
+		r.ctx,
 		&fs.MemRegularFile{
 			Data: []byte(event.Content),
 			Attr: fuse.Attr{
@@ -153,13 +148,13 @@ func CreateEntityDir(
 	for ref := range nip27.ParseReferences(*event) {
 		i++
 		if refsdir == nil {
-			refsdir = h.NewPersistentInode(ctx, &fs.Inode{}, fs.StableAttr{Mode: syscall.S_IFDIR})
+			refsdir = h.NewPersistentInode(r.ctx, &fs.Inode{}, fs.StableAttr{Mode: syscall.S_IFDIR})
 			h.AddChild("references", refsdir, true)
 		}
 		refsdir.AddChild(fmt.Sprintf("ref_%02d", i), refsdir.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&fs.MemSymlink{
-				Data: []byte(wd + "/" + nip19.EncodePointer(ref.Pointer)),
+				Data: []byte(r.wd + "/" + nip19.EncodePointer(ref.Pointer)),
 			},
 			fs.StableAttr{Mode: syscall.S_IFLNK},
 		), true)
@@ -169,15 +164,15 @@ func CreateEntityDir(
 	addImage := func(url string) {
 		if imagesdir == nil {
 			in := &fs.Inode{}
-			imagesdir = h.NewPersistentInode(ctx, in, fs.StableAttr{Mode: syscall.S_IFDIR})
+			imagesdir = h.NewPersistentInode(r.ctx, in, fs.StableAttr{Mode: syscall.S_IFDIR})
 			h.AddChild("images", imagesdir, true)
 		}
 		imagesdir.AddChild(filepath.Base(url), imagesdir.NewPersistentInode(
-			ctx,
+			r.ctx,
 			&AsyncFile{
-				ctx: ctx,
+				ctx: r.ctx,
 				load: func() ([]byte, nostr.Timestamp) {
-					ctx, cancel := context.WithTimeout(ctx, time.Second*20)
+					ctx, cancel := context.WithTimeout(r.ctx, time.Second*20)
 					defer cancel()
 					r, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 					if err != nil {
