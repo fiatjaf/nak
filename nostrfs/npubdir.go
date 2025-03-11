@@ -149,7 +149,7 @@ func CreateNpubDir(
 	)
 
 	h.AddChild(
-		"pictures",
+		"photos",
 		h.NewPersistentInode(
 			ctx,
 			&ViewDir{
