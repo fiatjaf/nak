@@ -30,7 +30,7 @@ type EntityDir struct {
 
 var _ = (fs.NodeGetattrer)((*EntityDir)(nil))
 
-func (e *EntityDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (e *EntityDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	publishedAt := uint64(e.evt.CreatedAt)
 	out.Ctime = publishedAt
 
@@ -67,6 +67,8 @@ func CreateEntityDir(
 	extension string,
 	event *nostr.Event,
 ) *fs.Inode {
+	log := ctx.Value("log").(func(msg string, args ...any))
+
 	h := parent.EmbeddedInode().NewPersistentInode(
 		ctx,
 		&EntityDir{ctx: ctx, wd: wd, evt: event},
@@ -179,14 +181,17 @@ func CreateEntityDir(
 					defer cancel()
 					r, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 					if err != nil {
+						log("failed to load image %s: %s\n", url, err)
 						return nil, 0
 					}
 					resp, err := http.DefaultClient.Do(r)
 					if err != nil {
+						log("failed to load image %s: %s\n", url, err)
 						return nil, 0
 					}
 					defer resp.Body.Close()
 					if resp.StatusCode >= 300 {
+						log("failed to load image %s: %s\n", url, err)
 						return nil, 0
 					}
 					w := &bytes.Buffer{}

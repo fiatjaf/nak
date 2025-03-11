@@ -28,7 +28,7 @@ var (
 	_ = (fs.NodeGetattrer)((*ViewDir)(nil))
 )
 
-func (n *ViewDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (n *ViewDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	now := nostr.Now()
 	if n.filter.Until != nil {
 		now = *n.filter.Until
@@ -39,7 +39,7 @@ func (n *ViewDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOu
 	return fs.OK
 }
 
-func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
+func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 	if n.fetched.CompareAndSwap(true, true) {
 		return fs.OK
 	}
@@ -52,8 +52,8 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 		aMonthAgo := now - 30*24*60*60
 		n.filter.Since = &aMonthAgo
 
-		for ie := range n.sys.Pool.FetchMany(ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(ctx, n, ie.Event)
+		for ie := range n.sys.Pool.FetchMany(n.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(n.ctx, n, ie.Event)
 			n.AddChild(basename, inode, true)
 		}
 
@@ -61,7 +61,7 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 		filter.Until = &aMonthAgo
 
 		n.AddChild("@previous", n.NewPersistentInode(
-			ctx,
+			n.ctx,
 			&ViewDir{
 				ctx:    n.ctx,
 				sys:    n.sys,
@@ -72,8 +72,8 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		), true)
 	} else {
-		for ie := range n.sys.Pool.FetchMany(ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(ctx, n, ie.Event)
+		for ie := range n.sys.Pool.FetchMany(n.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
+			basename, inode := n.create(n.ctx, n, ie.Event)
 			n.AddChild(basename, inode, true)
 		}
 	}

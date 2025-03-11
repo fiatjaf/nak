@@ -31,7 +31,7 @@ type EventDir struct {
 
 var _ = (fs.NodeGetattrer)((*EventDir)(nil))
 
-func (e *EventDir) Getattr(ctx context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
+func (e *EventDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	out.Mtime = uint64(e.evt.CreatedAt)
 	return fs.OK
 }

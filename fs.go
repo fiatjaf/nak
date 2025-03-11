@@ -42,7 +42,7 @@ var fsCmd = &cli.Command{
 		}
 
 		root := nostrfs.NewNostrRoot(
-			ctx,
+			context.WithValue(ctx, "log", log),
 			sys,
 			keyer.NewReadOnlyUser(c.String("pubkey")),
 			mountpoint,

@@ -40,7 +40,7 @@ func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpo
 	}
 }
 
-func (r *NostrRoot) OnAdd(context.Context) {
+func (r *NostrRoot) OnAdd(_ context.Context) {
 	if r.rootPubKey == "" {
 		return
 	}
@@ -76,7 +76,7 @@ func (r *NostrRoot) OnAdd(context.Context) {
 	), true)
 }
 
-func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+func (r *NostrRoot) Lookup(_ context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
 	out.SetEntryTimeout(time.Minute * 5)
 
 	child := r.GetChild(name)
@@ -84,8 +84,8 @@ func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 		return child, fs.OK
 	}
 
-	if pp, err := nip05.QueryIdentifier(ctx, name); err == nil {
-		npubdir := CreateNpubDir(ctx, r.sys, r, r.wd, *pp)
+	if pp, err := nip05.QueryIdentifier(r.ctx, name); err == nil {
+		npubdir := CreateNpubDir(r.ctx, r.sys, r, r.wd, *pp)
 		return npubdir, fs.OK
 	}
 
@@ -96,10 +96,10 @@ func (r *NostrRoot) Lookup(ctx context.Context, name string, out *fuse.EntryOut)
 
 	switch p := pointer.(type) {
 	case nostr.ProfilePointer:
-		npubdir := CreateNpubDir(ctx, r.sys, r, r.wd, p)
+		npubdir := CreateNpubDir(r.ctx, r.sys, r, r.wd, p)
 		return npubdir, fs.OK
 	case nostr.EventPointer:
-		eventdir, err := FetchAndCreateEventDir(ctx, r, r.wd, r.sys, p)
+		eventdir, err := FetchAndCreateEventDir(r.ctx, r, r.wd, r.sys, p)
 		if err != nil {
 			return nil, syscall.ENOENT
 		}
