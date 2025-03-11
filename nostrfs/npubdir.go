@@ -183,7 +183,7 @@ func CreateNpubDir(
 					Kinds:   []int{21, 22},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: true,
+				paginate: false,
 				relays:   relays,
 				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
 					return event.ID, CreateEventDir(ctx, n, n.wd, event)
@@ -206,7 +206,7 @@ func CreateNpubDir(
 					Kinds:   []int{9802},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: true,
+				paginate: false,
 				relays:   relays,
 				create: func(ctx context.Context, n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
 					return event.ID, CreateEventDir(ctx, n, n.wd, event)
