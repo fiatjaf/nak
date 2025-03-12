@@ -12,12 +12,13 @@ import (
 
 type ViewDir struct {
 	fs.Inode
-	root     *NostrRoot
-	fetched  atomic.Bool
-	filter   nostr.Filter
-	paginate bool
-	relays   []string
-	create   func(*ViewDir, *nostr.Event) (string, *fs.Inode)
+	root        *NostrRoot
+	fetched     atomic.Bool
+	filter      nostr.Filter
+	paginate    bool
+	relays      []string
+	replaceable bool
+	extension   string
 }
 
 var (
@@ -49,27 +50,37 @@ func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 		aMonthAgo := now - 30*24*60*60
 		n.filter.Since = &aMonthAgo
 
-		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(n, ie.Event)
-			n.AddChild(basename, inode, true)
-		}
-
 		filter := n.filter
 		filter.Until = &aMonthAgo
 
 		n.AddChild("@previous", n.NewPersistentInode(
 			n.root.ctx,
 			&ViewDir{
-				root:   n.root,
-				filter: filter,
-				relays: n.relays,
+				root:        n.root,
+				filter:      filter,
+				relays:      n.relays,
+				extension:   n.extension,
+				replaceable: n.replaceable,
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		), true)
+	}
+
+	if n.replaceable {
+		for rkey, evt := range n.root.sys.Pool.FetchManyReplaceable(n.root.ctx, n.relays, n.filter,
+			nostr.WithLabel("nakfs"),
+		).Range {
+			name := rkey.D
+			if name == "" {
+				name = "_"
+			}
+			n.AddChild(name, n.root.CreateEntityDir(n, n.extension, evt), true)
+		}
 	} else {
-		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter, nostr.WithLabel("nakfs")) {
-			basename, inode := n.create(n, ie.Event)
-			n.AddChild(basename, inode, true)
+		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter,
+			nostr.WithLabel("nakfs"),
+		) {
+			n.AddChild(ie.Event.ID, n.root.CreateEventDir(n, ie.Event), true)
 		}
 	}
 

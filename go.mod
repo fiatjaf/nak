@@ -3,26 +3,26 @@ module github.com/fiatjaf/nak
 go 1.24.1
 
 require (
+	fiatjaf.com/lib v0.3.1
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
-	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.3.0
+	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fatih/color v1.16.0
-	github.com/fiatjaf/eventstore v0.15.0
-	github.com/fiatjaf/khatru v0.16.0
+	github.com/fiatjaf/eventstore v0.16.2
+	github.com/fiatjaf/khatru v0.17.3-0.20250312035319-596bca93c3ff
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/json-iterator/go v1.1.12
 	github.com/liamg/magic v0.0.1
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.51.2
+	github.com/nbd-wtf/go-nostr v0.51.3-0.20250312034958-cc23d81e8055
 	github.com/urfave/cli/v3 v3.0.0-beta1
-	golang.org/x/exp v0.0.0-20250210185358-939b2ce775ac
+	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 )
 
 require (
-	fiatjaf.com/lib v0.2.0 // indirect
 	github.com/ImVexed/fasturl v0.0.0-20230304231329-4e41488060f3 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
 	github.com/btcsuite/btcd v0.24.2 // indirect
@@ -57,7 +57,7 @@ require (
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
 	github.com/pkg/errors v0.9.1 // indirect
-	github.com/puzpuzpuz/xsync/v3 v3.5.0 // indirect
+	github.com/puzpuzpuz/xsync/v3 v3.5.1 // indirect
 	github.com/rs/cors v1.11.1 // indirect
 	github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 // indirect
 	github.com/tetratelabs/wazero v1.8.0 // indirect
@@ -66,12 +66,14 @@ require (
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/twitchyliquid64/golang-asm v0.15.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
-	github.com/valyala/fasthttp v1.58.0 // indirect
+	github.com/valyala/fasthttp v1.59.0 // indirect
 	github.com/wasilibs/go-re2 v1.3.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	golang.org/x/arch v0.15.0 // indirect
-	golang.org/x/crypto v0.32.0 // indirect
-	golang.org/x/net v0.34.0 // indirect
+	golang.org/x/crypto v0.36.0 // indirect
+	golang.org/x/net v0.37.0 // indirect
 	golang.org/x/sys v0.31.0 // indirect
-	golang.org/x/text v0.21.0 // indirect
+	golang.org/x/text v0.23.0 // indirect
 )
+
+replace github.com/nbd-wtf/go-nostr => ../go-nostr

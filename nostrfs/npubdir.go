@@ -108,11 +108,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{1},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: true,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, r.CreateEventDir(n, event)
-				},
+				paginate:    true,
+				relays:      relays,
+				replaceable: false,
+				extension:   "txt",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -129,11 +128,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{1111},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: true,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, r.CreateEventDir(n, event)
-				},
+				paginate:    true,
+				relays:      relays,
+				replaceable: false,
+				extension:   "txt",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -150,11 +148,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{20},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: true,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, r.CreateEventDir(n, event)
-				},
+				paginate:    true,
+				relays:      relays,
+				replaceable: false,
+				extension:   "txt",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -171,11 +168,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{21, 22},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: false,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, r.CreateEventDir(n, event)
-				},
+				paginate:    false,
+				relays:      relays,
+				replaceable: false,
+				extension:   "txt",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -192,11 +188,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{9802},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: false,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					return event.ID, r.CreateEventDir(n, event)
-				},
+				paginate:    false,
+				relays:      relays,
+				replaceable: false,
+				extension:   "txt",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -213,15 +208,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{30023},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: false,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					d := event.Tags.GetD()
-					if d == "" {
-						d = "_"
-					}
-					return d, r.CreateEntityDir(n, ".md", event)
-				},
+				paginate:    false,
+				relays:      relays,
+				replaceable: true,
+				extension:   "md",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
@@ -238,15 +228,10 @@ func (r *NostrRoot) CreateNpubDir(
 					Kinds:   []int{30818},
 					Authors: []string{pointer.PublicKey},
 				},
-				paginate: false,
-				relays:   relays,
-				create: func(n *ViewDir, event *nostr.Event) (string, *fs.Inode) {
-					d := event.Tags.GetD()
-					if d == "" {
-						d = "_"
-					}
-					return d, r.CreateEntityDir(n, ".adoc", event)
-				},
+				paginate:    false,
+				relays:      relays,
+				replaceable: true,
+				extension:   "adoc",
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
 		),
