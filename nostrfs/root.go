@@ -14,6 +14,10 @@ import (
 	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
+type Options struct {
+	AutoPublishTimeout time.Duration // a negative number means do not publish
+}
+
 type NostrRoot struct {
 	fs.Inode
 
@@ -22,11 +26,13 @@ type NostrRoot struct {
 	sys        *sdk.System
 	rootPubKey string
 	signer     nostr.Signer
+
+	opts Options
 }
 
 var _ = (fs.NodeOnAdder)((*NostrRoot)(nil))
 
-func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpoint string) *NostrRoot {
+func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpoint string, o Options) *NostrRoot {
 	pubkey, _ := user.GetPublicKey(ctx)
 	abs, _ := filepath.Abs(mountpoint)
 
@@ -41,6 +47,8 @@ func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpo
 		rootPubKey: pubkey,
 		signer:     signer,
 		wd:         abs,
+
+		opts: o,
 	}
 }
 
@@ -49,36 +57,40 @@ func (r *NostrRoot) OnAdd(_ context.Context) {
 		return
 	}
 
-	// add our contacts
-	fl := r.sys.FetchFollowList(r.ctx, r.rootPubKey)
-	for _, f := range fl.Items {
-		pointer := nostr.ProfilePointer{PublicKey: f.Pubkey, Relays: []string{f.Relay}}
-		npub, _ := nip19.EncodePublicKey(f.Pubkey)
-		r.AddChild(
-			npub,
-			r.CreateNpubDir(r, pointer, nil),
-			true,
-		)
-	}
+	go func() {
+		time.Sleep(time.Millisecond * 100)
 
-	// add ourselves
-	npub, _ := nip19.EncodePublicKey(r.rootPubKey)
-	if r.GetChild(npub) == nil {
-		pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
+		// add our contacts
+		fl := r.sys.FetchFollowList(r.ctx, r.rootPubKey)
+		for _, f := range fl.Items {
+			pointer := nostr.ProfilePointer{PublicKey: f.Pubkey, Relays: []string{f.Relay}}
+			npub, _ := nip19.EncodePublicKey(f.Pubkey)
+			r.AddChild(
+				npub,
+				r.CreateNpubDir(r, pointer, nil),
+				true,
+			)
+		}
 
-		r.AddChild(
-			npub,
-			r.CreateNpubDir(r, pointer, r.signer),
-			true,
-		)
-	}
+		// add ourselves
+		npub, _ := nip19.EncodePublicKey(r.rootPubKey)
+		if r.GetChild(npub) == nil {
+			pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
 
-	// add a link to ourselves
-	r.AddChild("@me", r.NewPersistentInode(
-		r.ctx,
-		&fs.MemSymlink{Data: []byte(r.wd + "/" + npub)},
-		fs.StableAttr{Mode: syscall.S_IFLNK},
-	), true)
+			r.AddChild(
+				npub,
+				r.CreateNpubDir(r, pointer, r.signer),
+				true,
+			)
+		}
+
+		// add a link to ourselves
+		r.AddChild("@me", r.NewPersistentInode(
+			r.ctx,
+			&fs.MemSymlink{Data: []byte(r.wd + "/" + npub)},
+			fs.StableAttr{Mode: syscall.S_IFLNK},
+		), true)
+	}()
 }
 
 func (r *NostrRoot) Lookup(_ context.Context, name string, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {

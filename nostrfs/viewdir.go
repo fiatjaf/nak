@@ -18,12 +18,13 @@ type ViewDir struct {
 	paginate    bool
 	relays      []string
 	replaceable bool
-	extension   string
+	createable  bool
 }
 
 var (
 	_ = (fs.NodeOpendirer)((*ViewDir)(nil))
 	_ = (fs.NodeGetattrer)((*ViewDir)(nil))
+	_ = (fs.NodeMkdirer)((*ViewDir)(nil))
 )
 
 func (n *ViewDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
@@ -37,7 +38,7 @@ func (n *ViewDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut)
 	return fs.OK
 }
 
-func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
+func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 	if n.fetched.CompareAndSwap(true, true) {
 		return fs.OK
 	}
@@ -59,7 +60,6 @@ func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 				root:        n.root,
 				filter:      filter,
 				relays:      n.relays,
-				extension:   n.extension,
 				replaceable: n.replaceable,
 			},
 			fs.StableAttr{Mode: syscall.S_IFDIR},
@@ -74,15 +74,39 @@ func (n *ViewDir) Opendir(_ context.Context) syscall.Errno {
 			if name == "" {
 				name = "_"
 			}
-			n.AddChild(name, n.root.CreateEntityDir(n, n.extension, evt), true)
+			if n.GetChild(name) == nil {
+				n.AddChild(name, n.root.CreateEntityDir(n, evt), true)
+			}
 		}
 	} else {
 		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter,
 			nostr.WithLabel("nakfs"),
 		) {
-			n.AddChild(ie.Event.ID, n.root.CreateEventDir(n, ie.Event), true)
+			if n.GetChild(ie.Event.ID) == nil {
+				n.AddChild(ie.Event.ID, n.root.CreateEventDir(n, ie.Event), true)
+			}
 		}
 	}
 
 	return fs.OK
+}
+
+func (n *ViewDir) Mkdir(ctx context.Context, name string, mode uint32, out *fuse.EntryOut) (*fs.Inode, syscall.Errno) {
+	if !n.createable || n.root.signer == nil || n.root.rootPubKey != n.filter.Authors[0] {
+		return nil, syscall.ENOTSUP
+	}
+
+	if n.replaceable {
+		// create a template event that can later be modified and published as new
+		return n.root.CreateEntityDir(n, &nostr.Event{
+			PubKey:    n.root.rootPubKey,
+			CreatedAt: 0,
+			Kind:      n.filter.Kinds[0],
+			Tags: nostr.Tags{
+				nostr.Tag{"d", name},
+			},
+		}), fs.OK
+	}
+
+	return nil, syscall.ENOTSUP
 }

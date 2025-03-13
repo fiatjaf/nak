@@ -10,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/fatih/color"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/liamg/magic"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 type NpubDir struct {
@@ -23,28 +25,36 @@ type NpubDir struct {
 	fetched atomic.Bool
 }
 
+var _ = (fs.NodeOnAdder)((*NpubDir)(nil))
+
 func (r *NostrRoot) CreateNpubDir(
 	parent fs.InodeEmbedder,
 	pointer nostr.ProfilePointer,
 	signer nostr.Signer,
 ) *fs.Inode {
 	npubdir := &NpubDir{root: r, pointer: pointer}
-	h := parent.EmbeddedInode().NewPersistentInode(
+	return parent.EmbeddedInode().NewPersistentInode(
 		r.ctx,
 		npubdir,
 		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(pointer.PublicKey)},
 	)
+}
 
-	relays := r.sys.FetchOutboxRelays(r.ctx, pointer.PublicKey, 2)
+func (h *NpubDir) OnAdd(_ context.Context) {
+	log := h.root.ctx.Value("log").(func(msg string, args ...any))
+
+	relays := h.root.sys.FetchOutboxRelays(h.root.ctx, h.pointer.PublicKey, 2)
+	log("- adding folder for %s with relays %s\n",
+		color.HiYellowString(nip19.EncodePointer(h.pointer)), color.HiGreenString("%v", relays))
 
 	h.AddChild("pubkey", h.NewPersistentInode(
-		r.ctx,
-		&fs.MemRegularFile{Data: []byte(pointer.PublicKey + "\n"), Attr: fuse.Attr{Mode: 0444}},
+		h.root.ctx,
+		&fs.MemRegularFile{Data: []byte(h.pointer.PublicKey + "\n"), Attr: fuse.Attr{Mode: 0444}},
 		fs.StableAttr{},
 	), true)
 
 	go func() {
-		pm := r.sys.FetchProfileMetadata(r.ctx, pointer.PublicKey)
+		pm := h.root.sys.FetchProfileMetadata(h.root.ctx, h.pointer.PublicKey)
 		if pm.Event == nil {
 			return
 		}
@@ -53,7 +63,7 @@ func (r *NostrRoot) CreateNpubDir(
 		h.AddChild(
 			"metadata.json",
 			h.NewPersistentInode(
-				r.ctx,
+				h.root.ctx,
 				&fs.MemRegularFile{
 					Data: metadataj,
 					Attr: fuse.Attr{
@@ -66,11 +76,11 @@ func (r *NostrRoot) CreateNpubDir(
 			true,
 		)
 
-		ctx, cancel := context.WithTimeout(r.ctx, time.Second*20)
+		ctx, cancel := context.WithTimeout(h.root.ctx, time.Second*20)
 		defer cancel()
-		r, err := http.NewRequestWithContext(ctx, "GET", pm.Picture, nil)
+		req, err := http.NewRequestWithContext(ctx, "GET", pm.Picture, nil)
 		if err == nil {
-			resp, err := http.DefaultClient.Do(r)
+			resp, err := http.DefaultClient.Do(req)
 			if err == nil {
 				defer resp.Body.Close()
 				if resp.StatusCode < 300 {
@@ -98,145 +108,152 @@ func (r *NostrRoot) CreateNpubDir(
 		}
 	}()
 
-	h.AddChild(
-		"notes",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{1},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("notes") == nil {
+		h.AddChild(
+			"notes",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{1},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    true,
+					relays:      relays,
+					replaceable: false,
 				},
-				paginate:    true,
-				relays:      relays,
-				replaceable: false,
-				extension:   "txt",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"comments",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{1111},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("comments") == nil {
+		h.AddChild(
+			"comments",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{1111},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    true,
+					relays:      relays,
+					replaceable: false,
 				},
-				paginate:    true,
-				relays:      relays,
-				replaceable: false,
-				extension:   "txt",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"photos",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{20},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("photos") == nil {
+		h.AddChild(
+			"photos",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{20},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    true,
+					relays:      relays,
+					replaceable: false,
 				},
-				paginate:    true,
-				relays:      relays,
-				replaceable: false,
-				extension:   "txt",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"videos",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{21, 22},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("videos") == nil {
+		h.AddChild(
+			"videos",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{21, 22},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    false,
+					relays:      relays,
+					replaceable: false,
 				},
-				paginate:    false,
-				relays:      relays,
-				replaceable: false,
-				extension:   "txt",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"highlights",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{9802},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("highlights") == nil {
+		h.AddChild(
+			"highlights",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{9802},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    false,
+					relays:      relays,
+					replaceable: false,
 				},
-				paginate:    false,
-				relays:      relays,
-				replaceable: false,
-				extension:   "txt",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"articles",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{30023},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("articles") == nil {
+		h.AddChild(
+			"articles",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{30023},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    false,
+					relays:      relays,
+					replaceable: true,
+					createable:  true,
 				},
-				paginate:    false,
-				relays:      relays,
-				replaceable: true,
-				extension:   "md",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 
-	h.AddChild(
-		"wiki",
-		h.NewPersistentInode(
-			r.ctx,
-			&ViewDir{
-				root: r,
-				filter: nostr.Filter{
-					Kinds:   []int{30818},
-					Authors: []string{pointer.PublicKey},
+	if h.GetChild("wiki") == nil {
+		h.AddChild(
+			"wiki",
+			h.NewPersistentInode(
+				h.root.ctx,
+				&ViewDir{
+					root: h.root,
+					filter: nostr.Filter{
+						Kinds:   []int{30818},
+						Authors: []string{h.pointer.PublicKey},
+					},
+					paginate:    false,
+					relays:      relays,
+					replaceable: true,
+					createable:  true,
 				},
-				paginate:    false,
-				relays:      relays,
-				replaceable: true,
-				extension:   "adoc",
-			},
-			fs.StableAttr{Mode: syscall.S_IFDIR},
-		),
-		true,
-	)
-
-	return h
+				fs.StableAttr{Mode: syscall.S_IFDIR},
+			),
+			true,
+		)
+	}
 }

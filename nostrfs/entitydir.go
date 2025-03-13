@@ -30,30 +30,29 @@ type EntityDir struct {
 	root *NostrRoot
 
 	publisher *debouncer.Debouncer
-	extension string
 	event     *nostr.Event
 	updating  struct {
-		title   string
-		content string
+		title       string
+		content     string
+		publishedAt uint64
 	}
 }
 
 var (
 	_ = (fs.NodeOnAdder)((*EntityDir)(nil))
 	_ = (fs.NodeGetattrer)((*EntityDir)(nil))
+	_ = (fs.NodeSetattrer)((*EntityDir)(nil))
 	_ = (fs.NodeCreater)((*EntityDir)(nil))
 	_ = (fs.NodeUnlinker)((*EntityDir)(nil))
 )
 
 func (e *EntityDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
-	publishedAt := uint64(e.event.CreatedAt)
-	out.Ctime = publishedAt
-
-	if tag := e.event.Tags.Find("published_at"); tag != nil {
-		publishedAt, _ = strconv.ParseUint(tag[1], 10, 64)
+	out.Ctime = uint64(e.event.CreatedAt)
+	if e.updating.publishedAt != 0 {
+		out.Mtime = e.updating.publishedAt
+	} else {
+		out.Mtime = e.PublishedAt()
 	}
-	out.Mtime = publishedAt
-
 	return fs.OK
 }
 
@@ -64,8 +63,10 @@ func (e *EntityDir) Create(
 	mode uint32,
 	out *fuse.EntryOut,
 ) (node *fs.Inode, fh fs.FileHandle, fuseFlags uint32, errno syscall.Errno) {
-	if name == "publish" {
+	if name == "publish" && e.publisher.IsRunning() {
 		// this causes the publish process to be triggered faster
+		log := e.root.ctx.Value("log").(func(msg string, args ...any))
+		log("publishing now!\n")
 		e.publisher.Flush()
 		return nil, nil, 0, syscall.ENOTDIR
 	}
@@ -75,26 +76,24 @@ func (e *EntityDir) Create(
 
 func (e *EntityDir) Unlink(ctx context.Context, name string) syscall.Errno {
 	switch name {
-	case "content" + e.extension:
+	case "content" + kindToExtension(e.event.Kind):
 		e.updating.content = e.event.Content
 		return syscall.ENOTDIR
 	case "title":
-		e.updating.title = ""
-		if titleTag := e.event.Tags.Find("title"); titleTag != nil {
-			e.updating.title = titleTag[1]
-		}
+		e.updating.title = e.Title()
 		return syscall.ENOTDIR
 	default:
 		return syscall.EINTR
 	}
 }
 
+func (e *EntityDir) Setattr(_ context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, _ *fuse.AttrOut) syscall.Errno {
+	e.updating.publishedAt = in.Mtime
+	return fs.OK
+}
+
 func (e *EntityDir) OnAdd(_ context.Context) {
 	log := e.root.ctx.Value("log").(func(msg string, args ...any))
-	publishedAt := uint64(e.event.CreatedAt)
-	if tag := e.event.Tags.Find("published_at"); tag != nil {
-		publishedAt, _ = strconv.ParseUint(tag[1], 10, 64)
-	}
 
 	npub, _ := nip19.EncodePublicKey(e.event.PubKey)
 	e.AddChild("@author", e.NewPersistentInode(
@@ -132,42 +131,35 @@ func (e *EntityDir) OnAdd(_ context.Context) {
 		fs.StableAttr{},
 	), true)
 
-	if e.root.signer == nil {
+	if e.root.signer == nil || e.root.rootPubKey != e.event.PubKey {
 		// read-only
 		e.AddChild("title", e.NewPersistentInode(
 			e.root.ctx,
 			&DeterministicFile{
 				get: func() (ctime uint64, mtime uint64, data string) {
-					var title string
-					if tag := e.event.Tags.Find("title"); tag != nil {
-						title = tag[1]
-					} else {
-						title = e.event.Tags.GetD()
-					}
-					return uint64(e.event.CreatedAt), publishedAt, title
+					return uint64(e.event.CreatedAt), e.PublishedAt(), e.Title()
 				},
 			},
 			fs.StableAttr{},
 		), true)
-		e.AddChild("content."+e.extension, e.NewPersistentInode(
+		e.AddChild("content."+kindToExtension(e.event.Kind), e.NewPersistentInode(
 			e.root.ctx,
 			&DeterministicFile{
 				get: func() (ctime uint64, mtime uint64, data string) {
-					return uint64(e.event.CreatedAt), publishedAt, e.event.Content
+					return uint64(e.event.CreatedAt), e.PublishedAt(), e.event.Content
 				},
 			},
 			fs.StableAttr{},
 		), true)
 	} else {
 		// writeable
-		if tag := e.event.Tags.Find("title"); tag != nil {
-			e.updating.title = tag[1]
-		}
+		e.updating.title = e.Title()
+		e.updating.publishedAt = e.PublishedAt()
 		e.updating.content = e.event.Content
 
 		e.AddChild("title", e.NewPersistentInode(
 			e.root.ctx,
-			e.root.NewWriteableFile(e.updating.title, uint64(e.event.CreatedAt), publishedAt, func(s string) {
+			e.root.NewWriteableFile(e.updating.title, uint64(e.event.CreatedAt), e.updating.publishedAt, func(s string) {
 				log("title updated")
 				e.updating.title = strings.TrimSpace(s)
 				e.handleWrite()
@@ -175,9 +167,9 @@ func (e *EntityDir) OnAdd(_ context.Context) {
 			fs.StableAttr{},
 		), true)
 
-		e.AddChild("content."+e.extension, e.NewPersistentInode(
+		e.AddChild("content."+kindToExtension(e.event.Kind), e.NewPersistentInode(
 			e.root.ctx,
-			e.root.NewWriteableFile(e.updating.content, uint64(e.event.CreatedAt), publishedAt, func(s string) {
+			e.root.NewWriteableFile(e.updating.content, uint64(e.event.CreatedAt), e.updating.publishedAt, func(s string) {
 				log("content updated")
 				e.updating.content = strings.TrimSpace(s)
 				e.handleWrite()
@@ -254,21 +246,51 @@ func (e *EntityDir) OnAdd(_ context.Context) {
 	}
 }
 
+func (e *EntityDir) IsNew() bool {
+	return e.event.CreatedAt == 0
+}
+
+func (e *EntityDir) PublishedAt() uint64 {
+	if tag := e.event.Tags.Find("published_at"); tag != nil {
+		publishedAt, _ := strconv.ParseUint(tag[1], 10, 64)
+		return publishedAt
+	}
+	return uint64(e.event.CreatedAt)
+}
+
+func (e *EntityDir) Title() string {
+	if tag := e.event.Tags.Find("title"); tag != nil {
+		return tag[1]
+	}
+	return ""
+}
+
 func (e *EntityDir) handleWrite() {
 	log := e.root.ctx.Value("log").(func(msg string, args ...any))
+	logverbose := e.root.ctx.Value("logverbose").(func(msg string, args ...any))
 
-	if e.publisher.IsRunning() {
-		log(", timer reset")
+	if e.root.opts.AutoPublishTimeout.Hours() < 24*365 {
+		if e.publisher.IsRunning() {
+			log(", timer reset")
+		}
+		log(", will publish the ")
+		if e.IsNew() {
+			log("new")
+		} else {
+			log("updated")
+		}
+		log(" event in %d seconds...\n", e.root.opts.AutoPublishTimeout.Seconds())
+	} else {
+		log(".\n")
 	}
-	log(", will publish the updated event in 30 seconds...\n")
 	if !e.publisher.IsRunning() {
 		log("- `touch publish` to publish immediately\n")
-		log("- `rm title content." + e.extension + "` to erase and cancel the edits\n")
+		log("- `rm title content." + kindToExtension(e.event.Kind) + "` to erase and cancel the edits\n")
 	}
 
 	e.publisher.Call(func() {
-		if currentTitle := e.event.Tags.Find("title"); (currentTitle != nil && currentTitle[1] == e.updating.title) || (currentTitle == nil && e.updating.title == "") && e.updating.content == e.event.Content {
-			log("back into the previous state, not publishing.\n")
+		if e.Title() == e.updating.title && e.event.Content == e.updating.content {
+			log("not modified, publish canceled.\n")
 			return
 		}
 
@@ -278,7 +300,7 @@ func (e *EntityDir) handleWrite() {
 			Tags:      make(nostr.Tags, len(e.event.Tags)),
 			CreatedAt: nostr.Now(),
 		}
-		copy(evt.Tags, e.event.Tags)
+		copy(evt.Tags, e.event.Tags) // copy tags because that's the rule
 		if e.updating.title != "" {
 			if titleTag := evt.Tags.Find("title"); titleTag != nil {
 				titleTag[1] = e.updating.title
@@ -286,24 +308,42 @@ func (e *EntityDir) handleWrite() {
 				evt.Tags = append(evt.Tags, nostr.Tag{"title", e.updating.title})
 			}
 		}
-		if publishedAtTag := evt.Tags.Find("published_at"); publishedAtTag == nil {
-			evt.Tags = append(evt.Tags, nostr.Tag{
-				"published_at",
-				strconv.FormatInt(int64(e.event.CreatedAt), 10),
-			})
+
+		// "published_at" tag
+		publishedAtStr := strconv.FormatUint(e.updating.publishedAt, 10)
+		if publishedAtStr != "0" {
+			if publishedAtTag := evt.Tags.Find("published_at"); publishedAtTag != nil {
+				publishedAtTag[1] = publishedAtStr
+			} else {
+				evt.Tags = append(evt.Tags, nostr.Tag{"published_at", publishedAtStr})
+			}
 		}
+
+		// add "p" tags from people mentioned and "q" tags from events mentioned
 		for ref := range nip27.ParseReferences(evt) {
 			tag := ref.Pointer.AsTag()
-			if existing := evt.Tags.FindWithValue(tag[0], tag[1]); existing == nil {
+			key := tag[0]
+			val := tag[1]
+			if key == "e" || key == "a" {
+				key = "q"
+			}
+			if existing := evt.Tags.FindWithValue(key, val); existing == nil {
 				evt.Tags = append(evt.Tags, tag)
 			}
 		}
+
+		// sign and publish
 		if err := e.root.signer.SignEvent(e.root.ctx, &evt); err != nil {
 			log("failed to sign: '%s'.\n", err)
 			return
 		}
+		logverbose("%s\n", evt)
 
 		relays := e.root.sys.FetchWriteRelays(e.root.ctx, evt.PubKey, 8)
+		if len(relays) == 0 {
+			relays = e.root.sys.FetchOutboxRelays(e.root.ctx, evt.PubKey, 6)
+		}
+
 		log("publishing to %d relays... ", len(relays))
 		success := false
 		first := true
@@ -330,6 +370,7 @@ func (e *EntityDir) handleWrite() {
 		if success {
 			e.event = &evt
 			log("event updated locally.\n")
+			e.updating.publishedAt = uint64(evt.CreatedAt) // set this so subsequent edits get the correct value
 		} else {
 			log("failed.\n")
 		}
@@ -348,17 +389,16 @@ func (r *NostrRoot) FetchAndCreateEntityDir(
 		return nil, fmt.Errorf("failed to fetch: %w", err)
 	}
 
-	return r.CreateEntityDir(parent, extension, event), nil
+	return r.CreateEntityDir(parent, event), nil
 }
 
 func (r *NostrRoot) CreateEntityDir(
 	parent fs.InodeEmbedder,
-	extension string,
 	event *nostr.Event,
 ) *fs.Inode {
 	return parent.EmbeddedInode().NewPersistentInode(
 		r.ctx,
-		&EntityDir{root: r, event: event, publisher: debouncer.New(time.Second * 30), extension: extension},
-		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(event.ID)},
+		&EntityDir{root: r, event: event, publisher: debouncer.New(r.opts.AutoPublishTimeout)},
+		fs.StableAttr{Mode: syscall.S_IFDIR},
 	)
 }

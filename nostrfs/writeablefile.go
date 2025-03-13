@@ -48,16 +48,18 @@ func (f *WriteableFile) Open(ctx context.Context, flags uint32) (fh fs.FileHandl
 func (f *WriteableFile) Write(ctx context.Context, fh fs.FileHandle, data []byte, off int64) (uint32, syscall.Errno) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	end := int64(len(data)) + off
-	if int64(len(f.data)) < end {
-		n := make([]byte, end)
-		copy(n, f.data)
-		f.data = n
+
+	offset := int(off)
+	end := offset + len(data)
+	if len(f.data) < end {
+		newData := make([]byte, offset+len(data))
+		copy(newData, f.data)
+		f.data = newData
 	}
-	copy(f.data[off:off+int64(len(data))], data)
+	copy(f.data[offset:], data)
+	f.data = f.data[0:end]
 
 	f.onWrite(string(f.data))
-
 	return uint32(len(data)), fs.OK
 }
 
@@ -69,7 +71,7 @@ func (f *WriteableFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 	return fs.OK
 }
 
-func (f *WriteableFile) Setattr(ctx context.Context, fh fs.FileHandle, in *fuse.SetAttrIn, out *fuse.AttrOut) syscall.Errno {
+func (f *WriteableFile) Setattr(_ context.Context, _ fs.FileHandle, _ *fuse.SetAttrIn, _ *fuse.AttrOut) syscall.Errno {
 	return fs.OK
 }
 

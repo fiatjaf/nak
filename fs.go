@@ -33,6 +33,11 @@ var fsCmd = &cli.Command{
 				return fmt.Errorf("invalid public key '%s'", pk)
 			},
 		},
+		&cli.DurationFlag{
+			Name:  "auto-publish",
+			Usage: "delay after which edited articles will be auto-published.",
+			Value: time.Hour * 24 * 365 * 2,
+		},
 	),
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -49,10 +54,19 @@ var fsCmd = &cli.Command{
 		}
 
 		root := nostrfs.NewNostrRoot(
-			context.WithValue(ctx, "log", log),
+			context.WithValue(
+				context.WithValue(
+					ctx,
+					"log", log,
+				),
+				"logverbose", logverbose,
+			),
 			sys,
 			kr,
 			mountpoint,
+			nostrfs.Options{
+				AutoPublishTimeout: c.Duration("auto-publish"),
+			},
 		)
 
 		// create the server
@@ -60,9 +74,10 @@ var fsCmd = &cli.Command{
 		timeout := time.Second * 120
 		server, err := fs.Mount(mountpoint, root, &fs.Options{
 			MountOptions: fuse.MountOptions{
-				Debug:  isVerbose,
-				Name:   "nak",
-				FsName: "nak",
+				Debug:          isVerbose,
+				Name:           "nak",
+				FsName:         "nak",
+				RememberInodes: true,
 			},
 			AttrTimeout:  &timeout,
 			EntryTimeout: &timeout,
@@ -71,7 +86,7 @@ var fsCmd = &cli.Command{
 		if err != nil {
 			return fmt.Errorf("mount failed: %w", err)
 		}
-		log("ok\n")
+		log("ok.\n")
 
 		// setup signal handling for clean unmount
 		ch := make(chan os.Signal, 1)
