@@ -15,7 +15,8 @@ import (
 )
 
 type Options struct {
-	AutoPublishTimeout time.Duration // a negative number means do not publish
+	AutoPublishNotesTimeout    time.Duration
+	AutoPublishArticlesTimeout time.Duration
 }
 
 type NostrRoot struct {

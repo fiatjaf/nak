@@ -269,17 +269,17 @@ func (e *EntityDir) handleWrite() {
 	log := e.root.ctx.Value("log").(func(msg string, args ...any))
 	logverbose := e.root.ctx.Value("logverbose").(func(msg string, args ...any))
 
-	if e.root.opts.AutoPublishTimeout.Hours() < 24*365 {
+	if e.root.opts.AutoPublishArticlesTimeout.Hours() < 24*365 {
 		if e.publisher.IsRunning() {
 			log(", timer reset")
 		}
-		log(", will publish the ")
+		log(", publishing the ")
 		if e.IsNew() {
 			log("new")
 		} else {
 			log("updated")
 		}
-		log(" event in %d seconds...\n", e.root.opts.AutoPublishTimeout.Seconds())
+		log(" event in %d seconds...\n", int(e.root.opts.AutoPublishArticlesTimeout.Seconds()))
 	} else {
 		log(".\n")
 	}
@@ -339,9 +339,9 @@ func (e *EntityDir) handleWrite() {
 		}
 		logverbose("%s\n", evt)
 
-		relays := e.root.sys.FetchWriteRelays(e.root.ctx, evt.PubKey, 8)
+		relays := e.root.sys.FetchWriteRelays(e.root.ctx, e.root.rootPubKey, 8)
 		if len(relays) == 0 {
-			relays = e.root.sys.FetchOutboxRelays(e.root.ctx, evt.PubKey, 6)
+			relays = e.root.sys.FetchOutboxRelays(e.root.ctx, e.root.rootPubKey, 6)
 		}
 
 		log("publishing to %d relays... ", len(relays))
@@ -398,7 +398,7 @@ func (r *NostrRoot) CreateEntityDir(
 ) *fs.Inode {
 	return parent.EmbeddedInode().NewPersistentInode(
 		r.ctx,
-		&EntityDir{root: r, event: event, publisher: debouncer.New(r.opts.AutoPublishTimeout)},
+		&EntityDir{root: r, event: event, publisher: debouncer.New(r.opts.AutoPublishArticlesTimeout)},
 		fs.StableAttr{Mode: syscall.S_IFDIR},
 	)
 }

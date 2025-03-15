@@ -34,9 +34,15 @@ var fsCmd = &cli.Command{
 			},
 		},
 		&cli.DurationFlag{
-			Name:  "auto-publish",
-			Usage: "delay after which edited articles will be auto-published.",
-			Value: time.Hour * 24 * 365 * 2,
+			Name:  "auto-publish-notes",
+			Usage: "delay after which new notes will be auto-published, set to -1 to not publish.",
+			Value: time.Second * 30,
+		},
+		&cli.DurationFlag{
+			Name:        "auto-publish-articles",
+			Usage:       "delay after which edited articles will be auto-published.",
+			Value:       time.Hour * 24 * 365 * 2,
+			DefaultText: "basically infinite",
 		},
 	),
 	DisableSliceFlagSeparator: true,
@@ -53,6 +59,15 @@ var fsCmd = &cli.Command{
 			kr = keyer.NewReadOnlyUser(c.String("pubkey"))
 		}
 
+		apnt := c.Duration("auto-publish-notes")
+		if apnt < 0 {
+			apnt = time.Hour * 24 * 365 * 3
+		}
+		apat := c.Duration("auto-publish-articles")
+		if apat < 0 {
+			apat = time.Hour * 24 * 365 * 3
+		}
+
 		root := nostrfs.NewNostrRoot(
 			context.WithValue(
 				context.WithValue(
@@ -65,7 +80,8 @@ var fsCmd = &cli.Command{
 			kr,
 			mountpoint,
 			nostrfs.Options{
-				AutoPublishTimeout: c.Duration("auto-publish"),
+				AutoPublishNotesTimeout:    apnt,
+				AutoPublishArticlesTimeout: apat,
 			},
 		)
 

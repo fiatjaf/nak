@@ -17,7 +17,7 @@ require (
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.51.3-0.20250312034958-cc23d81e8055
+	github.com/nbd-wtf/go-nostr v0.51.5
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 )
@@ -75,5 +75,3 @@ require (
 	golang.org/x/sys v0.31.0 // indirect
 	golang.org/x/text v0.23.0 // indirect
 )
-
-replace github.com/nbd-wtf/go-nostr => ../go-nostr

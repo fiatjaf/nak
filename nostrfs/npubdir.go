@@ -122,6 +122,7 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 					paginate:    true,
 					relays:      relays,
 					replaceable: false,
+					createable:  true,
 				},
 				fs.StableAttr{Mode: syscall.S_IFDIR},
 			),

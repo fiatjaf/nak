@@ -71,7 +71,10 @@ func (f *WriteableFile) Getattr(ctx context.Context, fh fs.FileHandle, out *fuse
 	return fs.OK
 }
 
-func (f *WriteableFile) Setattr(_ context.Context, _ fs.FileHandle, _ *fuse.SetAttrIn, _ *fuse.AttrOut) syscall.Errno {
+func (f *WriteableFile) Setattr(_ context.Context, _ fs.FileHandle, in *fuse.SetAttrIn, _ *fuse.AttrOut) syscall.Errno {
+	f.attr.Mtime = in.Mtime
+	f.attr.Atime = in.Atime
+	f.attr.Ctime = in.Ctime
 	return fs.OK
 }
 
