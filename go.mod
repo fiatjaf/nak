@@ -10,14 +10,14 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fatih/color v1.16.0
 	github.com/fiatjaf/eventstore v0.16.2
-	github.com/fiatjaf/khatru v0.17.3-0.20250312035319-596bca93c3ff
+	github.com/fiatjaf/khatru v0.17.4
 	github.com/hanwen/go-fuse/v2 v2.7.2
 	github.com/json-iterator/go v1.1.12
 	github.com/liamg/magic v0.0.1
 	github.com/mailru/easyjson v0.9.0
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
-	github.com/nbd-wtf/go-nostr v0.51.5
+	github.com/nbd-wtf/go-nostr v0.51.6
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
 )
