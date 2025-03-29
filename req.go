@@ -84,7 +84,7 @@ example:
 						defer func() {
 							if err != nil {
 								log("auth to %s failed: %s\n",
-									(*authEvent.Tags.GetFirst([]string{"relay", ""}))[1],
+									authEvent.Tags.Find("relay")[1],
 									err,
 								)
 							}

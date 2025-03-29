@@ -176,8 +176,8 @@ relayLoop:
 					// beginhack
 					// here starts the biggest and ugliest hack of this codebase
 					if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
-						challengeTag := authEvent.Tags.GetFirst([]string{"challenge", ""})
-						if (*challengeTag)[1] == "" {
+						challengeTag := authEvent.Tags.Find("challenge")
+						if challengeTag[1] == "" {
 							return fmt.Errorf("auth not received yet *****")
 						}
 						return signer(ctx, nostr.RelayEvent{Event: authEvent, Relay: relay})
