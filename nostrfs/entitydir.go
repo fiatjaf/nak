@@ -348,11 +348,7 @@ func (e *EntityDir) handleWrite() {
 		success := false
 		first := true
 		for res := range e.root.sys.Pool.PublishMany(e.root.ctx, relays, evt) {
-			cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-			if !ok {
-				cleanUrl = res.RelayURL
-			}
-
+			cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 			if !first {
 				log(", ")
 			}

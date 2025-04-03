@@ -49,7 +49,7 @@ var bunker = &cli.Command{
 		qs := url.Values{}
 		relayURLs := make([]string, 0, c.Args().Len())
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, relayUrls, nil)
+			relays := connectToAllRelays(ctx, c, relayUrls, nil)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)

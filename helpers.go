@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"math/rand"
@@ -19,6 +20,7 @@ import (
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -151,8 +153,9 @@ func normalizeAndValidateRelayURLs(wsurls []string) error {
 
 func connectToAllRelays(
 	ctx context.Context,
+	c *cli.Command,
 	relayUrls []string,
-	preAuthSigner func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error), // if this exists we will force preauth
+	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error), // if this exists we will force preauth
 	opts ...nostr.PoolOption,
 ) []*nostr.Relay {
 	sys.Pool = nostr.NewSimplePool(context.Background(),
@@ -198,7 +201,7 @@ func connectToAllRelays(
 			colorizepreamble(color.CyanString)
 
 			go func() {
-				relay := connectToSingleRelay(ctx, url, preAuthSigner, colorizepreamble, logthis)
+				relay := connectToSingleRelay(ctx, c, url, preAuthSigner, colorizepreamble, logthis)
 				if relay != nil {
 					relays = append(relays, relay)
 				}
@@ -210,7 +213,7 @@ func connectToAllRelays(
 		// simple flow
 		for _, url := range relayUrls {
 			log("connecting to %s... ", color.CyanString(url))
-			relay := connectToSingleRelay(ctx, url, preAuthSigner, nil, log)
+			relay := connectToSingleRelay(ctx, c, url, preAuthSigner, nil, log)
 			if relay != nil {
 				relays = append(relays, relay)
 			}
@@ -223,8 +226,9 @@ func connectToAllRelays(
 
 func connectToSingleRelay(
 	ctx context.Context,
+	c *cli.Command,
 	url string,
-	preAuthSigner func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error),
+	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error),
 	colorizepreamble func(c func(string, ...any) string),
 	logthis func(s string, args ...any),
 ) *nostr.Relay {
@@ -242,7 +246,7 @@ func connectToSingleRelay(
 					if challengeTag[1] == "" {
 						return fmt.Errorf("auth not received yet *****") // what a giant hack
 					}
-					return preAuthSigner(ctx, logthis, nostr.RelayEvent{Event: authEvent, Relay: relay})
+					return preAuthSigner(ctx, c, logthis, nostr.RelayEvent{Event: authEvent, Relay: relay})
 				}); err == nil {
 					// auth succeeded
 					goto preauthSuccess
@@ -255,7 +259,7 @@ func connectToSingleRelay(
 					} else {
 						// it failed for some other reason, so skip this relay
 						if colorizepreamble != nil {
-							colorizepreamble(color.RedString)
+							colorizepreamble(colors.errorf)
 						}
 						logthis(err.Error())
 						return nil
@@ -263,7 +267,7 @@ func connectToSingleRelay(
 				}
 			}
 			if colorizepreamble != nil {
-				colorizepreamble(color.RedString)
+				colorizepreamble(colors.errorf)
 			}
 			logthis("failed to get an AUTH challenge in enough time.")
 			return nil
@@ -271,15 +275,18 @@ func connectToSingleRelay(
 
 	preauthSuccess:
 		if colorizepreamble != nil {
-			colorizepreamble(color.GreenString)
+			colorizepreamble(colors.successf)
 		}
 		logthis("ok.")
 		return relay
 	} else {
 		if colorizepreamble != nil {
-			colorizepreamble(color.RedString)
+			colorizepreamble(colors.errorf)
 		}
-		logthis(err.Error())
+
+		// if we're here that means we've failed to connect, this may be a huge message
+		// but we're likely to only be interested in the lowest level error (although we can leave space)
+		logthis(clampError(err, len(url)+12))
 		return nil
 	}
 }
@@ -309,6 +316,29 @@ func supportsDynamicMultilineMagic() bool {
 	return true
 }
 
+func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error) {
+	defer func() {
+		if err != nil {
+			cleanUrl, _ := strings.CutPrefix(authEvent.Relay.URL, "wss://")
+			log("%s auth failed: %s", colors.errorf(cleanUrl), err)
+		}
+	}()
+
+	if !c.Bool("auth") && !c.Bool("force-pre-auth") {
+		return fmt.Errorf("auth required, but --auth flag not given")
+	}
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return err
+	}
+
+	pk, _ := kr.GetPublicKey(ctx)
+	npub, _ := nip19.EncodePublicKey(pk)
+	log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
+
+	return kr.SignEvent(ctx, authEvent.Event)
+}
+
 func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {
 	log(msg+"\n", args...)
 	return context.WithValue(ctx, LINE_PROCESSING_ERROR, true)
@@ -334,16 +364,50 @@ func leftPadKey(k string) string {
 	return strings.Repeat("0", 64-len(k)) + k
 }
 
+func unwrapAll(err error) error {
+	low := err
+	for n := low; n != nil; n = errors.Unwrap(low) {
+		low = n
+	}
+	return low
+}
+
+func clampMessage(msg string, prefixAlreadyPrinted int) string {
+	termSize, _, _ := term.GetSize(0)
+	if len(msg) > termSize-prefixAlreadyPrinted {
+		msg = msg[0:termSize-prefixAlreadyPrinted-1] + "…"
+	}
+	return msg
+}
+
+func clampError(err error, prefixAlreadyPrinted int) string {
+	termSize, _, _ := term.GetSize(0)
+	msg := err.Error()
+	if len(msg) > termSize-prefixAlreadyPrinted {
+		err = unwrapAll(err)
+		msg = clampMessage(err.Error(), prefixAlreadyPrinted)
+	}
+	return msg
+}
+
 var colors = struct {
-	reset   func(...any) (int, error)
-	italic  func(...any) string
-	italicf func(string, ...any) string
-	bold    func(...any) string
-	boldf   func(string, ...any) string
+	reset    func(...any) (int, error)
+	italic   func(...any) string
+	italicf  func(string, ...any) string
+	bold     func(...any) string
+	boldf    func(string, ...any) string
+	error    func(...any) string
+	errorf   func(string, ...any) string
+	success  func(...any) string
+	successf func(string, ...any) string
 }{
 	color.New(color.Reset).Print,
 	color.New(color.Italic).Sprint,
 	color.New(color.Italic).Sprintf,
 	color.New(color.Bold).Sprint,
 	color.New(color.Bold).Sprintf,
+	color.New(color.Bold, color.FgHiRed).Sprint,
+	color.New(color.Bold, color.FgHiRed).Sprintf,
+	color.New(color.Bold, color.FgHiGreen).Sprint,
+	color.New(color.Bold, color.FgHiGreen).Sprintf,
 }

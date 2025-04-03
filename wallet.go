@@ -6,7 +6,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip60"
 	"github.com/nbd-wtf/go-nostr/nip61"
@@ -60,20 +59,16 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 		log("- saving kind:%d event (%s)... ", event.Kind, desc)
 		first := true
 		for res := range sys.Pool.PublishMany(ctx, relays, event) {
-			cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-			if !ok {
-				cleanUrl = res.RelayURL
-			}
-
+			cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 			if !first {
 				log(", ")
 			}
 			first = false
 
 			if res.Error != nil {
-				log("%s: %s", color.RedString(cleanUrl), res.Error)
+				log("%s: %s", colors.errorf(cleanUrl), res.Error)
 			} else {
-				log("%s: ok", color.GreenString(cleanUrl))
+				log("%s: ok", colors.successf(cleanUrl))
 			}
 		}
 		log("\n")
@@ -376,19 +371,15 @@ var wallet = &cli.Command{
 				log("- publishing nutzap... ")
 				first := true
 				for res := range results {
-					cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-					if !ok {
-						cleanUrl = res.RelayURL
-					}
-
+					cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 					if !first {
 						log(", ")
 					}
 					first = false
 					if res.Error != nil {
-						log("%s: %s", color.RedString(cleanUrl), res.Error)
+						log("%s: %s", colors.errorf(cleanUrl), res.Error)
 					} else {
-						log("%s: ok", color.GreenString(cleanUrl))
+						log("%s: ok", colors.successf(cleanUrl))
 					}
 				}
 
@@ -463,10 +454,7 @@ var wallet = &cli.Command{
 						log("- saving kind:10019 event... ")
 						first := true
 						for res := range sys.Pool.PublishMany(ctx, relays, evt) {
-							cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-							if !ok {
-								cleanUrl = res.RelayURL
-							}
+							cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 
 							if !first {
 								log(", ")
@@ -474,9 +462,9 @@ var wallet = &cli.Command{
 							first = false
 
 							if res.Error != nil {
-								log("%s: %s", color.RedString(cleanUrl), res.Error)
+								log("%s: %s", colors.errorf(cleanUrl), res.Error)
 							} else {
-								log("%s: ok", color.GreenString(cleanUrl))
+								log("%s: ok", colors.successf(cleanUrl))
 							}
 						}
 

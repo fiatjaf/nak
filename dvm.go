@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fatih/color"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip90"
 	"github.com/urfave/cli/v3"
@@ -60,7 +59,7 @@ var dvm = &cli.Command{
 				Flags:                     flags,
 				Action: func(ctx context.Context, c *cli.Command) error {
 					relayUrls := c.StringSlice("relay")
-					relays := connectToAllRelays(ctx, relayUrls, nil)
+					relays := connectToAllRelays(ctx, c, relayUrls, nil)
 					if len(relays) == 0 {
 						log("failed to connect to any of the given relays.\n")
 						os.Exit(3)
@@ -103,10 +102,7 @@ var dvm = &cli.Command{
 					log("- publishing job request... ")
 					first := true
 					for res := range sys.Pool.PublishMany(ctx, relayUrls, evt) {
-						cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-						if !ok {
-							cleanUrl = res.RelayURL
-						}
+						cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 
 						if !first {
 							log(", ")
@@ -114,9 +110,9 @@ var dvm = &cli.Command{
 						first = false
 
 						if res.Error != nil {
-							log("%s: %s", color.RedString(cleanUrl), res.Error)
+							log("%s: %s", colors.errorf(cleanUrl), res.Error)
 						} else {
-							log("%s: ok", color.GreenString(cleanUrl))
+							log("%s: ok", colors.successf(cleanUrl))
 						}
 					}
 

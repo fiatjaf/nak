@@ -179,11 +179,7 @@ func (n *ViewDir) publishNote() {
 	success := false
 	first := true
 	for res := range n.root.sys.Pool.PublishMany(n.root.ctx, relays, evt) {
-		cleanUrl, ok := strings.CutPrefix(res.RelayURL, "wss://")
-		if !ok {
-			cleanUrl = res.RelayURL
-		}
-
+		cleanUrl, _ := strings.CutPrefix(res.RelayURL, "wss://")
 		if !first {
 			log(", ")
 		}
