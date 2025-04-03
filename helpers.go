@@ -209,7 +209,7 @@ func connectToAllRelays(
 	} else {
 		// simple flow
 		for _, url := range relayUrls {
-			log("connecting to %s... ", url)
+			log("connecting to %s... ", color.CyanString(url))
 			relay := connectToSingleRelay(ctx, url, preAuthSigner, nil, log)
 			if relay != nil {
 				relays = append(relays, relay)

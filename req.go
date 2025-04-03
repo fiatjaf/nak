@@ -6,6 +6,7 @@ import (
 	"os"
 	"strings"
 
+	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
@@ -81,7 +82,7 @@ example:
 			authSigner := func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error) {
 				defer func() {
 					if err != nil {
-						log("auth to %s failed: %s",
+						log("%s failed: %s",
 							authEvent.Tags.Find("relay")[1],
 							err,
 						)
@@ -89,7 +90,7 @@ example:
 				}()
 
 				if !c.Bool("auth") && !c.Bool("force-pre-auth") {
-					return fmt.Errorf("auth not authorized")
+					return fmt.Errorf("auth required, but --auth flag not given")
 				}
 				kr, _, err := gatherKeyerFromArguments(ctx, c)
 				if err != nil {
@@ -98,7 +99,7 @@ example:
 
 				pk, _ := kr.GetPublicKey(ctx)
 				npub, _ := nip19.EncodePublicKey(pk)
-				log("performing auth as %s…%s... ", npub[0:7], npub[58:])
+				log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
 
 				return kr.SignEvent(ctx, authEvent.Event)
 			}
@@ -112,7 +113,13 @@ example:
 				relayUrls,
 				forcePreAuthSigner,
 				nostr.WithAuthHandler(func(ctx context.Context, authEvent nostr.RelayEvent) error {
-					return authSigner(ctx, func(s string, args ...any) { log(s+"\n", args...) }, authEvent)
+					return authSigner(ctx, func(s string, args ...any) {
+						if strings.HasPrefix(s, "authenticating as") {
+							url := authEvent.Tags.Find("relay")[1]
+							s = "authenticating to " + color.CyanString(url) + " as" + s[len("authenticating as"):]
+						}
+						log(s+"\n", args...)
+					}, authEvent)
 				}),
 			)
 
