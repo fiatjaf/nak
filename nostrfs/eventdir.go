@@ -18,6 +18,7 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip22"
 	"github.com/nbd-wtf/go-nostr/nip27"
+	"github.com/nbd-wtf/go-nostr/nip73"
 	"github.com/nbd-wtf/go-nostr/nip92"
 	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
@@ -191,7 +192,7 @@ func (r *NostrRoot) CreateEventDir(
 		}
 	} else if event.Kind == 1111 {
 		if pointer := nip22.GetThreadRoot(event.Tags); pointer != nil {
-			if xp, ok := pointer.(nostr.ExternalPointer); ok {
+			if xp, ok := pointer.(nip73.ExternalPointer); ok {
 				h.AddChild("@root", h.NewPersistentInode(
 					r.ctx,
 					&fs.MemRegularFile{
@@ -211,7 +212,7 @@ func (r *NostrRoot) CreateEventDir(
 			}
 		}
 		if pointer := nip22.GetImmediateParent(event.Tags); pointer != nil {
-			if xp, ok := pointer.(nostr.ExternalPointer); ok {
+			if xp, ok := pointer.(nip73.ExternalPointer); ok {
 				h.AddChild("@parent", h.NewPersistentInode(
 					r.ctx,
 					&fs.MemRegularFile{
