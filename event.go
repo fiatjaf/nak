@@ -134,7 +134,7 @@ example:
 		// try to connect to the relays here
 		var relays []*nostr.Relay
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays = connectToAllRelays(ctx, relayUrls, false)
+			relays = connectToAllRelays(ctx, relayUrls, nil)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -209,13 +209,19 @@ example:
 			}
 
 			for _, etag := range c.StringSlice("e") {
-				tags = tags.AppendUnique([]string{"e", etag})
+				if tags.FindWithValue("e", etag) == nil {
+					tags = append(tags, nostr.Tag{"e", etag})
+				}
 			}
 			for _, ptag := range c.StringSlice("p") {
-				tags = tags.AppendUnique([]string{"p", ptag})
+				if tags.FindWithValue("p", ptag) == nil {
+					tags = append(tags, nostr.Tag{"p", ptag})
+				}
 			}
 			for _, dtag := range c.StringSlice("d") {
-				tags = tags.AppendUnique([]string{"d", dtag})
+				if tags.FindWithValue("d", dtag) == nil {
+					tags = append(tags, nostr.Tag{"d", dtag})
+				}
 			}
 			if len(tags) > 0 {
 				for _, tag := range tags {

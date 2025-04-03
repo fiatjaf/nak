@@ -8,6 +8,7 @@ import (
 
 	"github.com/mailru/easyjson"
 	"github.com/nbd-wtf/go-nostr"
+	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip77"
 	"github.com/urfave/cli/v3"
 )
@@ -76,35 +77,46 @@ example:
 	Action: func(ctx context.Context, c *cli.Command) error {
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
+			// this is used both for the normal AUTH (after "auth-required:" is received) or forced pre-auth
+			authSigner := func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error) {
+				defer func() {
+					if err != nil {
+						log("auth to %s failed: %s",
+							authEvent.Tags.Find("relay")[1],
+							err,
+						)
+					}
+				}()
+
+				if !c.Bool("auth") && !c.Bool("force-pre-auth") {
+					return fmt.Errorf("auth not authorized")
+				}
+				kr, _, err := gatherKeyerFromArguments(ctx, c)
+				if err != nil {
+					return err
+				}
+
+				pk, _ := kr.GetPublicKey(ctx)
+				npub, _ := nip19.EncodePublicKey(pk)
+				log("performing auth as %s…%s... ", npub[0:7], npub[58:])
+
+				return kr.SignEvent(ctx, authEvent.Event)
+			}
+
+			// connect to all relays we expect to use in this call in parallel
+			forcePreAuthSigner := authSigner
+			if !c.Bool("force-pre-auth") {
+				forcePreAuthSigner = nil
+			}
 			relays := connectToAllRelays(ctx,
 				relayUrls,
-				c.Bool("force-pre-auth"),
-				nostr.WithAuthHandler(
-					func(ctx context.Context, authEvent nostr.RelayEvent) (err error) {
-						defer func() {
-							if err != nil {
-								log("auth to %s failed: %s\n",
-									authEvent.Tags.Find("relay")[1],
-									err,
-								)
-							}
-						}()
-
-						if !c.Bool("auth") && !c.Bool("force-pre-auth") {
-							return fmt.Errorf("auth not authorized")
-						}
-						kr, _, err := gatherKeyerFromArguments(ctx, c)
-						if err != nil {
-							return err
-						}
-
-						pk, _ := kr.GetPublicKey(ctx)
-						log("performing auth as %s... ", pk)
-
-						return kr.SignEvent(ctx, authEvent.Event)
-					},
-				),
+				forcePreAuthSigner,
+				nostr.WithAuthHandler(func(ctx context.Context, authEvent nostr.RelayEvent) error {
+					return authSigner(ctx, func(s string, args ...any) { log(s+"\n", args...) }, authEvent)
+				}),
 			)
+
+			// stop here already if all connections failed
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -121,6 +133,7 @@ example:
 			}()
 		}
 
+		// go line by line from stdin or run once with input from flags
 		for stdinFilter := range getJsonsOrBlank() {
 			filter := nostr.Filter{}
 			if stdinFilter != "" {

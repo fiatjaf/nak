@@ -10,8 +10,10 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"runtime"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/fatih/color"
@@ -19,6 +21,7 @@ import (
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 var sys *sdk.System
@@ -149,7 +152,7 @@ func normalizeAndValidateRelayURLs(wsurls []string) error {
 func connectToAllRelays(
 	ctx context.Context,
 	relayUrls []string,
-	forcePreAuth bool,
+	preAuthSigner func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error), // if this exists we will force preauth
 	opts ...nostr.PoolOption,
 ) []*nostr.Relay {
 	sys.Pool = nostr.NewSimplePool(context.Background(),
@@ -163,50 +166,147 @@ func connectToAllRelays(
 	)
 
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
-relayLoop:
-	for _, url := range relayUrls {
-		log("connecting to %s... ", url)
-		if relay, err := sys.Pool.EnsureRelay(url); err == nil {
-			if forcePreAuth {
-				log("waiting for auth challenge... ")
-				signer := opts[0].(nostr.WithAuthHandler)
-				time.Sleep(time.Millisecond * 200)
-			challengeWaitLoop:
-				for {
-					// beginhack
-					// here starts the biggest and ugliest hack of this codebase
-					if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
-						challengeTag := authEvent.Tags.Find("challenge")
-						if challengeTag[1] == "" {
-							return fmt.Errorf("auth not received yet *****")
-						}
-						return signer(ctx, nostr.RelayEvent{Event: authEvent, Relay: relay})
-					}); err == nil {
-						// auth succeeded
-						break challengeWaitLoop
-					} else {
-						// auth failed
-						if strings.HasSuffix(err.Error(), "auth not received yet *****") {
-							// it failed because we didn't receive the challenge yet, so keep waiting
-							time.Sleep(time.Second)
-							continue challengeWaitLoop
-						} else {
-							// it failed for some other reason, so skip this relay
-							log(err.Error() + "\n")
-							continue relayLoop
-						}
-					}
-					// endhack
-				}
-			}
 
-			relays = append(relays, relay)
-			log("ok.\n")
-		} else {
-			log(err.Error() + "\n")
+	if supportsDynamicMultilineMagic() {
+		// overcomplicated multiline rendering magic
+		lines := make([][][]byte, len(relayUrls))
+		flush := func() {
+			for _, line := range lines {
+				for _, part := range line {
+					os.Stderr.Write(part)
+				}
+				os.Stderr.Write([]byte{'\n'})
+			}
+		}
+		render := func() {
+			clearLines(len(lines))
+			flush()
+		}
+		flush()
+
+		wg := sync.WaitGroup{}
+		wg.Add(len(relayUrls))
+		for i, url := range relayUrls {
+			lines[i] = make([][]byte, 1, 2)
+			logthis := func(s string, args ...any) {
+				lines[i] = append(lines[i], []byte(fmt.Sprintf(s, args...)))
+				render()
+			}
+			colorizepreamble := func(c func(string, ...any) string) {
+				lines[i][0] = []byte(fmt.Sprintf("%s... ", c(url)))
+			}
+			colorizepreamble(color.CyanString)
+
+			go func() {
+				relay := connectToSingleRelay(ctx, url, preAuthSigner, colorizepreamble, logthis)
+				if relay != nil {
+					relays = append(relays, relay)
+				}
+				wg.Done()
+			}()
+		}
+		wg.Wait()
+	} else {
+		// simple flow
+		for _, url := range relayUrls {
+			log("connecting to %s... ", url)
+			relay := connectToSingleRelay(ctx, url, preAuthSigner, nil, log)
+			if relay != nil {
+				relays = append(relays, relay)
+			}
+			log("\n")
 		}
 	}
+
 	return relays
+}
+
+func connectToSingleRelay(
+	ctx context.Context,
+	url string,
+	preAuthSigner func(ctx context.Context, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error),
+	colorizepreamble func(c func(string, ...any) string),
+	logthis func(s string, args ...any),
+) *nostr.Relay {
+	if relay, err := sys.Pool.EnsureRelay(url); err == nil {
+		if preAuthSigner != nil {
+			if colorizepreamble != nil {
+				colorizepreamble(color.YellowString)
+			}
+			logthis("waiting for auth challenge... ")
+			time.Sleep(time.Millisecond * 200)
+
+			for range 5 {
+				if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
+					challengeTag := authEvent.Tags.Find("challenge")
+					if challengeTag[1] == "" {
+						return fmt.Errorf("auth not received yet *****") // what a giant hack
+					}
+					return preAuthSigner(ctx, logthis, nostr.RelayEvent{Event: authEvent, Relay: relay})
+				}); err == nil {
+					// auth succeeded
+					goto preauthSuccess
+				} else {
+					// auth failed
+					if strings.HasSuffix(err.Error(), "auth not received yet *****") {
+						// it failed because we didn't receive the challenge yet, so keep waiting
+						time.Sleep(time.Second)
+						continue
+					} else {
+						// it failed for some other reason, so skip this relay
+						if colorizepreamble != nil {
+							colorizepreamble(color.RedString)
+						}
+						logthis(err.Error())
+						return nil
+					}
+				}
+			}
+			if colorizepreamble != nil {
+				colorizepreamble(color.RedString)
+			}
+			logthis("failed to get an AUTH challenge in enough time.")
+			return nil
+		}
+
+	preauthSuccess:
+		if colorizepreamble != nil {
+			colorizepreamble(color.GreenString)
+		}
+		logthis("ok.")
+		return relay
+	} else {
+		if colorizepreamble != nil {
+			colorizepreamble(color.RedString)
+		}
+		logthis(err.Error())
+		return nil
+	}
+}
+
+func clearLines(lineCount int) {
+	for i := 0; i < lineCount; i++ {
+		os.Stderr.Write([]byte("\033[0A\033[2K\r"))
+	}
+}
+
+func supportsDynamicMultilineMagic() bool {
+	if runtime.GOOS == "windows" {
+		return false
+	}
+	if !term.IsTerminal(0) {
+		return false
+	}
+
+	width, _, err := term.GetSize(0)
+	if err != nil {
+		return false
+	}
+	if width < 110 {
+		return false
+	}
+
+	return true
 }
 
 func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {

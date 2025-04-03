@@ -60,7 +60,7 @@ var dvm = &cli.Command{
 				Flags:                     flags,
 				Action: func(ctx context.Context, c *cli.Command) error {
 					relayUrls := c.StringSlice("relay")
-					relays := connectToAllRelays(ctx, relayUrls, false)
+					relays := connectToAllRelays(ctx, relayUrls, nil)
 					if len(relays) == 0 {
 						log("failed to connect to any of the given relays.\n")
 						os.Exit(3)

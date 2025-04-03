@@ -20,6 +20,7 @@ require (
 	github.com/nbd-wtf/go-nostr v0.51.8
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250305212735-054e65f0b394
+	golang.org/x/term v0.30.0
 )
 
 require (

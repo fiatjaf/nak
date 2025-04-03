@@ -11,10 +11,10 @@ import (
 	"time"
 
 	"github.com/fatih/color"
-	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
+	"github.com/urfave/cli/v3"
 )
 
 var bunker = &cli.Command{
@@ -49,7 +49,7 @@ var bunker = &cli.Command{
 		qs := url.Values{}
 		relayURLs := make([]string, 0, c.Args().Len())
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, relayUrls, false)
+			relays := connectToAllRelays(ctx, relayUrls, nil)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)

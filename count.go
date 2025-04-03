@@ -6,10 +6,10 @@ import (
 	"os"
 	"strings"
 
-	"github.com/urfave/cli/v3"
 	"github.com/nbd-wtf/go-nostr"
 	"github.com/nbd-wtf/go-nostr/nip45"
 	"github.com/nbd-wtf/go-nostr/nip45/hyperloglog"
+	"github.com/urfave/cli/v3"
 )
 
 var count = &cli.Command{
@@ -70,10 +70,7 @@ var count = &cli.Command{
 		biggerUrlSize := 0
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx,
-				relayUrls,
-				false,
-			)
+			relays := connectToAllRelays(ctx, relayUrls, nil)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
