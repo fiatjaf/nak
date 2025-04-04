@@ -229,6 +229,39 @@ type the password to decrypt your secret key: ********
 ~> aria2c $(nak fetch nevent1qqsdsg6x7uujekac4ga7k7qa9q9sx8gqj7xzjf5w9us0dm0ghvf4ugspp4mhxue69uhkummn9ekx7mq6dw9y4 | jq -r '"magnet:?xt=urn:btih:\(tag_value("x"))&dn=\(tag_value("title"))&tr=http%3A%2F%2Ftracker.loadpeers.org%3A8080%2FxvRKfvAlnfuf5EfxTT5T0KIVPtbqAHnX%2Fannounce&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=\(tags("tracker") | map(.[1] | @uri) | join("&tr="))"')
 ```
 
+### mount Nostr as a FUSE filesystem and publish a note
+```shell
+~> nak fs --sec 01 ~/nostr
+- mounting at /home/user/nostr... ok.
+~> cd ~/nostr/npub1xxxxxx/notes/
+~> echo "satellites are bad!" > new
+pending note updated, timer reset.
+- `touch publish` to publish immediately
+- `rm new` to erase and cancel the publication.
+~> touch publish
+publishing now!
+{"id":"f1cbfa6...","pubkey":"...","content":"satellites are bad!","sig":"..."}
+publishing to 3 relays... offchain.pub: ok, nostr.wine: ok, pyramid.fiatjaf.com: ok
+event published as f1cbfa6... and updated locally.
+```
+
+### list NIP-60 wallet tokens and send some
+```shell
+~> nak wallet tokens
+91a10b6fc8bbe7ef2ad9ad0142871d80468b697716d9d2820902db304ff1165e 500 cashu.space
+cac7f89f0611021984d92a7daca219e4cd1c9798950e50e952bba7cde1ac1337 1000 legend.lnbits.com
+~> nak wallet send 100
+cashuA1psxqyry8...
+~> nak wallet pay lnbc1...
+```
+
+### upload and download files with blossom
+```shell
+~> nak blossom --server blossom.azzamo.net --sec 01 upload image.png
+{"sha256":"38c51756f3e9fedf039488a1f6e513286f6743194e7a7f25effdc84a0ee4c2cf","url":"https://blossom.azzamo.net/38c51756f3e9fedf039488a1f6e513286f6743194e7a7f25effdc84a0ee4c2cf.png"}
+~> nak blossom --server aegis.utxo.one download acc8ea43d4e6b706f68b249144364f446854b7f63ba1927371831c05dcf0256c -o downloaded.png
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
