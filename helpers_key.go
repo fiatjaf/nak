@@ -14,6 +14,7 @@ import (
 	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
+	"github.com/mattn/go-tty"
 	"github.com/urfave/cli/v3"
 )
 
@@ -90,9 +91,6 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 	}
 
 	if c.Bool("prompt-sec") {
-		if isPiped() {
-			return nostr.SecretKey{}, nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
-		}
 		var err error
 		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
@@ -141,29 +139,58 @@ func promptDecrypt(ncryptsec string) (nostr.SecretKey, error) {
 }
 
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
-	config := &readline.Config{
-		Stdout:                 color.Error,
-		Prompt:                 color.YellowString(msg),
-		InterruptPrompt:        "^C",
-		DisableAutoSaveHistory: true,
-		EnableMask:             true,
-		MaskRune:               '*',
-	}
+	if isPiped() {
+		// use TTY method when stdin is piped
+		tty, err := tty.Open()
+		if err != nil {
+			return "", fmt.Errorf("can't prompt for a secret key when processing data from a pipe on this system (failed to open /dev/tty: %w), try again without --prompt-sec or provide the key via --sec or NOSTR_SECRET_KEY environment variable", err)
+		}
+		defer tty.Close()
+		for {
+			// print the prompt to stderr so it's visible to the user
+			fmt.Fprintf(os.Stderr, color.YellowString(msg))
 
-	rl, err := readline.NewEx(config)
-	if err != nil {
-		return "", err
-	}
+			// read password from TTY with masking
+			password, err := tty.ReadPassword()
+			if err != nil {
+				return "", err
+			}
 
-	for {
-		answer, err := rl.Readline()
+			// print newline after password input
+			fmt.Fprintln(os.Stderr)
+
+			answer := strings.TrimSpace(string(password))
+			if shouldAskAgain != nil && shouldAskAgain(answer) {
+				continue
+			}
+			return answer, nil
+		}
+	} else {
+		// use normal readline method when stdin is not piped
+		config := &readline.Config{
+			Stdout:                 os.Stderr,
+			Prompt:                 color.YellowString(msg),
+			InterruptPrompt:        "^C",
+			DisableAutoSaveHistory: true,
+			EnableMask:             true,
+			MaskRune:               '*',
+		}
+
+		rl, err := readline.NewEx(config)
 		if err != nil {
 			return "", err
 		}
-		answer = strings.TrimSpace(answer)
-		if shouldAskAgain != nil && shouldAskAgain(answer) {
-			continue
+
+		for {
+			answer, err := rl.Readline()
+			if err != nil {
+				return "", err
+			}
+			answer = strings.TrimSpace(answer)
+			if shouldAskAgain != nil && shouldAskAgain(answer) {
+				continue
+			}
+			return answer, err
 		}
-		return answer, err
 	}
 }
