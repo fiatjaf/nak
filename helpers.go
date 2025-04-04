@@ -305,7 +305,7 @@ func supportsDynamicMultilineMagic() bool {
 		return false
 	}
 
-	width, _, err := term.GetSize(0)
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
 	if err != nil {
 		return false
 	}
@@ -373,7 +373,7 @@ func unwrapAll(err error) error {
 }
 
 func clampMessage(msg string, prefixAlreadyPrinted int) string {
-	termSize, _, _ := term.GetSize(0)
+	termSize, _, _ := term.GetSize(int(os.Stderr.Fd()))
 	if len(msg) > termSize-prefixAlreadyPrinted {
 		msg = msg[0:termSize-prefixAlreadyPrinted-1] + "…"
 	}
