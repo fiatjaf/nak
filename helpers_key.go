@@ -15,6 +15,7 @@ import (
 	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/nbd-wtf/go-nostr/nip49"
+	"golang.org/x/term"
 )
 
 var defaultKeyFlags = []cli.Flag{
@@ -84,9 +85,6 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 	}
 
 	if c.Bool("prompt-sec") {
-		if isPiped() {
-			return "", nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
-		}
 		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
 			return "", nil, fmt.Errorf("failed to get secret key: %w", err)
@@ -133,29 +131,59 @@ func promptDecrypt(ncryptsec string) (string, error) {
 }
 
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {
-	config := &readline.Config{
-		Stdout:                 color.Error,
-		Prompt:                 color.YellowString(msg),
-		InterruptPrompt:        "^C",
-		DisableAutoSaveHistory: true,
-		EnableMask:             true,
-		MaskRune:               '*',
-	}
+	if isPiped() {
+		// Use TTY method when stdin is piped
+		tty, err := os.Open("/dev/tty")
+		if err != nil {
+			return "", fmt.Errorf("can't prompt for a secret key when processing data from a pipe on this system (failed to open /dev/tty: %w), try again without --prompt-sec or provide the key via --sec or NOSTR_SECRET_KEY environment variable", err)
+		}
+		defer tty.Close()
 
-	rl, err := readline.NewEx(config)
-	if err != nil {
-		return "", err
-	}
+		for {
+			// Print the prompt to stderr so it's visible to the user
+			fmt.Fprintf(color.Error, color.YellowString(msg))
 
-	for {
-		answer, err := rl.Readline()
+			// Read password from TTY with masking
+			password, err := term.ReadPassword(int(tty.Fd()))
+			if err != nil {
+				return "", err
+			}
+
+			// Print newline after password input
+			fmt.Fprintln(color.Error)
+
+			answer := strings.TrimSpace(string(password))
+			if shouldAskAgain != nil && shouldAskAgain(answer) {
+				continue
+			}
+			return answer, nil
+		}
+	} else {
+		// Use normal readline method when stdin is not piped
+		config := &readline.Config{
+			Stdout:                 color.Error,
+			Prompt:                 color.YellowString(msg),
+			InterruptPrompt:        "^C",
+			DisableAutoSaveHistory: true,
+			EnableMask:             true,
+			MaskRune:               '*',
+		}
+
+		rl, err := readline.NewEx(config)
 		if err != nil {
 			return "", err
 		}
-		answer = strings.TrimSpace(answer)
-		if shouldAskAgain != nil && shouldAskAgain(answer) {
-			continue
+
+		for {
+			answer, err := rl.Readline()
+			if err != nil {
+				return "", err
+			}
+			answer = strings.TrimSpace(answer)
+			if shouldAskAgain != nil && shouldAskAgain(answer) {
+				continue
+			}
+			return answer, err
 		}
-		return answer, err
 	}
 }
