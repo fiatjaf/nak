@@ -158,6 +158,14 @@ func connectToAllRelays(
 	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error), // if this exists we will force preauth
 	opts ...nostr.PoolOption,
 ) []*nostr.Relay {
+	// first pass to check if these are valid relay URLs
+	for _, url := range relayUrls {
+		if !nostr.IsValidRelayURL(nostr.NormalizeURL(url)) {
+			log("invalid relay URL: %s\n", url)
+			os.Exit(4)
+		}
+	}
+
 	sys.Pool = nostr.NewSimplePool(context.Background(),
 		append(opts,
 			nostr.WithEventMiddleware(sys.TrackEventHints),
@@ -374,7 +382,8 @@ func unwrapAll(err error) error {
 
 func clampMessage(msg string, prefixAlreadyPrinted int) string {
 	termSize, _, _ := term.GetSize(int(os.Stderr.Fd()))
-	if len(msg) > termSize-prefixAlreadyPrinted {
+
+	if len(msg) > termSize-prefixAlreadyPrinted && prefixAlreadyPrinted+1 < termSize {
 		msg = msg[0:termSize-prefixAlreadyPrinted-1] + "…"
 	}
 	return msg
