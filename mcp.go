@@ -28,25 +28,13 @@ var mcpServer = &cli.Command{
 
 		s.AddTool(mcp.NewTool("publish_note",
 			mcp.WithDescription("Publish a short note event to Nostr with the given text content"),
-			mcp.WithString("relay",
-				mcp.Description("Relay to publish the note to"),
-			),
-			mcp.WithString("content",
-				mcp.Required(),
-				mcp.Description("Arbitrary string to be published"),
-			),
-			mcp.WithString("mention",
-				mcp.Required(),
-				mcp.Description("Nostr user's public key to be mentioned"),
-			),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			content, _ := request.Params.Arguments["content"].(string)
-			mention, _ := request.Params.Arguments["mention"].(string)
-			relayI, ok := request.Params.Arguments["relay"]
-			var relay string
-			if ok {
-				relay, _ = relayI.(string)
-			}
+			mcp.WithString("content", mcp.Description("Arbitrary string to be published"), mcp.Required()),
+			mcp.WithString("relay", mcp.Description("Relay to publish the note to")),
+			mcp.WithString("mention", mcp.Description("Nostr user's public key to be mentioned")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			content := required[string](r, "content")
+			mention, _ := optional[string](r, "mention")
+			relay, _ := optional[string](r, "relay")
 
 			if mention != "" && !nostr.IsValidPublicKey(mention) {
 				return mcp.NewToolResultError("the given mention isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
@@ -81,7 +69,9 @@ var mcpServer = &cli.Command{
 			}
 
 			// extra relay specified
-			relays = append(relays, relay)
+			if relay != "" {
+				relays = append(relays, relay)
+			}
 
 			result := strings.Builder{}
 			result.WriteString(
@@ -111,12 +101,9 @@ var mcpServer = &cli.Command{
 
 		s.AddTool(mcp.NewTool("resolve_nostr_uri",
 			mcp.WithDescription("Resolve URIs prefixed with nostr:, including nostr:nevent1..., nostr:npub1..., nostr:nprofile1... and nostr:naddr1..."),
-			mcp.WithString("uri",
-				mcp.Required(),
-				mcp.Description("URI to be resolved"),
-			),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			uri, _ := request.Params.Arguments["uri"].(string)
+			mcp.WithString("uri", mcp.Description("URI to be resolved"), mcp.Required()),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			uri := required[string](r, "uri")
 			if strings.HasPrefix(uri, "nostr:") {
 				uri = uri[6:]
 			}
@@ -159,12 +146,9 @@ var mcpServer = &cli.Command{
 
 		s.AddTool(mcp.NewTool("search_profile",
 			mcp.WithDescription("Search for the public key of a Nostr user given their name"),
-			mcp.WithString("name",
-				mcp.Required(),
-				mcp.Description("Name to be searched"),
-			),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			name, _ := request.Params.Arguments["name"].(string)
+			mcp.WithString("name", mcp.Description("Name to be searched"), mcp.Required()),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			name := required[string](r, "name")
 			re := sys.Pool.QuerySingle(ctx, []string{"relay.nostr.band", "nostr.wine"}, nostr.Filter{Search: name, Kinds: []int{0}})
 			if re == nil {
 				return mcp.NewToolResultError("couldn't find anyone with that name"), nil
@@ -175,42 +159,24 @@ var mcpServer = &cli.Command{
 
 		s.AddTool(mcp.NewTool("get_outbox_relay_for_pubkey",
 			mcp.WithDescription("Get the best relay from where to read notes from a specific Nostr user"),
-			mcp.WithString("pubkey",
-				mcp.Required(),
-				mcp.Description("Public key of Nostr user we want to know the relay from where to read"),
-			),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			pubkey, _ := request.Params.Arguments["pubkey"].(string)
+			mcp.WithString("pubkey", mcp.Description("Public key of Nostr user we want to know the relay from where to read"), mcp.Required()),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			pubkey := required[string](r, "pubkey")
 			res := sys.FetchOutboxRelays(ctx, pubkey, 1)
 			return mcp.NewToolResultText(res[0]), nil
 		})
 
 		s.AddTool(mcp.NewTool("read_events_from_relay",
 			mcp.WithDescription("Makes a REQ query to one relay using the specified parameters, this can be used to fetch notes from a profile"),
-			mcp.WithNumber("kind",
-				mcp.Required(),
-				mcp.Description("event kind number to include in the 'kinds' field"),
-			),
-			mcp.WithString("pubkey",
-				mcp.Description("pubkey to include in the 'authors' field"),
-			),
-			mcp.WithNumber("limit",
-				mcp.Required(),
-				mcp.Description("maximum number of events to query"),
-			),
-			mcp.WithString("relay",
-				mcp.Required(),
-				mcp.Description("relay URL to send the query to"),
-			),
-		), func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			relay, _ := request.Params.Arguments["relay"].(string)
-			limit, _ := request.Params.Arguments["limit"].(int)
-			kind, _ := request.Params.Arguments["kind"].(int)
-			pubkeyI, ok := request.Params.Arguments["pubkey"]
-			var pubkey string
-			if ok {
-				pubkey, _ = pubkeyI.(string)
-			}
+			mcp.WithString("relay", mcp.Description("relay URL to send the query to"), mcp.Required()),
+			mcp.WithNumber("kind", mcp.Description("event kind number to include in the 'kinds' field"), mcp.Required()),
+			mcp.WithNumber("limit", mcp.Description("maximum number of events to query"), mcp.Required()),
+			mcp.WithString("pubkey", mcp.Description("pubkey to include in the 'authors' field")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			relay := required[string](r, "relay")
+			kind := int(required[float64](r, "kind"))
+			limit := int(required[float64](r, "limit"))
+			pubkey, _ := optional[string](r, "pubkey")
 
 			if pubkey != "" && !nostr.IsValidPublicKey(pubkey) {
 				return mcp.NewToolResultError("the given pubkey isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
@@ -241,4 +207,29 @@ var mcpServer = &cli.Command{
 
 		return server.ServeStdio(s)
 	},
+}
+
+func required[T comparable](r mcp.CallToolRequest, p string) T {
+	var zero T
+	if _, ok := r.Params.Arguments[p]; !ok {
+		return zero
+	}
+	if _, ok := r.Params.Arguments[p].(T); !ok {
+		return zero
+	}
+	if r.Params.Arguments[p].(T) == zero {
+		return zero
+	}
+	return r.Params.Arguments[p].(T)
+}
+
+func optional[T any](r mcp.CallToolRequest, p string) (T, bool) {
+	var zero T
+	if _, ok := r.Params.Arguments[p]; !ok {
+		return zero, false
+	}
+	if _, ok := r.Params.Arguments[p].(T); !ok {
+		return zero, false
+	}
+	return r.Params.Arguments[p].(T), true
 }
