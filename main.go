@@ -43,7 +43,6 @@ var app = &cli.Command{
 		wallet,
 		mcpServer,
 		curl,
-		dvm,
 		fsCmd,
 	},
 	Version: version,
