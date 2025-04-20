@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/sdk"
-	"github.com/nbd-wtf/go-nostr/sdk/hints/memoryh"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/sdk"
+	"fiatjaf.com/nostr/sdk/hints/memoryh"
 	"github.com/urfave/cli/v3"
 )
 
@@ -111,13 +111,13 @@ var app = &cli.Command{
 		sys = sdk.NewSystem()
 
 	systemOperational:
-		sys.Pool = nostr.NewSimplePool(context.Background(),
-			nostr.WithAuthorKindQueryMiddleware(sys.TrackQueryAttempts),
-			nostr.WithEventMiddleware(sys.TrackEventHints),
-			nostr.WithRelayOptions(
-				nostr.WithRequestHeader(http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}}),
-			),
-		)
+		sys.Pool = nostr.NewPool(nostr.PoolOptions{
+			AuthorKindQueryMiddleware: sys.TrackQueryAttempts,
+			EventMiddleware:           sys.TrackEventHints,
+			RelayOptions: nostr.RelayOptions{
+				RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
+			},
+		})
 
 		return ctx, nil
 	},

@@ -5,10 +5,10 @@ import (
 	"encoding/hex"
 	"strings"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
 var decode = &cli.Command{
@@ -73,7 +73,7 @@ var decode = &cli.Command{
 				}
 			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
 				decodeResult.PrivateKey.PrivateKey = value.(string)
-				decodeResult.PrivateKey.PublicKey, _ = nostr.GetPublicKey(value.(string))
+				decodeResult.PrivateKey.PublicKey = nostr.GetPublicKey(value.(nostr.SecretKey))
 			} else {
 				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
 				continue

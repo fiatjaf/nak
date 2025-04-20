@@ -6,12 +6,12 @@ import (
 	"syscall"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip05"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip05"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type Options struct {
@@ -25,7 +25,7 @@ type NostrRoot struct {
 	ctx        context.Context
 	wd         string
 	sys        *sdk.System
-	rootPubKey string
+	rootPubKey nostr.PubKey
 	signer     nostr.Signer
 
 	opts Options
@@ -54,7 +54,7 @@ func NewNostrRoot(ctx context.Context, sys *sdk.System, user nostr.User, mountpo
 }
 
 func (r *NostrRoot) OnAdd(_ context.Context) {
-	if r.rootPubKey == "" {
+	if r.rootPubKey == nostr.ZeroPK {
 		return
 	}
 
@@ -65,16 +65,15 @@ func (r *NostrRoot) OnAdd(_ context.Context) {
 		fl := r.sys.FetchFollowList(r.ctx, r.rootPubKey)
 		for _, f := range fl.Items {
 			pointer := nostr.ProfilePointer{PublicKey: f.Pubkey, Relays: []string{f.Relay}}
-			npub, _ := nip19.EncodePublicKey(f.Pubkey)
 			r.AddChild(
-				npub,
+				nip19.EncodeNpub(f.Pubkey),
 				r.CreateNpubDir(r, pointer, nil),
 				true,
 			)
 		}
 
 		// add ourselves
-		npub, _ := nip19.EncodePublicKey(r.rootPubKey)
+		npub := nip19.EncodeNpub(r.rootPubKey)
 		if r.GetChild(npub) == nil {
 			pointer := nostr.ProfilePointer{PublicKey: r.rootPubKey}
 

@@ -3,6 +3,7 @@ package nostrfs
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,16 +12,16 @@ import (
 	"syscall"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip10"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip22"
+	"fiatjaf.com/nostr/nip27"
+	"fiatjaf.com/nostr/nip73"
+	"fiatjaf.com/nostr/nip92"
+	sdk "fiatjaf.com/nostr/sdk"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip10"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip22"
-	"github.com/nbd-wtf/go-nostr/nip27"
-	"github.com/nbd-wtf/go-nostr/nip73"
-	"github.com/nbd-wtf/go-nostr/nip92"
-	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type EventDir struct {
@@ -58,14 +59,13 @@ func (r *NostrRoot) CreateEventDir(
 	h := parent.EmbeddedInode().NewPersistentInode(
 		r.ctx,
 		&EventDir{ctx: r.ctx, wd: r.wd, evt: event},
-		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(event.ID)},
+		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: binary.BigEndian.Uint64(event.ID[8:16])},
 	)
 
-	npub, _ := nip19.EncodePublicKey(event.PubKey)
 	h.AddChild("@author", h.NewPersistentInode(
 		r.ctx,
 		&fs.MemSymlink{
-			Data: []byte(r.wd + "/" + npub),
+			Data: []byte(r.wd + "/" + nip19.EncodeNpub(event.PubKey)),
 		},
 		fs.StableAttr{Mode: syscall.S_IFLNK},
 	), true)
@@ -88,7 +88,7 @@ func (r *NostrRoot) CreateEventDir(
 	h.AddChild("id", h.NewPersistentInode(
 		r.ctx,
 		&fs.MemRegularFile{
-			Data: []byte(event.ID),
+			Data: []byte(event.ID.Hex()),
 			Attr: fuse.Attr{
 				Mode:  0444,
 				Ctime: uint64(event.CreatedAt),
@@ -115,8 +115,12 @@ func (r *NostrRoot) CreateEventDir(
 
 	var refsdir *fs.Inode
 	i := 0
-	for ref := range nip27.ParseReferences(*event) {
+	for ref := range nip27.Parse(event.Content) {
+		if _, isExternal := ref.Pointer.(nip73.ExternalPointer); isExternal {
+			continue
+		}
 		i++
+
 		if refsdir == nil {
 			refsdir = h.NewPersistentInode(r.ctx, &fs.Inode{}, fs.StableAttr{Mode: syscall.S_IFDIR})
 			h.AddChild("references", refsdir, true)

@@ -6,8 +6,8 @@ import (
 	"os"
 	"path/filepath"
 
+	"fiatjaf.com/nostr"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
 )
 
 var outbox = &cli.Command{
@@ -52,12 +52,12 @@ var outbox = &cli.Command{
 					return fmt.Errorf("expected exactly one argument (pubkey)")
 				}
 
-				pubkey := c.Args().First()
-				if !nostr.IsValidPublicKey(pubkey) {
-					return fmt.Errorf("invalid public key: %s", pubkey)
+				pk, err := nostr.PubKeyFromHex(c.Args().First())
+				if err != nil {
+					return fmt.Errorf("invalid public key '%s': %w", c.Args().First(), err)
 				}
 
-				for _, relay := range sys.FetchOutboxRelays(ctx, pubkey, 6) {
+				for _, relay := range sys.FetchOutboxRelays(ctx, pk, 6) {
 					stdout(relay)
 				}
 

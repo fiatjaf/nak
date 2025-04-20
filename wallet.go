@@ -6,10 +6,10 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip60"
-	"github.com/nbd-wtf/go-nostr/nip61"
-	"github.com/nbd-wtf/go-nostr/sdk"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip60"
+	"fiatjaf.com/nostr/nip61"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,7 +30,7 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 		return nil, nil, fmt.Errorf("error loading walle")
 	}
 
-	w.Processed = func(evt *nostr.Event, err error) {
+	w.Processed = func(evt nostr.Event, err error) {
 		if err == nil {
 			logverbose("processed event %s\n", evt)
 		} else {
@@ -321,11 +321,16 @@ var wallet = &cli.Command{
 					return err
 				}
 
-				amount := c.Uint("amount")
+				amount, err := strconv.ParseInt(c.Args().First(), 10, 64)
+				if err != nil {
+					return fmt.Errorf("invalid amount '%s': %w", c.Args().First(), err)
+				}
+
 				target := c.String("target")
+				var pm sdk.ProfileMetadata
 
 				var evt *nostr.Event
-				var eventId string
+				var eventId nostr.ID
 
 				if strings.HasPrefix(target, "nevent1") {
 					evt, _, err = sys.FetchSpecificEventFromInput(ctx, target, sdk.FetchSpecificEventParameters{
@@ -335,12 +340,12 @@ var wallet = &cli.Command{
 						return err
 					}
 					eventId = evt.ID
-					target = evt.PubKey
-				}
-
-				pm, err := sys.FetchProfileFromInput(ctx, target)
-				if err != nil {
-					return err
+					pm = sys.FetchProfileMetadata(ctx, evt.PubKey)
+				} else {
+					pm, err = sys.FetchProfileFromInput(ctx, target)
+					if err != nil {
+						return err
+					}
 				}
 
 				log("sending %d sat to '%s' (%s)", amount, pm.ShortName(), pm.Npub())
@@ -361,7 +366,7 @@ var wallet = &cli.Command{
 					sys.FetchInboxRelays,
 					sys.FetchOutboxRelays(ctx, pm.PubKey, 3),
 					eventId,
-					amount,
+					uint64(amount),
 					c.String("message"),
 				)
 				if err != nil {
@@ -426,14 +431,14 @@ var wallet = &cli.Command{
 
 						kr, _, _ := gatherKeyerFromArguments(ctx, c)
 						pk, _ := kr.GetPublicKey(ctx)
-						relays := sys.FetchWriteRelays(ctx, pk, 6)
+						relays := sys.FetchWriteRelays(ctx, pk)
 
 						info := nip61.Info{}
 						ie := sys.Pool.QuerySingle(ctx, relays, nostr.Filter{
-							Kinds:   []int{10019},
-							Authors: []string{pk},
+							Kinds:   []nostr.Kind{10019},
+							Authors: []nostr.PubKey{pk},
 							Limit:   1,
-						})
+						}, nostr.SubscriptionOptions{})
 						if ie != nil {
 							info.ParseEvent(ie.Event)
 						}

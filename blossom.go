@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/nbd-wtf/go-nostr/keyer"
-	"github.com/nbd-wtf/go-nostr/nipb0/blossom"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/keyer"
+	"fiatjaf.com/nostr/nipb0/blossom"
 	"github.com/urfave/cli/v3"
 )
 
@@ -35,7 +36,11 @@ var blossomCmd = &cli.Command{
 				var client *blossom.Client
 				pubkey := c.Args().First()
 				if pubkey != "" {
-					client = blossom.NewClient(client.GetMediaServer(), keyer.NewReadOnlySigner(pubkey))
+					if pk, err := nostr.PubKeyFromHex(pubkey); err != nil {
+						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
+					} else {
+						client = blossom.NewClient(client.GetMediaServer(), keyer.NewReadOnlySigner(pk))
+					}
 				} else {
 					var err error
 					client, err = getBlossomClient(ctx, c)

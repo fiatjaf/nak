@@ -6,13 +6,13 @@ import (
 	"fmt"
 	"strings"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip49"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr/musig2"
 	"github.com/decred/dcrd/dcrec/secp256k1/v4"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip49"
 )
 
 var key = &cli.Command{
@@ -35,8 +35,8 @@ var generate = &cli.Command{
 	Description:               ``,
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
-		sec := nostr.GeneratePrivateKey()
-		stdout(sec)
+		sec := nostr.Generate()
+		stdout(sec.Hex())
 		return nil
 	},
 }
@@ -54,9 +54,8 @@ var public = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
-		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
-			b, _ := hex.DecodeString(sec)
-			_, pk := btcec.PrivKeyFromBytes(b)
+		for sk := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
+			_, pk := btcec.PrivKeyFromBytes(sk[:])
 
 			if c.Bool("with-parity") {
 				stdout(hex.EncodeToString(pk.SerializeCompressed()))
@@ -264,27 +263,31 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 	},
 }
 
-func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, keys []string) chan string {
-	ch := make(chan string)
+func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, keys []string) chan nostr.SecretKey {
+	ch := make(chan nostr.SecretKey)
 	go func() {
 		for sec := range getStdinLinesOrArgumentsFromSlice(keys) {
 			if sec == "" {
 				continue
 			}
+
+			var sk nostr.SecretKey
 			if strings.HasPrefix(sec, "nsec1") {
 				_, data, err := nip19.Decode(sec)
 				if err != nil {
 					ctx = lineProcessingError(ctx, "invalid nsec code: %s", err)
 					continue
 				}
-				sec = data.(string)
+				sk = data.(nostr.SecretKey)
 			}
-			sec = leftPadKey(sec)
-			if !nostr.IsValid32ByteHex(sec) {
-				ctx = lineProcessingError(ctx, "invalid hex key")
+
+			sk, err := nostr.SecretKeyFromHex(sec)
+			if err != nil {
+				ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
 				continue
 			}
-			ch <- sec
+
+			ch <- sk
 		}
 		close(ch)
 	}()

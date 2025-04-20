@@ -3,8 +3,8 @@ package main
 import (
 	"context"
 
+	"fiatjaf.com/nostr"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
 )
 
 var verify = &cli.Command{
@@ -30,8 +30,8 @@ it outputs nothing if the verification is successful.`,
 				continue
 			}
 
-			if ok, err := evt.CheckSignature(); !ok {
-				ctx = lineProcessingError(ctx, "invalid signature: %v", err)
+			if !evt.VerifySignature() {
+				ctx = lineProcessingError(ctx, "invalid signature")
 				continue
 			}
 		}

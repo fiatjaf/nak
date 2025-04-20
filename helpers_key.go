@@ -2,19 +2,18 @@ package main
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"os"
 	"strings"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/keyer"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip46"
+	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/keyer"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip46"
-	"github.com/nbd-wtf/go-nostr/nip49"
 )
 
 var defaultKeyFlags = []cli.Flag{
@@ -39,10 +38,10 @@ var defaultKeyFlags = []cli.Flag{
 	},
 }
 
-func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer, string, error) {
+func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer, nostr.SecretKey, error) {
 	key, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 	if err != nil {
-		return nil, "", err
+		return nil, nostr.SecretKey{}, err
 	}
 
 	var kr nostr.Keyer
@@ -55,23 +54,27 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer,
 	return kr, key, err
 }
 
-func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (string, *nip46.BunkerClient, error) {
+func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (nostr.SecretKey, *nip46.BunkerClient, error) {
 	var err error
 
 	sec := c.String("sec")
 	if strings.HasPrefix(sec, "bunker://") {
 		// it's a bunker
 		bunkerURL := sec
-		clientKey := c.String("connect-as")
-		if clientKey != "" {
-			clientKey = strings.Repeat("0", 64-len(clientKey)) + clientKey
+		clientKeyHex := c.String("connect-as")
+		var clientKey nostr.SecretKey
+
+		if clientKeyHex != "" {
+			clientKey, err = nostr.SecretKeyFromHex(sec)
 		} else {
-			clientKey = nostr.GeneratePrivateKey()
+			clientKey = nostr.Generate()
 		}
+
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
 			log(color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
-		return "", bunker, err
+
+		return nostr.SecretKey{}, bunker, err
 	}
 
 	// take private from flags, environment variable or default to 1
@@ -85,35 +88,35 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 
 	if c.Bool("prompt-sec") {
 		if isPiped() {
-			return "", nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
+			return nostr.SecretKey{}, nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
 		}
 		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to get secret key: %w", err)
+			return nostr.SecretKey{}, nil, fmt.Errorf("failed to get secret key: %w", err)
 		}
 	}
 
 	if strings.HasPrefix(sec, "ncryptsec1") {
-		sec, err = promptDecrypt(sec)
+		sk, err := promptDecrypt(sec)
 		if err != nil {
-			return "", nil, fmt.Errorf("failed to decrypt: %w", err)
+			return nostr.SecretKey{}, nil, fmt.Errorf("failed to decrypt: %w", err)
 		}
-	} else if bsec, err := hex.DecodeString(leftPadKey(sec)); err == nil {
-		sec = hex.EncodeToString(bsec)
-	} else if prefix, hexvalue, err := nip19.Decode(sec); err != nil {
-		return "", nil, fmt.Errorf("invalid nsec: %w", err)
-	} else if prefix == "nsec" {
-		sec = hexvalue.(string)
+		return sk, nil, nil
 	}
 
-	if ok := nostr.IsValid32ByteHex(sec); !ok {
-		return "", nil, fmt.Errorf("invalid secret key")
+	if prefix, ski, err := nip19.Decode(sec); err == nil && prefix == "nsec" {
+		return ski.(nostr.SecretKey), nil, nil
 	}
 
-	return sec, nil, nil
+	sk, err := nostr.SecretKeyFromHex(sec)
+	if err != nil {
+		return nostr.SecretKey{}, nil, fmt.Errorf("invalid secret key")
+	}
+
+	return sk, nil, nil
 }
 
-func promptDecrypt(ncryptsec string) (string, error) {
+func promptDecrypt(ncryptsec string) (nostr.SecretKey, error) {
 	for i := 1; i < 4; i++ {
 		var attemptStr string
 		if i > 1 {
@@ -121,7 +124,7 @@ func promptDecrypt(ncryptsec string) (string, error) {
 		}
 		password, err := askPassword("type the password to decrypt your secret key"+attemptStr+": ", nil)
 		if err != nil {
-			return "", err
+			return nostr.SecretKey{}, err
 		}
 		sec, err := nip49.Decrypt(ncryptsec, password)
 		if err != nil {
@@ -129,7 +132,7 @@ func promptDecrypt(ncryptsec string) (string, error) {
 		}
 		return sec, nil
 	}
-	return "", fmt.Errorf("couldn't decrypt private key")
+	return nostr.SecretKey{}, fmt.Errorf("couldn't decrypt private key")
 }
 
 func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, error) {

@@ -9,39 +9,39 @@ import (
 	"strconv"
 	"strings"
 
+	"fiatjaf.com/nostr"
 	"github.com/btcsuite/btcd/btcec/v2"
 	"github.com/btcsuite/btcd/btcec/v2/schnorr/musig2"
-	"github.com/nbd-wtf/go-nostr"
 )
 
-func getMusigAggregatedKey(_ context.Context, keys []string) (string, error) {
+func getMusigAggregatedKey(_ context.Context, keys []string) (nostr.PubKey, error) {
 	knownSigners := make([]*btcec.PublicKey, len(keys))
 	for i, spk := range keys {
 		bpk, err := hex.DecodeString(spk)
 		if err != nil {
-			return "", fmt.Errorf("'%s' is invalid hex: %w", spk, err)
+			return nostr.ZeroPK, fmt.Errorf("'%s' is invalid hex: %w", spk, err)
 		}
 		if len(bpk) == 32 {
-			return "", fmt.Errorf("'%s' is missing the leading parity byte", spk)
+			return nostr.ZeroPK, fmt.Errorf("'%s' is missing the leading parity byte", spk)
 		}
 		pk, err := btcec.ParsePubKey(bpk)
 		if err != nil {
-			return "", fmt.Errorf("'%s' is not a valid pubkey: %w", spk, err)
+			return nostr.ZeroPK, fmt.Errorf("'%s' is not a valid pubkey: %w", spk, err)
 		}
 		knownSigners[i] = pk
 	}
 
 	aggpk, _, _, err := musig2.AggregateKeys(knownSigners, true)
 	if err != nil {
-		return "", fmt.Errorf("aggregation failed: %w", err)
+		return nostr.ZeroPK, fmt.Errorf("aggregation failed: %w", err)
 	}
 
-	return hex.EncodeToString(aggpk.FinalKey.SerializeCompressed()[1:]), nil
+	return nostr.PubKey(aggpk.FinalKey.SerializeCompressed()[1:]), nil
 }
 
 func performMusig(
 	_ context.Context,
-	sec string,
+	sec nostr.SecretKey,
 	evt *nostr.Event,
 	numSigners int,
 	keys []string,
@@ -50,11 +50,7 @@ func performMusig(
 	partialSigs []string,
 ) (signed bool, err error) {
 	// preprocess data received
-	secb, err := hex.DecodeString(sec)
-	if err != nil {
-		return false, err
-	}
-	seck, pubk := btcec.PrivKeyFromBytes(secb)
+	seck, pubk := btcec.PrivKeyFromBytes(sec[:])
 
 	knownSigners := make([]*btcec.PublicKey, 0, numSigners)
 	includesUs := false
@@ -146,7 +142,7 @@ func performMusig(
 	if comb, err := mctx.CombinedKey(); err != nil {
 		return false, fmt.Errorf("failed to combine keys (after %d signers): %w", len(knownSigners), err)
 	} else {
-		evt.PubKey = hex.EncodeToString(comb.SerializeCompressed()[1:])
+		evt.PubKey = nostr.PubKey(comb.SerializeCompressed()[1:])
 		evt.ID = evt.GetID()
 		log("combined key: %x\n\n", comb.SerializeCompressed())
 	}
@@ -200,11 +196,7 @@ func performMusig(
 
 	// signing phase
 	// we always have to sign, so let's do this
-	id := evt.GetID()
-	hash, _ := hex.DecodeString(id)
-	var msg32 [32]byte
-	copy(msg32[:], hash)
-	partialSig, err := session.Sign(msg32) // this will already include our sig in the bundle
+	partialSig, err := session.Sign(evt.GetID()) // this will already include our sig in the bundle
 	if err != nil {
 		return false, fmt.Errorf("failed to produce partial signature: %w", err)
 	}
@@ -225,7 +217,7 @@ func performMusig(
 	}
 
 	// we have the signature
-	evt.Sig = hex.EncodeToString(session.FinalSig().Serialize())
+	evt.Sig = [64]byte(session.FinalSig().Serialize())
 
 	return true, nil
 }
@@ -258,7 +250,7 @@ func eventToCliArgs(evt *nostr.Event) string {
 	b.Grow(100)
 
 	b.WriteString("-k ")
-	b.WriteString(strconv.Itoa(evt.Kind))
+	b.WriteString(strconv.Itoa(int(evt.Kind)))
 
 	b.WriteString(" -ts ")
 	b.WriteString(strconv.FormatInt(int64(evt.CreatedAt), 10))
@@ -269,7 +261,7 @@ func eventToCliArgs(evt *nostr.Event) string {
 
 	for _, tag := range evt.Tags {
 		b.WriteString(" -t '")
-		b.WriteString(tag.Key())
+		b.WriteString(tag[0])
 		if len(tag) > 1 {
 			b.WriteString("=")
 			b.WriteString(tag[1])

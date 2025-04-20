@@ -6,11 +6,11 @@ import (
 	"os"
 	"strings"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/urfave/cli/v3"
 )
 
@@ -19,12 +19,22 @@ var mcpServer = &cli.Command{
 	Usage:                     "pander to the AI gods",
 	Description:               ``,
 	DisableSliceFlagSeparator: true,
-	Flags:                     []cli.Flag{},
+	Flags: append(
+		defaultKeyFlags,
+	),
 	Action: func(ctx context.Context, c *cli.Command) error {
 		s := server.NewMCPServer(
 			"nak",
 			version,
 		)
+
+		keyer, sk, err := gatherKeyerFromArguments(ctx, c)
+		if err != nil {
+			return err
+		}
+		if sk == nostr.KeyOne && !c.IsSet("sec") {
+			keyer = nil
+		}
 
 		s.AddTool(mcp.NewTool("publish_note",
 			mcp.WithDescription("Publish a short note event to Nostr with the given text content"),
@@ -35,10 +45,6 @@ var mcpServer = &cli.Command{
 			content := required[string](r, "content")
 			mention, _ := optional[string](r, "mention")
 			relay, _ := optional[string](r, "relay")
-
-			if mention != "" && !nostr.IsValidPublicKey(mention) {
-				return mcp.NewToolResultError("the given mention isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
-			}
 
 			sk := os.Getenv("NOSTR_SECRET_KEY")
 			if sk == "" {
@@ -54,12 +60,19 @@ var mcpServer = &cli.Command{
 			}
 
 			if mention != "" {
-				evt.Tags = append(evt.Tags, nostr.Tag{"p", mention})
+				pk, err := nostr.PubKeyFromHex(mention)
+				if err != nil {
+					return mcp.NewToolResultError("the given mention isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile. Got error: " + err.Error()), nil
+				}
+
+				evt.Tags = append(evt.Tags, nostr.Tag{"p", pk.Hex()})
 				// their inbox relays
-				relays = sys.FetchInboxRelays(ctx, mention, 3)
+				relays = sys.FetchInboxRelays(ctx, pk, 3)
 			}
 
-			evt.Sign(sk)
+			if err := keyer.SignEvent(ctx, &evt); err != nil {
+				return mcp.NewToolResultError("it was impossible to sign the event, so we can't proceed to publishwith publishing it."), nil
+			}
 
 			// our write relays
 			relays = append(relays, sys.FetchOutboxRelays(ctx, evt.PubKey, 3)...)
@@ -115,7 +128,7 @@ var mcpServer = &cli.Command{
 
 			switch prefix {
 			case "npub":
-				pm := sys.FetchProfileMetadata(ctx, data.(string))
+				pm := sys.FetchProfileMetadata(ctx, data.(nostr.PubKey))
 				return mcp.NewToolResultText(
 					fmt.Sprintf("this is a Nostr profile named '%s', their public key is '%s'",
 						pm.ShortName(), pm.PubKey),
@@ -149,19 +162,23 @@ var mcpServer = &cli.Command{
 			mcp.WithString("name", mcp.Description("Name to be searched"), mcp.Required()),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			name := required[string](r, "name")
-			re := sys.Pool.QuerySingle(ctx, []string{"relay.nostr.band", "nostr.wine"}, nostr.Filter{Search: name, Kinds: []int{0}})
+			re := sys.Pool.QuerySingle(ctx, []string{"relay.nostr.band", "nostr.wine"}, nostr.Filter{Search: name, Kinds: []nostr.Kind{0}}, nostr.SubscriptionOptions{})
 			if re == nil {
 				return mcp.NewToolResultError("couldn't find anyone with that name"), nil
 			}
 
-			return mcp.NewToolResultText(re.PubKey), nil
+			return mcp.NewToolResultText(re.PubKey.Hex()), nil
 		})
 
 		s.AddTool(mcp.NewTool("get_outbox_relay_for_pubkey",
 			mcp.WithDescription("Get the best relay from where to read notes from a specific Nostr user"),
 			mcp.WithString("pubkey", mcp.Description("Public key of Nostr user we want to know the relay from where to read"), mcp.Required()),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-			pubkey := required[string](r, "pubkey")
+			pubkey, err := nostr.PubKeyFromHex(required[string](r, "pubkey"))
+			if err != nil {
+				return mcp.NewToolResultError("the pubkey given isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile. Got error: " + err.Error()), nil
+			}
+
 			res := sys.FetchOutboxRelays(ctx, pubkey, 1)
 			return mcp.NewToolResultText(res[0]), nil
 		})
@@ -171,31 +188,32 @@ var mcpServer = &cli.Command{
 			mcp.WithString("relay", mcp.Description("relay URL to send the query to"), mcp.Required()),
 			mcp.WithNumber("kind", mcp.Description("event kind number to include in the 'kinds' field"), mcp.Required()),
 			mcp.WithNumber("limit", mcp.Description("maximum number of events to query"), mcp.Required()),
-			mcp.WithString("pubkey", mcp.Description("pubkey to include in the 'authors' field")),
+			mcp.WithString("pubkey", mcp.Description("pubkey to include in the 'authors' field, if this is not given we will read any events from this relay")),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			relay := required[string](r, "relay")
 			kind := int(required[float64](r, "kind"))
 			limit := int(required[float64](r, "limit"))
-			pubkey, _ := optional[string](r, "pubkey")
-
-			if pubkey != "" && !nostr.IsValidPublicKey(pubkey) {
-				return mcp.NewToolResultError("the given pubkey isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile"), nil
-			}
+			pubkey, hasPubKey := optional[string](r, "pubkey")
 
 			filter := nostr.Filter{
 				Limit: limit,
-				Kinds: []int{kind},
-			}
-			if pubkey != "" {
-				filter.Authors = []string{pubkey}
+				Kinds: []nostr.Kind{nostr.Kind(kind)},
 			}
 
-			events := sys.Pool.FetchMany(ctx, []string{relay}, filter)
+			if hasPubKey {
+				if pk, err := nostr.PubKeyFromHex(pubkey); err != nil {
+					return mcp.NewToolResultError("the pubkey given isn't a valid public key, it must be 32 bytes hex, like the ones returned by search_profile. Got error: " + err.Error()), nil
+				} else {
+					filter.Authors = append(filter.Authors, pk)
+				}
+			}
+
+			events := sys.Pool.FetchMany(ctx, []string{relay}, filter, nostr.SubscriptionOptions{})
 
 			result := strings.Builder{}
 			for ie := range events {
 				result.WriteString("author public key: ")
-				result.WriteString(ie.PubKey)
+				result.WriteString(ie.PubKey.Hex())
 				result.WriteString("content: '")
 				result.WriteString(ie.Content)
 				result.WriteString("'")

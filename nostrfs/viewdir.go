@@ -8,11 +8,12 @@ import (
 	"syscall"
 
 	"fiatjaf.com/lib/debouncer"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip27"
+	"fiatjaf.com/nostr/nip73"
 	"github.com/fatih/color"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip27"
 )
 
 type ViewDir struct {
@@ -141,13 +142,17 @@ func (n *ViewDir) publishNote() {
 	}
 
 	// our write relays
-	relays := n.root.sys.FetchWriteRelays(n.root.ctx, n.root.rootPubKey, 8)
+	relays := n.root.sys.FetchWriteRelays(n.root.ctx, n.root.rootPubKey)
 	if len(relays) == 0 {
 		relays = n.root.sys.FetchOutboxRelays(n.root.ctx, n.root.rootPubKey, 6)
 	}
 
 	// add "p" tags from people mentioned and "q" tags from events mentioned
-	for ref := range nip27.ParseReferences(evt) {
+	for ref := range nip27.Parse(evt.Content) {
+		if _, isExternal := ref.Pointer.(nip73.ExternalPointer); isExternal {
+			continue
+		}
+
 		tag := ref.Pointer.AsTag()
 		key := tag[0]
 		val := tag[1]
@@ -159,7 +164,12 @@ func (n *ViewDir) publishNote() {
 
 			// add their "read" relays
 			if key == "p" {
-				for _, r := range n.root.sys.FetchInboxRelays(n.root.ctx, val, 4) {
+				pk, err := nostr.PubKeyFromHex(val)
+				if err != nil {
+					continue
+				}
+
+				for _, r := range n.root.sys.FetchInboxRelays(n.root.ctx, pk, 4) {
 					if !slices.Contains(relays, r) {
 						relays = append(relays, r)
 					}
@@ -196,8 +206,8 @@ func (n *ViewDir) publishNote() {
 
 	if success {
 		n.RmChild("new")
-		n.AddChild(evt.ID, n.root.CreateEventDir(n, &evt), true)
-		log("event published as %s and updated locally.\n", color.BlueString(evt.ID))
+		n.AddChild(evt.ID.Hex(), n.root.CreateEventDir(n, &evt), true)
+		log("event published as %s and updated locally.\n", color.BlueString(evt.ID.Hex()))
 	}
 }
 
@@ -241,23 +251,24 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 	}
 
 	if n.replaceable {
-		for rkey, evt := range n.root.sys.Pool.FetchManyReplaceable(n.root.ctx, n.relays, n.filter,
-			nostr.WithLabel("nakfs"),
-		).Range {
+		for rkey, evt := range n.root.sys.Pool.FetchManyReplaceable(n.root.ctx, n.relays, n.filter, nostr.SubscriptionOptions{
+			Label: "nakfs",
+		}).Range {
 			name := rkey.D
 			if name == "" {
 				name = "_"
 			}
 			if n.GetChild(name) == nil {
-				n.AddChild(name, n.root.CreateEntityDir(n, evt), true)
+				n.AddChild(name, n.root.CreateEntityDir(n, &evt), true)
 			}
 		}
 	} else {
 		for ie := range n.root.sys.Pool.FetchMany(n.root.ctx, n.relays, n.filter,
-			nostr.WithLabel("nakfs"),
-		) {
-			if n.GetChild(ie.Event.ID) == nil {
-				n.AddChild(ie.Event.ID, n.root.CreateEventDir(n, ie.Event), true)
+			nostr.SubscriptionOptions{
+				Label: "nakfs",
+			}) {
+			if n.GetChild(ie.Event.ID.Hex()) == nil {
+				n.AddChild(ie.Event.ID.Hex(), n.root.CreateEventDir(n, &ie.Event), true)
 			}
 		}
 	}

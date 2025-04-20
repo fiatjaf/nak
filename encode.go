@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
 	"github.com/urfave/cli/v3"
 )
 
@@ -33,16 +33,13 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
-					if ok := nostr.IsValidPublicKey(target); !ok {
-						ctx = lineProcessingError(ctx, "invalid public key: %s", target)
+					pk, err := nostr.PubKeyFromHexCheap(target)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "invalid public key '%s': %w", target, err)
 						continue
 					}
 
-					if npub, err := nip19.EncodePublicKey(target); err == nil {
-						stdout(npub)
-					} else {
-						return err
-					}
+					stdout(nip19.EncodeNpub(pk))
 				}
 
 				exitIfLineProcessingError(ctx)
@@ -55,16 +52,13 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
-					if ok := nostr.IsValid32ByteHex(target); !ok {
-						ctx = lineProcessingError(ctx, "invalid private key: %s", target)
+					sk, err := nostr.SecretKeyFromHex(target)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "invalid private key '%s': %w", target, err)
 						continue
 					}
 
-					if npub, err := nip19.EncodePrivateKey(target); err == nil {
-						stdout(npub)
-					} else {
-						return err
-					}
+					stdout(nip19.EncodeNsec(sk))
 				}
 
 				exitIfLineProcessingError(ctx)
@@ -84,8 +78,9 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
-					if ok := nostr.IsValid32ByteHex(target); !ok {
-						ctx = lineProcessingError(ctx, "invalid public key: %s", target)
+					pk, err := nostr.PubKeyFromHexCheap(target)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "invalid public key '%s': %w", target, err)
 						continue
 					}
 
@@ -94,11 +89,7 @@ var encode = &cli.Command{
 						return err
 					}
 
-					if npub, err := nip19.EncodeProfile(target, relays); err == nil {
-						stdout(npub)
-					} else {
-						return err
-					}
+					stdout(nip19.EncodeNprofile(pk, relays))
 				}
 
 				exitIfLineProcessingError(ctx)
@@ -114,7 +105,7 @@ var encode = &cli.Command{
 					Aliases: []string{"r"},
 					Usage:   "attach relay hints to nevent code",
 				},
-				&cli.StringFlag{
+				&PubKeyFlag{
 					Name:    "author",
 					Aliases: []string{"a"},
 					Usage:   "attach an author pubkey as a hint to the nevent code",
@@ -123,28 +114,19 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
-					if ok := nostr.IsValid32ByteHex(target); !ok {
+					id, err := nostr.IDFromHex(target)
+					if err != nil {
 						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
 						continue
 					}
 
-					author := c.String("author")
-					if author != "" {
-						if ok := nostr.IsValidPublicKey(author); !ok {
-							return fmt.Errorf("invalid 'author' public key")
-						}
-					}
-
+					author := getPubKey(c, "author")
 					relays := c.StringSlice("relay")
 					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
 
-					if npub, err := nip19.EncodeEvent(target, relays, author); err == nil {
-						stdout(npub)
-					} else {
-						return err
-					}
+					stdout(nip19.EncodeNevent(id, relays, author))
 				}
 
 				exitIfLineProcessingError(ctx)
@@ -161,7 +143,7 @@ var encode = &cli.Command{
 					Usage:    "the \"d\" tag identifier of this replaceable event -- can also be read from stdin",
 					Required: true,
 				},
-				&cli.StringFlag{
+				&PubKeyFlag{
 					Name:     "pubkey",
 					Usage:    "pubkey of the naddr author",
 					Aliases:  []string{"author", "a", "p"},
@@ -182,10 +164,7 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for d := range getStdinLinesOrBlank() {
-					pubkey := c.String("pubkey")
-					if ok := nostr.IsValidPublicKey(pubkey); !ok {
-						return fmt.Errorf("invalid 'pubkey'")
-					}
+					pubkey := getPubKey(c, "pubkey")
 
 					kind := c.Int("kind")
 					if kind < 30000 || kind >= 40000 {
@@ -205,11 +184,7 @@ var encode = &cli.Command{
 						return err
 					}
 
-					if npub, err := nip19.EncodeEntity(pubkey, int(kind), d, relays); err == nil {
-						stdout(npub)
-					} else {
-						return err
-					}
+					stdout(nip19.EncodeNaddr(pubkey, nostr.Kind(kind), d, relays))
 				}
 
 				exitIfLineProcessingError(ctx)

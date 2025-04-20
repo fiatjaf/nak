@@ -4,11 +4,11 @@ import (
 	"context"
 	"fmt"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip05"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/sdk/hints"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip05"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/sdk/hints"
 )
 
 var fetch = &cli.Command{
@@ -36,7 +36,7 @@ var fetch = &cli.Command{
 
 		for code := range getStdinLinesOrArguments(c.Args()) {
 			filter := nostr.Filter{}
-			var authorHint string
+			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")
 
 			if nip05.IsValidIdentifier(code) {
@@ -63,15 +63,15 @@ var fetch = &cli.Command{
 				case "nevent":
 					v := value.(nostr.EventPointer)
 					filter.IDs = append(filter.IDs, v.ID)
-					if v.Author != "" {
+					if v.Author != nostr.ZeroPK {
 						authorHint = v.Author
 					}
 					relays = append(relays, v.Relays...)
 				case "note":
-					filter.IDs = append(filter.IDs, value.(string))
+					filter.IDs = append(filter.IDs, value.([32]byte))
 				case "naddr":
 					v := value.(nostr.EntityPointer)
-					filter.Kinds = []int{v.Kind}
+					filter.Kinds = []nostr.Kind{v.Kind}
 					filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
 					filter.Authors = append(filter.Authors, v.PublicKey)
 					authorHint = v.PublicKey
@@ -82,7 +82,7 @@ var fetch = &cli.Command{
 					authorHint = v.PublicKey
 					relays = append(relays, v.Relays...)
 				case "npub":
-					v := value.(string)
+					v := value.(nostr.PubKey)
 					filter.Authors = append(filter.Authors, v)
 					authorHint = v
 				default:
@@ -90,7 +90,7 @@ var fetch = &cli.Command{
 				}
 			}
 
-			if authorHint != "" {
+			if authorHint != nostr.ZeroPK {
 				for _, url := range relays {
 					sys.Hints.Save(authorHint, nostr.NormalizeURL(url), hints.LastInHint, nostr.Now())
 				}
@@ -113,7 +113,7 @@ var fetch = &cli.Command{
 				continue
 			}
 
-			for ie := range sys.Pool.FetchMany(ctx, relays, filter) {
+			for ie := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{}) {
 				stdout(ie.Event)
 			}
 		}

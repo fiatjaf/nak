@@ -10,10 +10,10 @@ import (
 	"sync"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip46"
 	"github.com/fatih/color"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip46"
 	"github.com/urfave/cli/v3"
 )
 
@@ -38,7 +38,7 @@ var bunker = &cli.Command{
 			Aliases: []string{"s"},
 			Usage:   "secrets for which we will always respond",
 		},
-		&cli.StringSliceFlag{
+		&PubKeySliceFlag{
 			Name:    "authorized-keys",
 			Aliases: []string{"k"},
 			Usage:   "pubkeys for which we will always respond",
@@ -49,7 +49,7 @@ var bunker = &cli.Command{
 		qs := url.Values{}
 		relayURLs := make([]string, 0, c.Args().Len())
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, c, relayUrls, nil)
+			relays := connectToAllRelays(ctx, c, relayUrls, nil, nostr.PoolOptions{})
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -70,7 +70,7 @@ var bunker = &cli.Command{
 		}
 
 		// other arguments
-		authorizedKeys := c.StringSlice("authorized-keys")
+		authorizedKeys := getPubKeySlice(c, "authorized-keys")
 		authorizedSecrets := c.StringSlice("authorized-secrets")
 
 		// this will be used to auto-authorize the next person who connects who isn't pre-authorized
@@ -78,11 +78,8 @@ var bunker = &cli.Command{
 		newSecret := randString(12)
 
 		// static information
-		pubkey, err := nostr.GetPublicKey(sec)
-		if err != nil {
-			return err
-		}
-		npub, _ := nip19.EncodePublicKey(pubkey)
+		pubkey := sec.Public()
+		npub := nip19.EncodeNpub(pubkey)
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
@@ -91,7 +88,10 @@ var bunker = &cli.Command{
 
 			authorizedKeysStr := ""
 			if len(authorizedKeys) != 0 {
-				authorizedKeysStr = "\n  authorized keys:\n    - " + colors.italic(strings.Join(authorizedKeys, "\n    - "))
+				authorizedKeysStr = "\n  authorized keys:"
+				for _, pubkey := range authorizedKeys {
+					authorizedKeysStr += "\n    - " + colors.italic(pubkey.Hex())
+				}
 			}
 
 			authorizedSecretsStr := ""
@@ -101,7 +101,7 @@ var bunker = &cli.Command{
 
 			preauthorizedFlags := ""
 			for _, k := range authorizedKeys {
-				preauthorizedFlags += " -k " + k
+				preauthorizedFlags += " -k " + k.Hex()
 			}
 			for _, s := range authorizedSecrets {
 				preauthorizedFlags += " -s " + s
@@ -142,10 +142,12 @@ var bunker = &cli.Command{
 		// subscribe to relays
 		now := nostr.Now()
 		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
-			Kinds:     []int{nostr.KindNostrConnect},
-			Tags:      nostr.TagMap{"p": []string{pubkey}},
+			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
+			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
 			Since:     &now,
 			LimitZero: true,
+		}, nostr.SubscriptionOptions{
+			Label: "nak-bunker",
 		})
 
 		signer := nip46.NewStaticKeySigner(sec)
@@ -158,7 +160,7 @@ var bunker = &cli.Command{
 		cancelPreviousBunkerInfoPrint = cancel
 
 		// asking user for authorization
-		signer.AuthorizeRequest = func(harmless bool, from string, secret string) bool {
+		signer.AuthorizeRequest = func(harmless bool, from nostr.PubKey, secret string) bool {
 			if secret == newSecret {
 				// store this key
 				authorizedKeys = append(authorizedKeys, from)
@@ -236,11 +238,13 @@ var bunker = &cli.Command{
 				}
 
 				uri, err := url.Parse(c.Args().First())
-				if err != nil || uri.Scheme != "nostrconnect" || !nostr.IsValidPublicKey(uri.Host) {
+				if err != nil || uri.Scheme != "nostrconnect" {
 					return fmt.Errorf("invalid uri")
 				}
 
-				return nil
+				// TODO
+
+				return fmt.Errorf("this is not implemented yet")
 			},
 		},
 	},

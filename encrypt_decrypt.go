@@ -4,9 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"fiatjaf.com/nostr/nip04"
 	"github.com/urfave/cli/v3"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip04"
 )
 
 var encrypt = &cli.Command{
@@ -16,7 +15,7 @@ var encrypt = &cli.Command{
 	DisableSliceFlagSeparator: true,
 	Flags: append(
 		defaultKeyFlags,
-		&cli.StringFlag{
+		&PubKeyFlag{
 			Name:     "recipient-pubkey",
 			Aliases:  []string{"p", "tgt", "target", "pubkey"},
 			Required: true,
@@ -27,10 +26,7 @@ var encrypt = &cli.Command{
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
-		target := c.String("recipient-pubkey")
-		if !nostr.IsValidPublicKey(target) {
-			return fmt.Errorf("target %s is not a valid public key", target)
-		}
+		target := getPubKey(c, "recipient-pubkey")
 
 		plaintext := c.Args().First()
 
@@ -81,7 +77,7 @@ var decrypt = &cli.Command{
 	DisableSliceFlagSeparator: true,
 	Flags: append(
 		defaultKeyFlags,
-		&cli.StringFlag{
+		&PubKeyFlag{
 			Name:     "sender-pubkey",
 			Aliases:  []string{"p", "src", "source", "pubkey"},
 			Required: true,
@@ -92,10 +88,7 @@ var decrypt = &cli.Command{
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
-		source := c.String("sender-pubkey")
-		if !nostr.IsValidPublicKey(source) {
-			return fmt.Errorf("source %s is not a valid public key", source)
-		}
+		source := getPubKey(c, "sender-pubkey")
 
 		ciphertext := c.Args().First()
 

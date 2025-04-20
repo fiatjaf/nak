@@ -8,11 +8,11 @@ import (
 	"strings"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip13"
+	"fiatjaf.com/nostr/nip19"
 	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip13"
-	"github.com/nbd-wtf/go-nostr/nip19"
 	"github.com/urfave/cli/v3"
 )
 
@@ -141,9 +141,11 @@ example:
 
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
 			relays = connectToAllRelays(ctx, c, relayUrls, nil,
-				nostr.WithAuthHandler(func(ctx context.Context, authEvent nostr.RelayEvent) error {
-					return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-				}),
+				nostr.PoolOptions{
+					AuthHandler: func(ctx context.Context, authEvent *nostr.Event) error {
+						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+					},
+				},
 			)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
@@ -180,7 +182,7 @@ example:
 			}
 
 			if kind := c.Uint("kind"); slices.Contains(c.FlagNames(), "kind") {
-				evt.Kind = int(kind)
+				evt.Kind = nostr.Kind(kind)
 				mustRehashAndResign = true
 			} else if !kindWasSupplied {
 				evt.Kind = 1
@@ -274,7 +276,7 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if evt.Sig == "" || mustRehashAndResign {
+			if evt.Sig == [64]byte{} || mustRehashAndResign {
 				if numSigners := c.Uint("musig"); numSigners > 1 {
 					// must do musig
 					pubkeys := c.StringSlice("musig-pubkey")
@@ -364,7 +366,7 @@ example:
 							low := unwrapAll(res.Error)
 
 							// hack for some messages such as from relay.westernbtc.com
-							msg := strings.ReplaceAll(low.Error(), evt.PubKey, "author")
+							msg := strings.ReplaceAll(low.Error(), evt.PubKey.Hex(), "author")
 
 							// do not allow the message to overflow the term window
 							msg = clampMessage(msg, 20+len(res.RelayURL))
@@ -393,11 +395,9 @@ example:
 						if strings.HasPrefix(err.Error(), "msg: auth-required:") && kr != nil && doAuth {
 							// if the relay is requesting auth and we can auth, let's do it
 							pk, _ := kr.GetPublicKey(ctx)
-							npub, _ := nip19.EncodePublicKey(pk)
+							npub := nip19.EncodeNpub(pk)
 							log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
-							if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
-								return kr.SignEvent(ctx, authEvent)
-							}); err == nil {
+							if err := relay.Auth(ctx, kr.SignEvent); err == nil {
 								// try to publish again, but this time don't try to auth again
 								doAuth = false
 								goto publish
@@ -410,8 +410,7 @@ example:
 				}
 
 				if len(successRelays) > 0 && c.Bool("nevent") {
-					nevent, _ := nip19.EncodeEvent(evt.ID, successRelays, evt.PubKey)
-					log(nevent + "\n")
+					log(nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey) + "\n")
 				}
 			}
 

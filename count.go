@@ -6,9 +6,9 @@ import (
 	"os"
 	"strings"
 
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip45"
-	"github.com/nbd-wtf/go-nostr/nip45/hyperloglog"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip45"
+	"fiatjaf.com/nostr/nip45/hyperloglog"
 	"github.com/urfave/cli/v3"
 )
 
@@ -18,7 +18,7 @@ var count = &cli.Command{
 	Description:               `outputs a nip45 request (the flags are mostly the same as 'nak req').`,
 	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
-		&cli.StringSliceFlag{
+		&PubKeySliceFlag{
 			Name:     "author",
 			Aliases:  []string{"a"},
 			Usage:    "only accept events from these authors (pubkey as hex)",
@@ -70,7 +70,7 @@ var count = &cli.Command{
 		biggerUrlSize := 0
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, c, relayUrls, nil)
+			relays := connectToAllRelays(ctx, c, relayUrls, nil, nostr.PoolOptions{})
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)
@@ -92,16 +92,13 @@ var count = &cli.Command{
 
 		filter := nostr.Filter{}
 
-		if authors := c.StringSlice("author"); len(authors) > 0 {
+		if authors := getPubKeySlice(c, "author"); len(authors) > 0 {
 			filter.Authors = authors
 		}
-		if ids := c.StringSlice("id"); len(ids) > 0 {
-			filter.IDs = ids
-		}
 		if kinds64 := c.IntSlice("kind"); len(kinds64) > 0 {
-			kinds := make([]int, len(kinds64))
+			kinds := make([]nostr.Kind, len(kinds64))
 			for i, v := range kinds64 {
-				kinds[i] = int(v)
+				kinds[i] = nostr.Kind(v)
 			}
 			filter.Kinds = kinds
 		}
@@ -151,7 +148,7 @@ var count = &cli.Command{
 			}
 			for _, relayUrl := range relayUrls {
 				relay, _ := sys.Pool.EnsureRelay(relayUrl)
-				count, hllRegisters, err := relay.Count(ctx, nostr.Filters{filter})
+				count, hllRegisters, err := relay.Count(ctx, filter, nostr.SubscriptionOptions{})
 				fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
 
 				if err != nil {

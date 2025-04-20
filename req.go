@@ -6,10 +6,11 @@ import (
 	"os"
 	"strings"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip42"
+	"fiatjaf.com/nostr/nip77"
 	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip77"
 	"github.com/urfave/cli/v3"
 )
 
@@ -88,16 +89,20 @@ example:
 				c,
 				relayUrls,
 				forcePreAuthSigner,
-				nostr.WithAuthHandler(func(ctx context.Context, authEvent nostr.RelayEvent) error {
-					return authSigner(ctx, c, func(s string, args ...any) {
-						if strings.HasPrefix(s, "authenticating as") {
-							cleanUrl, _ := strings.CutPrefix(authEvent.Relay.URL, "wss://")
-							s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-						}
-						log(s+"\n", args...)
-					}, authEvent)
-				}),
-			)
+				nostr.PoolOptions{
+					AuthHandler: func(ctx context.Context, authEvent *nostr.Event) error {
+						return authSigner(ctx, c, func(s string, args ...any) {
+							if strings.HasPrefix(s, "authenticating as") {
+								cleanUrl, _ := strings.CutPrefix(
+									nip42.GetRelayURLFromAuthEvent(*authEvent),
+									"wss://",
+								)
+								s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+							}
+							log(s+"\n", args...)
+						}, authEvent)
+					},
+				})
 
 			// stop here already if all connections failed
 			if len(relays) == 0 {
@@ -132,7 +137,7 @@ example:
 
 			if len(relayUrls) > 0 {
 				if c.Bool("ids-only") {
-					seen := make(map[string]struct{}, max(500, filter.Limit))
+					seen := make(map[nostr.ID]struct{}, max(500, filter.Limit))
 					for _, url := range relayUrls {
 						ch, err := nip77.FetchIDsOnly(ctx, url, filter)
 						if err != nil {
@@ -155,7 +160,7 @@ example:
 						fn = sys.Pool.SubscribeMany
 					}
 
-					for ie := range fn(ctx, relayUrls, filter) {
+					for ie := range fn(ctx, relayUrls, filter, nostr.SubscriptionOptions{}) {
 						stdout(ie.Event)
 					}
 				}
@@ -165,7 +170,7 @@ example:
 				if c.Bool("bare") {
 					result = filter.String()
 				} else {
-					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filters: nostr.Filters{filter}})
+					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filter: filter})
 					result = string(j)
 				}
 
@@ -179,13 +184,13 @@ example:
 }
 
 var reqFilterFlags = []cli.Flag{
-	&cli.StringSliceFlag{
+	&PubKeySliceFlag{
 		Name:     "author",
 		Aliases:  []string{"a"},
 		Usage:    "only accept events from these authors (pubkey as hex)",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
-	&cli.StringSliceFlag{
+	&IDSliceFlag{
 		Name:     "id",
 		Aliases:  []string{"i"},
 		Usage:    "only accept events with these ids (hex)",
@@ -244,14 +249,14 @@ var reqFilterFlags = []cli.Flag{
 }
 
 func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
-	if authors := c.StringSlice("author"); len(authors) > 0 {
+	if authors := getPubKeySlice(c, "author"); len(authors) > 0 {
 		filter.Authors = append(filter.Authors, authors...)
 	}
-	if ids := c.StringSlice("id"); len(ids) > 0 {
+	if ids := getIDSlice(c, "id"); len(ids) > 0 {
 		filter.IDs = append(filter.IDs, ids...)
 	}
 	for _, kind64 := range c.IntSlice("kind") {
-		filter.Kinds = append(filter.Kinds, int(kind64))
+		filter.Kinds = append(filter.Kinds, nostr.Kind(kind64))
 	}
 	if search := c.String("search"); search != "" {
 		filter.Search = search

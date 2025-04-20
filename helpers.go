@@ -17,11 +17,12 @@ import (
 	"sync"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip42"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/sdk"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -155,8 +156,8 @@ func connectToAllRelays(
 	ctx context.Context,
 	c *cli.Command,
 	relayUrls []string,
-	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error), // if this exists we will force preauth
-	opts ...nostr.PoolOption,
+	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error), // if this exists we will force preauth
+	opts nostr.PoolOptions,
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
 	for _, url := range relayUrls {
@@ -166,15 +167,12 @@ func connectToAllRelays(
 		}
 	}
 
-	sys.Pool = nostr.NewSimplePool(context.Background(),
-		append(opts,
-			nostr.WithEventMiddleware(sys.TrackEventHints),
-			nostr.WithPenaltyBox(),
-			nostr.WithRelayOptions(
-				nostr.WithRequestHeader(http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"}}),
-			),
-		)...,
-	)
+	opts.EventMiddleware = sys.TrackEventHints
+	opts.PenaltyBox = true
+	opts.RelayOptions = nostr.RelayOptions{
+		RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"}},
+	}
+	sys.Pool = nostr.NewPool(opts)
 
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 
@@ -236,7 +234,7 @@ func connectToSingleRelay(
 	ctx context.Context,
 	c *cli.Command,
 	url string,
-	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error),
+	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error),
 	colorizepreamble func(c func(string, ...any) string),
 	logthis func(s string, args ...any),
 ) *nostr.Relay {
@@ -249,12 +247,12 @@ func connectToSingleRelay(
 			time.Sleep(time.Millisecond * 200)
 
 			for range 5 {
-				if err := relay.Auth(ctx, func(authEvent *nostr.Event) error {
+				if err := relay.Auth(ctx, func(ctx context.Context, authEvent *nostr.Event) error {
 					challengeTag := authEvent.Tags.Find("challenge")
 					if challengeTag[1] == "" {
 						return fmt.Errorf("auth not received yet *****") // what a giant hack
 					}
-					return preAuthSigner(ctx, c, logthis, nostr.RelayEvent{Event: authEvent, Relay: relay})
+					return preAuthSigner(ctx, c, logthis, authEvent)
 				}); err == nil {
 					// auth succeeded
 					goto preauthSuccess
@@ -324,10 +322,10 @@ func supportsDynamicMultilineMagic() bool {
 	return true
 }
 
-func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent nostr.RelayEvent) (err error) {
+func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error) {
 	defer func() {
 		if err != nil {
-			cleanUrl, _ := strings.CutPrefix(authEvent.Relay.URL, "wss://")
+			cleanUrl, _ := strings.CutPrefix(nip42.GetRelayURLFromAuthEvent(*authEvent), "wss://")
 			log("%s auth failed: %s", colors.errorf(cleanUrl), err)
 		}
 	}()
@@ -341,10 +339,10 @@ func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...
 	}
 
 	pk, _ := kr.GetPublicKey(ctx)
-	npub, _ := nip19.EncodePublicKey(pk)
+	npub := nip19.EncodeNpub(pk)
 	log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
 
-	return kr.SignEvent(ctx, authEvent.Event)
+	return kr.SignEvent(ctx, authEvent)
 }
 
 func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {
@@ -366,10 +364,6 @@ func randString(n int) string {
 		b[i] = letterBytes[rand.Intn(len(letterBytes))]
 	}
 	return string(b)
-}
-
-func leftPadKey(k string) string {
-	return strings.Repeat("0", 64-len(k)) + k
 }
 
 func unwrapAll(err error) error {

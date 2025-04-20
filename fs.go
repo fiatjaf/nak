@@ -10,12 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
 	"github.com/fiatjaf/nak/nostrfs"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/keyer"
 	"github.com/urfave/cli/v3"
 )
 
@@ -25,15 +25,9 @@ var fsCmd = &cli.Command{
 	Description: `(experimental)`,
 	ArgsUsage:   "<mountpoint>",
 	Flags: append(defaultKeyFlags,
-		&cli.StringFlag{
+		&PubKeyFlag{
 			Name:  "pubkey",
 			Usage: "public key from where to to prepopulate directories",
-			Validator: func(pk string) error {
-				if nostr.IsValidPublicKey(pk) {
-					return nil
-				}
-				return fmt.Errorf("invalid public key '%s'", pk)
-			},
 		},
 		&cli.DurationFlag{
 			Name:  "auto-publish-notes",
@@ -58,7 +52,7 @@ var fsCmd = &cli.Command{
 		if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
 			kr = signer
 		} else {
-			kr = keyer.NewReadOnlyUser(c.String("pubkey"))
+			kr = keyer.NewReadOnlyUser(getPubKey(c, "pubkey"))
 		}
 
 		apnt := c.Duration("auto-publish-notes")

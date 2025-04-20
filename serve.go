@@ -8,11 +8,11 @@ import (
 	"os"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/eventstore/slicestore"
+	"fiatjaf.com/nostr/khatru"
 	"github.com/bep/debounce"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/eventstore/slicestore"
-	"github.com/fiatjaf/khatru"
-	"github.com/nbd-wtf/go-nostr"
 	"github.com/urfave/cli/v3"
 )
 
@@ -38,7 +38,7 @@ var serve = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
-		db := slicestore.SliceStore{MaxLimit: math.MaxInt}
+		db := &slicestore.SliceStore{MaxLimit: math.MaxInt}
 
 		var scanner *bufio.Scanner
 		if path := c.String("events"); path != "" {
@@ -59,7 +59,7 @@ var serve = &cli.Command{
 				if err := json.Unmarshal(scanner.Bytes(), &evt); err != nil {
 					return fmt.Errorf("invalid event received at line %d: %s (`%s`)", i, err, scanner.Text())
 				}
-				db.SaveEvent(ctx, &evt)
+				db.SaveEvent(evt)
 				i++
 			}
 		}
@@ -71,10 +71,7 @@ var serve = &cli.Command{
 		rl.Info.Software = "https://github.com/fiatjaf/nak"
 		rl.Info.Version = version
 
-		rl.QueryEvents = append(rl.QueryEvents, db.QueryEvents)
-		rl.CountEvents = append(rl.CountEvents, db.CountEvents)
-		rl.DeleteEvent = append(rl.DeleteEvent, db.DeleteEvent)
-		rl.StoreEvent = append(rl.StoreEvent, db.SaveEvent)
+		rl.UseEventstore(db)
 
 		started := make(chan bool)
 		exited := make(chan error)
@@ -90,28 +87,29 @@ var serve = &cli.Command{
 		var printStatus func()
 
 		// relay logging
-		rl.RejectFilter = append(rl.RejectFilter, func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
+		rl.OnRequest = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
 			log("    got %s %v\n", color.HiYellowString("request"), colors.italic(filter))
 			printStatus()
 			return false, ""
-		})
-		rl.RejectCountFilter = append(rl.RejectCountFilter, func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
+		}
+
+		rl.OnCount = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
 			log("    got %s %v\n", color.HiCyanString("count request"), colors.italic(filter))
 			printStatus()
 			return false, ""
-		})
-		rl.RejectEvent = append(rl.RejectEvent, func(ctx context.Context, event *nostr.Event) (reject bool, msg string) {
+		}
+
+		rl.OnEvent = func(ctx context.Context, event nostr.Event) (reject bool, msg string) {
 			log("    got %s %v\n", color.BlueString("event"), colors.italic(event))
 			printStatus()
 			return false, ""
-		})
+		}
 
 		d := debounce.New(time.Second * 2)
 		printStatus = func() {
 			d(func() {
 				totalEvents := 0
-				ch, _ := db.QueryEvents(ctx, nostr.Filter{})
-				for range ch {
+				for range db.QueryEvents(nostr.Filter{}) {
 					totalEvents++
 				}
 				subs := rl.GetListeningFilters()

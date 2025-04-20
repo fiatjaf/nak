@@ -3,6 +3,7 @@ package nostrfs
 import (
 	"bytes"
 	"context"
+	"encoding/binary"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -10,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
 	"github.com/fatih/color"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/liamg/magic"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
 )
 
 type NpubDir struct {
@@ -36,7 +37,7 @@ func (r *NostrRoot) CreateNpubDir(
 	return parent.EmbeddedInode().NewPersistentInode(
 		r.ctx,
 		npubdir,
-		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: hexToUint64(pointer.PublicKey)},
+		fs.StableAttr{Mode: syscall.S_IFDIR, Ino: binary.BigEndian.Uint64(pointer.PublicKey[8:16])},
 	)
 }
 
@@ -49,7 +50,7 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 
 	h.AddChild("pubkey", h.NewPersistentInode(
 		h.root.ctx,
-		&fs.MemRegularFile{Data: []byte(h.pointer.PublicKey + "\n"), Attr: fuse.Attr{Mode: 0444}},
+		&fs.MemRegularFile{Data: []byte(h.pointer.PublicKey.Hex() + "\n"), Attr: fuse.Attr{Mode: 0444}},
 		fs.StableAttr{},
 	), true)
 
@@ -116,8 +117,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{1},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{1},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    true,
 					relays:      relays,
@@ -138,8 +139,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{1111},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{1111},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    true,
 					relays:      relays,
@@ -159,8 +160,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{20},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{20},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    true,
 					relays:      relays,
@@ -180,8 +181,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{21, 22},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{21, 22},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    false,
 					relays:      relays,
@@ -201,8 +202,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{9802},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{9802},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    false,
 					relays:      relays,
@@ -222,8 +223,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{30023},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{30023},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    false,
 					relays:      relays,
@@ -244,8 +245,8 @@ func (h *NpubDir) OnAdd(_ context.Context) {
 				&ViewDir{
 					root: h.root,
 					filter: nostr.Filter{
-						Kinds:   []int{30818},
-						Authors: []string{h.pointer.PublicKey},
+						Kinds:   []nostr.Kind{30818},
+						Authors: []nostr.PubKey{h.pointer.PublicKey},
 					},
 					paginate:    false,
 					relays:      relays,

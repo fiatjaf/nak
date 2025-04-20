@@ -15,14 +15,15 @@ import (
 	"unsafe"
 
 	"fiatjaf.com/lib/debouncer"
+	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip27"
+	"fiatjaf.com/nostr/nip73"
+	"fiatjaf.com/nostr/nip92"
+	sdk "fiatjaf.com/nostr/sdk"
 	"github.com/fatih/color"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"github.com/nbd-wtf/go-nostr"
-	"github.com/nbd-wtf/go-nostr/nip19"
-	"github.com/nbd-wtf/go-nostr/nip27"
-	"github.com/nbd-wtf/go-nostr/nip92"
-	sdk "github.com/nbd-wtf/go-nostr/sdk"
 )
 
 type EntityDir struct {
@@ -95,11 +96,10 @@ func (e *EntityDir) Setattr(_ context.Context, _ fs.FileHandle, in *fuse.SetAttr
 func (e *EntityDir) OnAdd(_ context.Context) {
 	log := e.root.ctx.Value("log").(func(msg string, args ...any))
 
-	npub, _ := nip19.EncodePublicKey(e.event.PubKey)
 	e.AddChild("@author", e.NewPersistentInode(
 		e.root.ctx,
 		&fs.MemSymlink{
-			Data: []byte(e.root.wd + "/" + npub),
+			Data: []byte(e.root.wd + "/" + nip19.EncodeNpub(e.event.PubKey)),
 		},
 		fs.StableAttr{Mode: syscall.S_IFLNK},
 	), true)
@@ -180,8 +180,12 @@ func (e *EntityDir) OnAdd(_ context.Context) {
 
 	var refsdir *fs.Inode
 	i := 0
-	for ref := range nip27.ParseReferences(*e.event) {
+	for ref := range nip27.Parse(e.event.Content) {
+		if _, isExternal := ref.Pointer.(nip73.ExternalPointer); isExternal {
+			continue
+		}
 		i++
+
 		if refsdir == nil {
 			refsdir = e.NewPersistentInode(e.root.ctx, &fs.Inode{}, fs.StableAttr{Mode: syscall.S_IFDIR})
 			e.root.AddChild("references", refsdir, true)
@@ -320,7 +324,11 @@ func (e *EntityDir) handleWrite() {
 		}
 
 		// add "p" tags from people mentioned and "q" tags from events mentioned
-		for ref := range nip27.ParseReferences(evt) {
+		for ref := range nip27.Parse(evt.Content) {
+			if _, isExternal := ref.Pointer.(nip73.ExternalPointer); isExternal {
+				continue
+			}
+
 			tag := ref.Pointer.AsTag()
 			key := tag[0]
 			val := tag[1]
@@ -339,7 +347,7 @@ func (e *EntityDir) handleWrite() {
 		}
 		logverbose("%s\n", evt)
 
-		relays := e.root.sys.FetchWriteRelays(e.root.ctx, e.root.rootPubKey, 8)
+		relays := e.root.sys.FetchWriteRelays(e.root.ctx, e.root.rootPubKey)
 		if len(relays) == 0 {
 			relays = e.root.sys.FetchOutboxRelays(e.root.ctx, e.root.rootPubKey, 6)
 		}
