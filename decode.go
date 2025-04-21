@@ -3,11 +3,12 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	stdjson "encoding/json"
 	"strings"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
-	"fiatjaf.com/nostr/sdk"
 	"github.com/urfave/cli/v3"
 )
 
@@ -39,88 +40,56 @@ var decode = &cli.Command{
 				input = input[6:]
 			}
 
-			var decodeResult DecodeResult
-			if b, err := hex.DecodeString(input); err == nil {
-				if len(b) == 64 {
-					decodeResult.HexResult.PossibleTypes = []string{"sig"}
-					decodeResult.HexResult.Signature = hex.EncodeToString(b)
-				} else if len(b) == 32 {
-					decodeResult.HexResult.PossibleTypes = []string{"pubkey", "private_key", "event_id"}
-					decodeResult.HexResult.ID = hex.EncodeToString(b)
-					decodeResult.HexResult.PrivateKey = hex.EncodeToString(b)
-					decodeResult.HexResult.PublicKey = hex.EncodeToString(b)
-				} else {
-					ctx = lineProcessingError(ctx, "hex string with invalid number of bytes: %d", len(b))
+			_, data, err := nip19.Decode(input)
+			if err == nil {
+				switch v := data.(type) {
+				case nostr.SecretKey:
+					stdout(v.Hex())
+					continue
+				case nostr.PubKey:
+					stdout(v.Hex())
+					continue
+				case [32]byte:
+					stdout(hex.EncodeToString(v[:]))
+					continue
+				case nostr.EventPointer:
+					if c.Bool("id") {
+						stdout(v.ID.Hex())
+						continue
+					}
+					out, _ := stdjson.MarshalIndent(v, "", "  ")
+					stdout(string(out))
+					continue
+				case nostr.ProfilePointer:
+					if c.Bool("pubkey") {
+						stdout(v.PublicKey.Hex())
+						continue
+					}
+					out, _ := stdjson.MarshalIndent(v, "", "  ")
+					stdout(string(out))
+					continue
+				case nostr.EntityPointer:
+					out, _ := stdjson.MarshalIndent(v, "", "  ")
+					stdout(string(out))
 					continue
 				}
-			} else if evp := sdk.InputToEventPointer(input); evp != nil {
-				decodeResult = DecodeResult{EventPointer: evp}
-				if c.Bool("id") {
-					stdout(evp.ID)
-					continue
-				}
-			} else if pp := sdk.InputToProfile(ctx, input); pp != nil {
-				decodeResult = DecodeResult{ProfilePointer: pp}
+			}
+
+			pp, _ := nip05.QueryIdentifier(ctx, input)
+			if pp != nil {
 				if c.Bool("pubkey") {
-					stdout(pp.PublicKey)
+					stdout(pp.PublicKey.Hex())
 					continue
 				}
-			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "naddr" {
-				if ep, ok := value.(nostr.EntityPointer); ok {
-					decodeResult = DecodeResult{EntityPointer: &ep}
-				} else {
-					ctx = lineProcessingError(ctx, "couldn't decode naddr: %s", err)
-				}
-			} else if prefix, value, err := nip19.Decode(input); err == nil && prefix == "nsec" {
-				decodeResult.PrivateKey.PrivateKey = value.(string)
-				decodeResult.PrivateKey.PublicKey = nostr.GetPublicKey(value.(nostr.SecretKey))
-			} else {
-				ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
+				out, _ := stdjson.MarshalIndent(pp, "", "  ")
+				stdout(string(out))
 				continue
 			}
 
-			if c.Bool("pubkey") || c.Bool("id") {
-				return nil
-			}
-
-			stdout(decodeResult.JSON())
-
+			ctx = lineProcessingError(ctx, "couldn't decode input '%s'", input)
 		}
 
 		exitIfLineProcessingError(ctx)
 		return nil
 	},
-}
-
-type DecodeResult struct {
-	*nostr.EventPointer
-	*nostr.ProfilePointer
-	*nostr.EntityPointer
-	HexResult struct {
-		PossibleTypes []string `json:"possible_types"`
-		PublicKey     string   `json:"pubkey,omitempty"`
-		ID            string   `json:"event_id,omitempty"`
-		PrivateKey    string   `json:"private_key,omitempty"`
-		Signature     string   `json:"sig,omitempty"`
-	}
-	PrivateKey struct {
-		nostr.ProfilePointer
-		PrivateKey string `json:"private_key"`
-	}
-}
-
-func (d DecodeResult) JSON() string {
-	var j []byte
-	if d.EventPointer != nil {
-		j, _ = json.MarshalIndent(d.EventPointer, "", "  ")
-	} else if d.ProfilePointer != nil {
-		j, _ = json.MarshalIndent(d.ProfilePointer, "", "  ")
-	} else if d.EntityPointer != nil {
-		j, _ = json.MarshalIndent(d.EntityPointer, "", "  ")
-	} else if len(d.HexResult.PossibleTypes) > 0 {
-		j, _ = json.MarshalIndent(d.HexResult, "", "  ")
-	} else if d.PrivateKey.PrivateKey != "" {
-		j, _ = json.MarshalIndent(d.PrivateKey, "", "  ")
-	}
-	return string(j)
 }
