@@ -7,8 +7,43 @@ import (
 	"path/filepath"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/sdk"
+	"fiatjaf.com/nostr/sdk/hints/badgerh"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
+
+var (
+	hintsFilePath   string
+	hintsFileExists bool
+)
+
+func initializeOutboxHintsDB(c *cli.Command, sys *sdk.System) error {
+	configPath := c.String("config-path")
+	if configPath == "" {
+		if home, err := os.UserHomeDir(); err == nil {
+			configPath = filepath.Join(home, ".config/nak")
+		}
+	}
+	if configPath != "" {
+		hintsFilePath = filepath.Join(configPath, "outbox/hints.bg")
+	}
+	if hintsFilePath != "" {
+		if _, err := os.Stat(hintsFilePath); !os.IsNotExist(err) {
+			hintsFileExists = true
+		} else if err != nil {
+			return err
+		}
+	}
+	if hintsFileExists && hintsFilePath != "" {
+		hintsdb, err := badgerh.NewBadgerHints(hintsFilePath)
+		if err == nil {
+			sys.Hints = hintsdb
+		}
+	}
+
+	return nil
+}
 
 var outbox = &cli.Command{
 	Name:                      "outbox",
@@ -27,10 +62,10 @@ var outbox = &cli.Command{
 					return fmt.Errorf("couldn't find a place to store the hints, pass --config-path to fix.")
 				}
 
-				if err := os.MkdirAll(filepath.Dir(hintsFilePath), 0777); err == nil {
-					if err := os.WriteFile(hintsFilePath, []byte("{}"), 0644); err != nil {
-						return fmt.Errorf("failed to create hints database: %w", err)
-					}
+				os.MkdirAll(hintsFilePath, 0755)
+				_, err := badgerh.NewBadgerHints(hintsFilePath)
+				if err != nil {
+					return fmt.Errorf("failed to create badger hints db at '%s': %w", hintsFilePath, err)
 				}
 
 				log("initialized hints database at %s\n", hintsFilePath)
@@ -44,8 +79,8 @@ var outbox = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				if !hintsFileExists {
-					log("running with temporary fragile data.\n")
-					log("call `nak outbox init` to setup persistence.\n")
+					log(color.YellowString("running with temporary fragile data.\n"))
+					log(color.YellowString("call `nak outbox init` to setup persistence.\n"))
 				}
 
 				if c.Args().Len() != 1 {

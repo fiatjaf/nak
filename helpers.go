@@ -29,11 +29,6 @@ import (
 
 var sys *sdk.System
 
-var (
-	hintsFilePath   string
-	hintsFileExists bool
-)
-
 var json = jsoniter.ConfigFastest
 
 const (

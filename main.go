@@ -2,14 +2,14 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/textproto"
 	"os"
-	"path/filepath"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/sdk"
-	"fiatjaf.com/nostr/sdk/hints/memoryh"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -81,36 +81,12 @@ var app = &cli.Command{
 		},
 	},
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-		configPath := c.String("config-path")
-		if configPath == "" {
-			if home, err := os.UserHomeDir(); err == nil {
-				configPath = filepath.Join(home, ".config/nak")
-			}
-		}
-		if configPath != "" {
-			hintsFilePath = filepath.Join(configPath, "outbox/hints.db")
-		}
-		if hintsFilePath != "" {
-			if _, err := os.Stat(hintsFilePath); !os.IsNotExist(err) {
-				hintsFileExists = true
-			}
-		}
-
-		if hintsFilePath != "" {
-			if data, err := os.ReadFile(hintsFilePath); err == nil {
-				hintsdb := memoryh.NewHintDB()
-				if err := json.Unmarshal(data, &hintsdb); err == nil {
-					sys = sdk.NewSystem(
-						sdk.WithHintsDB(hintsdb),
-					)
-					goto systemOperational
-				}
-			}
-		}
-
 		sys = sdk.NewSystem()
 
-	systemOperational:
+		if err := initializeOutboxHintsDB(c, sys); err != nil {
+			return ctx, fmt.Errorf("failed to initialized outbox hints: %w", err)
+		}
+
 		sys.Pool = nostr.NewPool(nostr.PoolOptions{
 			AuthorKindQueryMiddleware: sys.TrackQueryAttempts,
 			EventMiddleware:           sys.TrackEventHints,
@@ -121,32 +97,24 @@ var app = &cli.Command{
 
 		return ctx, nil
 	},
-	After: func(ctx context.Context, c *cli.Command) error {
-		// save hints database on exit
-		if hintsFileExists {
-			data, err := json.Marshal(sys.Hints)
-			if err != nil {
-				return err
-			}
-			return os.WriteFile(hintsFilePath, data, 0644)
-		}
+}
 
-		return nil
-	},
+func init() {
+	cli.VersionFlag = &cli.BoolFlag{
+		Name:  "version",
+		Usage: "prints the version",
+	}
 }
 
 func main() {
 	defer colors.reset()
 
-	cli.VersionFlag = &cli.BoolFlag{
-		Name:  "version",
-		Usage: "prints the version",
-	}
-
 	// a megahack to enable this curl command proxy
 	if len(os.Args) > 2 && os.Args[1] == "curl" {
 		if err := realCurl(); err != nil {
-			stdout(err)
+			if err != nil {
+				log(color.YellowString(err.Error()) + "\n")
+			}
 			colors.reset()
 			os.Exit(1)
 		}
@@ -154,7 +122,9 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		stdout(err)
+		if err != nil {
+			log(color.YellowString(err.Error()) + "\n")
+		}
 		colors.reset()
 		os.Exit(1)
 	}
