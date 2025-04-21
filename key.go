@@ -122,30 +122,30 @@ var decryptKey = &cli.Command{
 			if password == "" {
 				return fmt.Errorf("no password given")
 			}
-			sec, err := nip49.Decrypt(ncryptsec, password)
+			sk, err := nip49.Decrypt(ncryptsec, password)
 			if err != nil {
 				return fmt.Errorf("failed to decrypt: %s", err)
 			}
-			stdout(sec)
+			stdout(sk.Hex())
 			return nil
 		case 1:
 			if arg := c.Args().Get(0); strings.HasPrefix(arg, "ncryptsec1") {
 				ncryptsec = arg
-				if res, err := promptDecrypt(ncryptsec); err != nil {
+				if sk, err := promptDecrypt(ncryptsec); err != nil {
 					return err
 				} else {
-					stdout(res)
+					stdout(sk.Hex())
 					return nil
 				}
 			} else {
 				password = c.Args().Get(0)
 				for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{ncryptsec}) {
-					sec, err := nip49.Decrypt(ncryptsec, password)
+					sk, err := nip49.Decrypt(ncryptsec, password)
 					if err != nil {
 						ctx = lineProcessingError(ctx, "failed to decrypt: %s", err)
 						continue
 					}
-					stdout(sec)
+					stdout(sk.Hex())
 				}
 				return nil
 			}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"runtime/debug"
 	"strings"
 
 	"fiatjaf.com/nostr"
@@ -110,7 +111,8 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 
 	sk, err := nostr.SecretKeyFromHex(sec)
 	if err != nil {
-		return nostr.SecretKey{}, nil, fmt.Errorf("invalid secret key")
+		debug.PrintStack()
+		return nostr.SecretKey{}, nil, fmt.Errorf("invalid secret key: %w", err)
 	}
 
 	return sk, nil, nil
