@@ -84,7 +84,7 @@ var bunker = &cli.Command{
 		// this function will be called every now and then
 		printBunkerInfo := func() {
 			qs.Set("secret", newSecret)
-			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey, qs.Encode())
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
 
 			authorizedKeysStr := ""
 			if len(authorizedKeys) != 0 {
@@ -129,7 +129,7 @@ var bunker = &cli.Command{
 
 			log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
 				colors.bold(relayURLs),
-				colors.bold(pubkey),
+				colors.bold(pubkey.Hex()),
 				colors.bold(npub),
 				authorizedKeysStr,
 				authorizedSecretsStr,
@@ -187,7 +187,7 @@ var bunker = &cli.Command{
 			}
 
 			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey), string(jreq))
+			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
 			jresp, _ := json.MarshalIndent(resp, "", "  ")
 			log("~ responding with %s\n", string(jresp))
 
