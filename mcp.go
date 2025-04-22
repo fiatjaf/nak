@@ -160,14 +160,33 @@ var mcpServer = &cli.Command{
 		s.AddTool(mcp.NewTool("search_profile",
 			mcp.WithDescription("Search for the public key of a Nostr user given their name"),
 			mcp.WithString("name", mcp.Description("Name to be searched"), mcp.Required()),
+			mcp.WithNumber("limit", mcp.Description("How many results to return")),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			name := required[string](r, "name")
-			re := sys.Pool.QuerySingle(ctx, []string{"relay.nostr.band", "nostr.wine"}, nostr.Filter{Search: name, Kinds: []nostr.Kind{0}}, nostr.SubscriptionOptions{})
-			if re == nil {
-				return mcp.NewToolResultError("couldn't find anyone with that name"), nil
+			limit, _ := optional[float64](r, "limit")
+
+			filter := nostr.Filter{Search: name, Kinds: []nostr.Kind{0}}
+			if limit > 0 {
+				filter.Limit = int(limit)
 			}
 
-			return mcp.NewToolResultText(re.PubKey.Hex()), nil
+			res := strings.Builder{}
+			res.WriteString("Search results: ")
+			l := 0
+			for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine"}, filter, nostr.SubscriptionOptions{}) {
+				l++
+				pm, _ := sdk.ParseMetadata(result.Event)
+				res.WriteString(fmt.Sprintf("\n\nResult %d\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
+					l, pm.ShortName, pm.PubKey.Hex(), pm.About))
+
+				if l >= int(limit) {
+					break
+				}
+			}
+			if l == 0 {
+				return mcp.NewToolResultError("Couldn't find anyone with that name."), nil
+			}
+			return mcp.NewToolResultText(res.String()), nil
 		})
 
 		s.AddTool(mcp.NewTool("get_outbox_relay_for_pubkey",
