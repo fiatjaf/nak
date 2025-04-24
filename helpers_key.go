@@ -56,8 +56,6 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer,
 }
 
 func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (nostr.SecretKey, *nip46.BunkerClient, error) {
-	var err error
-
 	sec := c.String("sec")
 	if strings.HasPrefix(sec, "bunker://") {
 		// it's a bunker
@@ -66,7 +64,11 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		var clientKey nostr.SecretKey
 
 		if clientKeyHex != "" {
-			clientKey, err = nostr.SecretKeyFromHex(sec)
+			var err error
+			clientKey, err = nostr.SecretKeyFromHex(clientKeyHex)
+			if err != nil {
+				return nostr.SecretKey{}, nil, fmt.Errorf("bunker client key '%s' is invalid: %w", clientKeyHex, err)
+			}
 		} else {
 			clientKey = nostr.Generate()
 		}
@@ -91,6 +93,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		if isPiped() {
 			return nostr.SecretKey{}, nil, fmt.Errorf("can't prompt for a secret key when processing data from a pipe, try again without --prompt-sec")
 		}
+		var err error
 		sec, err = askPassword("type your secret key as ncryptsec, nsec or hex: ", nil)
 		if err != nil {
 			return nostr.SecretKey{}, nil, fmt.Errorf("failed to get secret key: %w", err)
