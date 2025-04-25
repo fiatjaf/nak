@@ -18,14 +18,68 @@ var encode = &cli.Command{
 		nak encode nprofile --relay <relay-url> <pubkey-hex>
 		nak encode nevent <event-id>
 		nak encode nevent --author <pubkey-hex> --relay <relay-url> --relay <other-relay> <event-id>
-		nak encode nsec <privkey-hex>`,
-	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-		if c.Args().Len() < 1 {
-			return ctx, fmt.Errorf("expected more than 1 argument.")
-		}
-		return ctx, nil
+		nak encode nsec <privkey-hex>
+		echo '{"pubkey":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19","relays":["wss://nada.zero"]}' | nak encode
+		echo '{
+		  "id":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19"
+		  "relays":["wss://nada.zero"],
+		  "author":"ebb6ff85430705651b311ed51328767078fd790b14f02d22efba68d5513376bc"
+		} | nak encode`,
+	Flags: []cli.Flag{
+		&cli.StringSliceFlag{
+			Name:    "relay",
+			Aliases: []string{"r"},
+			Usage:   "attach relay hints to naddr code",
+		},
 	},
 	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		if c.Args().Len() != 0 {
+			return nil
+		}
+
+		relays := c.StringSlice("relay")
+		if err := normalizeAndValidateRelayURLs(relays); err != nil {
+			return err
+		}
+
+		hasStdin := false
+		for jsonStr := range getJsonsOrBlank() {
+			if jsonStr == "{}" {
+				hasStdin = false
+				continue
+			} else {
+				hasStdin = true
+			}
+
+			var eventPtr nostr.EventPointer
+			if err := json.Unmarshal([]byte(jsonStr), &eventPtr); err == nil && eventPtr.ID != nostr.ZeroID {
+				stdout(nip19.EncodeNevent(eventPtr.ID, appendUnique(relays, eventPtr.Relays...), eventPtr.Author))
+				continue
+			}
+
+			var profilePtr nostr.ProfilePointer
+			if err := json.Unmarshal([]byte(jsonStr), &profilePtr); err == nil && profilePtr.PublicKey != nostr.ZeroPK {
+				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, appendUnique(relays, profilePtr.Relays...)))
+				continue
+			}
+
+			var entityPtr nostr.EntityPointer
+			if err := json.Unmarshal([]byte(jsonStr), &entityPtr); err == nil && entityPtr.PublicKey != nostr.ZeroPK {
+				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, appendUnique(relays, entityPtr.Relays...)))
+				continue
+			}
+
+			ctx = lineProcessingError(ctx, "couldn't decode JSON '%s'", jsonStr)
+		}
+
+		if !hasStdin {
+			return nil
+		}
+
+		exitIfLineProcessingError(ctx)
+		return nil
+	},
 	Commands: []*cli.Command{
 		{
 			Name:                      "npub",
@@ -100,11 +154,6 @@ var encode = &cli.Command{
 			Name:  "nevent",
 			Usage: "generate event codes with optionally attached relay information",
 			Flags: []cli.Flag{
-				&cli.StringSliceFlag{
-					Name:    "relay",
-					Aliases: []string{"r"},
-					Usage:   "attach relay hints to nevent code",
-				},
 				&PubKeyFlag{
 					Name:    "author",
 					Aliases: []string{"a"},
@@ -154,11 +203,6 @@ var encode = &cli.Command{
 					Aliases:  []string{"k"},
 					Usage:    "kind of referred replaceable event",
 					Required: true,
-				},
-				&cli.StringSliceFlag{
-					Name:    "relay",
-					Aliases: []string{"r"},
-					Usage:   "attach relay hints to naddr code",
 				},
 			},
 			DisableSliceFlagSeparator: true,

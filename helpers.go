@@ -49,6 +49,7 @@ func isPiped() bool {
 func getJsonsOrBlank() iter.Seq[string] {
 	var curr strings.Builder
 
+	var finalJsonErr error
 	return func(yield func(string) bool) {
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			// we're look for an event, but it may be in multiple lines, so if json parsing fails
@@ -58,8 +59,10 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 			var dummy any
 			if err := json.Unmarshal([]byte(stdinEvent), &dummy); err != nil {
+				finalJsonErr = err
 				return true
 			}
+			finalJsonErr = nil
 
 			if !yield(stdinEvent) {
 				return false
@@ -71,6 +74,10 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 		if !hasStdin {
 			yield("{}")
+		}
+
+		if finalJsonErr != nil {
+			log(color.YellowString("stdin json parse error: %s", finalJsonErr))
 		}
 	}
 }
@@ -386,6 +393,19 @@ func clampError(err error, prefixAlreadyPrinted int) string {
 		msg = clampMessage(err.Error(), prefixAlreadyPrinted)
 	}
 	return msg
+}
+
+func appendUnique[A comparable](list []A, newEls ...A) []A {
+ex:
+	for _, newEl := range newEls {
+		for _, el := range list {
+			if el == newEl {
+				continue ex
+			}
+		}
+		list = append(list, newEl)
+	}
+	return list
 }
 
 var colors = struct {
