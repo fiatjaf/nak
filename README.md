@@ -15,6 +15,7 @@ take a look at the help text that comes in it to learn all possibilities, but he
 ```
 
 ### make a nostr event with custom content and tags, sign it with a different key and publish it to two relays
+
 ```shell
 ~> nak event --sec 02 -c 'good morning' --tag t=gm nostr-pub.wellorder.net relay.damus.io
 {"id":"e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698632753,"kind":1,"tags":[["t","gm"]],"content":"good morning","sig":"5687c1a97066c349cb3bde0c0719fd1652a13403ba6aca7557b646307ee6718528cd86989db08bf6a7fd04bea0b0b87c1dd1b78c2d21b80b80eebab7f40b8916"}
@@ -23,6 +24,7 @@ publishing to wss://relay.damus.io... success.
 ```
 
 ### query a bunch of relays for a tag with a limit of 2 for each, print their content
+
 ```shell
 ~> nak req -k 1 -t t=gm -l 2 nostr.mom nostr.wine nostr-pub.wellorder.net | jq .content
 "#GM, you sovereign savage #freeple of the #nostrverse. Let's cause some #nostroversy. "
@@ -33,6 +35,7 @@ publishing to wss://relay.damus.io... success.
 ```
 
 ### decode a nip19 note1 code, add a relay hint, encode it back to nevent1
+
 ```shell
 ~> nak decode note1ttnnrw78wy0hs5fa59yj03yvcu2r4y0xetg9vh7uf4em39n604vsyp37f2 | jq -r .id | nak encode nevent -r nostr.zbd.gg
 nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw3ezu7nzvshxwec8zw8h7
@@ -46,6 +49,7 @@ nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw
 ```
 
 ### fetch an event using relay and author hints automatically from a nevent1 code, pretty-print it
+
 ```shell
 nak fetch nevent1qqs2e3k48vtrkzjm8vvyzcmsmkf58unrxtq2k4h5yspay6vhcqm4wqcpz9mhxue69uhkummnw3ezuamfdejj7q3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqxpqqqqqqz7ttjyq | jq
 {
@@ -60,6 +64,7 @@ nak fetch nevent1qqs2e3k48vtrkzjm8vvyzcmsmkf58unrxtq2k4h5yspay6vhcqm4wqcpz9mhxue
 ```
 
 ### republish an event from one relay to multiple others
+
 ```shell
 ~> nak req -i e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a nostr.wine/ nostr-pub.wellorder.net | nak event nostr.wine offchain.pub public.relaying.io eden.nostr.land atlas.nostr.land relayable.org
 {"id":"e20978737ab7cd36eca300a65f11738176123f2e0c23054544b18fe493e2aa1a","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698632753,"kind":1,"tags":[["t","gm"]],"content":"good morning","sig":"5687c1a97066c349cb3bde0c0719fd1652a13403ba6aca7557b646307ee6718528cd86989db08bf6a7fd04bea0b0b87c1dd1b78c2d21b80b80eebab7f40b8916"}
@@ -72,12 +77,14 @@ publishing to wss://relayable.org... success.
 ```
 
 ### verify if an event is good
+
 ```shell
 ~> echo '{"content":"hello world","created_at":1698923350,"id":"05bd99d54cb835f327e0092c4275ee44c7ff51219eff417c19f70c9e2c53ad5a","kind":1,"pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","sig":"0a04a296321ed933858577f36fb2fb9a0933e966f9ee32b539493f5a4d00120891b1ca9152ebfbc04fb403bdaa7c73f415e7c4954e55726b4b4fa8cebf008cd6","tags":[]}' | nak verify
 invalid .id, expected 05bd99d54cb835f427e0092c4275ee44c7ff51219eff417c19f70c9e2c53ad5a, got 05bd99d54cb835f327e0092c4275ee44c7ff51219eff417c19f70c9e2c53ad5a
 ```
 
 ### fetch all quoted events by a given pubkey in their last 10 notes of 2023
+
 ```shell
 ~> nak req -l 10 -k 1 --until 'December 31 2023' -a 2edbcea694d164629854a52583458fd6d965b161e3c48b57d3aff01940558884 relay.damus.io | jq -r '.content | match("nostr:((note1|nevent1)[a-z0-9]+)";"g") | .captures[0].string' | nak decode | jq -cr '{ids: [.id]}' | nak req relay.damus.io
 connecting to relay.damus.io...
@@ -89,6 +96,7 @@ ok.
 ```
 
 ### sign an event collaboratively with multiple parties using musig2
+
 ```shell
 ~> nak event --sec 1234 -k 1 -c 'hello from a combined key' --musig 2
 the following code should be saved secretly until the next step an included with --musig-nonce-secret:
@@ -101,18 +109,21 @@ nak event --sec <insert-secret-key> --musig 2 -k 1 -ts 1720821287 -c 'hello from
 demo videos with [2](https://njump.me/nevent1qqs8pmmae89agph80928l6gjm0wymechqazv80jwqrqy4cgk08epjaczyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze674zkzz), [3](https://njump.me/nevent1qqsrp320drqcnmnam6jvmdd4lgdvh2ay0xrdesrvy6q9qqdfsk7r55qzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6c32d4m) and [4](https://njump.me/nevent1qqsre84xe6qpagf2w2xjtjwc95j4dd5ccue68gxl8grkd6t6hjhaj5qzyqalp33lewf5vdq847t6te0wvnags0gs0mu72kz8938tn24wlfze6t8t7ak) parties.
 
 ### generate a private key
+
 ```shell
 ~> nak key generate                                                                              18:59
 7b94e287b1fafa694ded1619b27de7effd3646104a158e187ff4edc56bc6148d
 ```
 
 ### encrypt key with NIP-49
+
 ```shell
 ~> nak key encrypt 7b94e287b1fafa694ded1619b27de7effd3646104a158e187ff4edc56bc6148d mypassword
 ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls
 ```
 
 ### decrypt key with NIP-49
+
 ```shell
 ~> nak key decrypt ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls mypassword
 7b94e287b1fafa694ded1619b27de7effd3646104a158e187ff4edc56bc6148d
@@ -123,17 +134,20 @@ type the password to decrypt your secret key: **********
 ```
 
 ### get a public key from a private key
+
 ```shell
 ~> nak key public 7b94e287b1fafa694ded1619b27de7effd3646104a158e187ff4edc56bc6148d
 985d66d2644dfa7676e26046914470d66ebc7fa783a3f57f139fde32d0d631d7
 ```
 
 ### sign an event using a remote NIP-46 bunker
+
 ```shell
 ~> nak event --connect 'bunker://a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nsecbunker.com&relay=wss%3A%2F%2Fnos.lol&secret=TWfGbjQCLxUf' -c 'hello from bunker'
 ```
 
 ### sign an event using a NIP-49 encrypted key
+
 ```shell
 ~> nak event --sec ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls -c 'hello from encrypted key'
 type the password to decrypt your secret key: **********
@@ -141,6 +155,7 @@ type the password to decrypt your secret key: **********
 ```
 
 ### talk to a relay's NIP-86 management API
+
 ```shell
 nak relay allowpubkey --sec ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls --pubkey a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208 pyramid.fiatjaf.com
 type the password to decrypt your secret key: **********
@@ -152,6 +167,7 @@ calling 'allowpubkey' on https://pyramid.fiatjaf.com...
 ```
 
 ### start a bunker locally
+
 ```shell
 ~> nak bunker --sec ncryptsec1qggrp80ptf0s7kyl0r38ktzg60fem85m89uz7um6rjn4pnep2nnvcgqm8h7q36c76z9sypatdh4fmw6etfxu99mv5cxkw4ymcsryw0zz7evyuplsgvnj5yysf449lq94klzvnahsw2lzxflvcq4qpf5q -k 3fbf7fbb2a2111e205f74aca0166e29e421729c9a07bc45aa85d39535b47c9ed relay.damus.io nos.lol relay.nsecbunker.com
 connecting to relay.damus.io... ok.
@@ -168,12 +184,14 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 ```
 
 ### generate a NIP-70 protected event with a date set to two weeks ago and some multi-value tags
+
 ```shell
 ~> nak event --ts 'two weeks ago' -t '-' -t 'e=f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a;wss://relay.whatever.com;root;a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208' -t 'p=a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208;wss://p-relay.com' -c 'I know the future'
 {"kind":1,"id":"f030fccd90c783858dfcee204af94826cf0f1c85d6fc85a0087e9e5172419393","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1719677535,"tags":[["-"],["e","f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a","wss://relay.whatever.com","root","a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208"],["p","a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208","wss://p-relay.com"]],"content":"I know the future","sig":"8b36a74e29df8bc12bed66896820da6940d4d9409721b3ed2e910c838833a178cb45fd5bb1c6eb6adc66ab2808bfac9f6644a2c55a6570bb2ad90f221c9c7551"}
 ```
 
 ### download the latest 50000 notes from a relay, regardless of their natural query limits, by paginating requests
+
 ```shell
 ~> nak req -k 1 --limit 50000 --paginate --paginate-interval 2s nos.lol > events.jsonl
 ~> wc -l events.jsonl
@@ -181,6 +199,7 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 ```
 
 ### run a somewhat verbose local relay for test purposes
+
 ```shell
 ~> nak serve
 > relay running at ws://localhost:10547
@@ -195,6 +214,7 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
 ```
 
 ### make an event with a PoW target
+
 ```shell
 ~> nak event -c 'hello getwired.app and labour.fiatjaf.com' --pow 24
 {"kind":1,"id":"0000009dcc7c62056eafdb41fac817379ec2becf0ce27c5fbe98d0735d968147","pubkey":"79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798","created_at":1724160828,"tags":[["nonce","515504","24"]],"content":"hello getwired.app and labour.fiatjaf.com","sig":"7edb988065ccc12779fe99270945b212f3723838f315d76d5e90e9ffa27198f13fa556614295f518d968d55bab81878167d4162b3a7cf81a6b423c6761bd504c"}
@@ -210,11 +230,13 @@ type the password to decrypt your secret key: ********
 ```
 
 ### download some helpful `jq` functions for dealing with nostr events
+
 ```shell
 ~> nak req -i 412f2d3e73acc312942c055ac2a695dc60bf58ff97e06689a8a79e97796c4cdb relay.westernbtc.com | jq -r .content > ~/.jq
 ```
 
 ### watch a NIP-53 livestream (zap.stream etc)
+
 ```shell
 ~> # this requires the jq utils from the step above
 ~> mpv $(nak fetch naddr1qqjxvvm9xscnsdtx95cxvcfk956rsvtx943rje3k95mx2dp389jnwwrp8ymxgqg4waehxw309aex2mrp0yhxgctdw4eju6t09upzpn6956apxcad0mfp8grcuugdysg44eepex68h50t73zcathmfs49qvzqqqrkvu7ed38k | jq -r 'tag_value("streaming")')
@@ -224,12 +246,14 @@ type the password to decrypt your secret key: ********
 ```
 
 ### download a NIP-35 torrent from an `nevent`
+
 ```shell
 ~> # this requires the jq utils from two steps above
 ~> aria2c $(nak fetch nevent1qqsdsg6x7uujekac4ga7k7qa9q9sx8gqj7xzjf5w9us0dm0ghvf4ugspp4mhxue69uhkummn9ekx7mq6dw9y4 | jq -r '"magnet:?xt=urn:btih:\(tag_value("x"))&dn=\(tag_value("title"))&tr=http%3A%2F%2Ftracker.loadpeers.org%3A8080%2FxvRKfvAlnfuf5EfxTT5T0KIVPtbqAHnX%2Fannounce&tr=udp%3A%2F%2Ftracker.coppersurfer.tk%3A6969%2Fannounce&tr=udp%3A%2F%2Ftracker.openbittorrent.com%3A6969%2Fannounce&tr=udp%3A%2F%2Fopen.stealth.si%3A80%2Fannounce&tr=udp%3A%2F%2Ftracker.torrent.eu.org%3A451%2Fannounce&tr=udp%3A%2F%2Ftracker.opentrackr.org%3A1337&tr=\(tags("tracker") | map(.[1] | @uri) | join("&tr="))"')
 ```
 
 ### mount Nostr as a FUSE filesystem and publish a note
+
 ```shell
 ~> nak fs --sec 01 ~/nostr
 - mounting at /home/user/nostr... ok.
@@ -246,6 +270,7 @@ event published as f1cbfa6... and updated locally.
 ```
 
 ### list NIP-60 wallet tokens and send some
+
 ```shell
 ~> nak wallet tokens
 91a10b6fc8bbe7ef2ad9ad0142871d80468b697716d9d2820902db304ff1165e 500 cashu.space
@@ -256,6 +281,7 @@ cashuA1psxqyry8...
 ```
 
 ### upload and download files with blossom
+
 ```shell
 ~> nak blossom --server blossom.azzamo.net --sec 01 upload image.png
 {"sha256":"38c51756f3e9fedf039488a1f6e513286f6743194e7a7f25effdc84a0ee4c2cf","url":"https://blossom.azzamo.net/38c51756f3e9fedf039488a1f6e513286f6743194e7a7f25effdc84a0ee4c2cf.png"}
