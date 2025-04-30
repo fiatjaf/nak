@@ -45,6 +45,7 @@ var app = &cli.Command{
 		curl,
 		dvm,
 		fsCmd,
+		webmark,
 	},
 	Version: version,
 	Flags: []cli.Flag{
