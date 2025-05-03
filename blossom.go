@@ -75,7 +75,7 @@ var blossomCmd = &cli.Command{
 
 				hasError := false
 				for _, fpath := range c.Args().Slice() {
-					bd, err := client.UploadFile(ctx, fpath)
+					bd, err := client.UploadFilePath(ctx, fpath)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "%s\n", err)
 						hasError = true
