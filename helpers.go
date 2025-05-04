@@ -40,7 +40,7 @@ const (
 var (
 	log        = func(msg string, args ...any) { fmt.Fprintf(color.Error, msg, args...) }
 	logverbose = func(msg string, args ...any) {} // by default do nothing
-	stdout     = fmt.Println
+	stdout     = func(args ...any) { fmt.Fprintln(color.Output, args...) }
 )
 
 func isPiped() bool {
