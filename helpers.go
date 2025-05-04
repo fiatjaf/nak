@@ -21,8 +21,10 @@ import (
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk"
+	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/mattn/go-tty"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -406,6 +408,49 @@ ex:
 		list = append(list, newEl)
 	}
 	return list
+}
+
+func askConfirmation(msg string) bool {
+	if isPiped() {
+		tty, err := tty.Open()
+		if err != nil {
+			return false
+		}
+		defer tty.Close()
+
+		fmt.Fprintf(os.Stderr, color.YellowString(msg))
+		answer, err := tty.ReadString()
+		if err != nil {
+			return false
+		}
+
+		// print newline after password input
+		fmt.Fprintln(os.Stderr)
+
+		answer = strings.TrimSpace(string(answer))
+		return answer == "y" || answer == "yes"
+	} else {
+		config := &readline.Config{
+			Stdout:                 color.Error,
+			Prompt:                 color.YellowString(msg),
+			InterruptPrompt:        "^C",
+			DisableAutoSaveHistory: true,
+			EnableMask:             false,
+			MaskRune:               '*',
+		}
+
+		rl, err := readline.NewEx(config)
+		if err != nil {
+			return false
+		}
+
+		answer, err := rl.Readline()
+		if err != nil {
+			return false
+		}
+		answer = strings.ToLower(strings.TrimSpace(answer))
+		return answer == "y" || answer == "yes"
+	}
 }
 
 var colors = struct {

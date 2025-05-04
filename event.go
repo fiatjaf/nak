@@ -129,6 +129,11 @@ example:
 			Value:       nostr.Now(),
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
+		&cli.BoolFlag{
+			Name:     "confirm",
+			Usage:    "ask before publishing the event",
+			Category: CATEGORY_EXTRAS,
+		},
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -313,6 +318,17 @@ example:
 			successRelays := make([]string, 0, len(relays))
 			if len(relays) > 0 {
 				os.Stdout.Sync()
+
+				if c.Bool("confirm") {
+					relaysStr := make([]string, len(relays))
+					for i, r := range relays {
+						relaysStr[i] = strings.ToLower(strings.Split(r.URL, "://")[1])
+					}
+					time.Sleep(time.Millisecond * 10)
+					if !askConfirmation("publish to [ " + strings.Join(relaysStr, " ") + " ]? ") {
+						return nil
+					}
+				}
 
 				if supportsDynamicMultilineMagic() {
 					// overcomplicated multiline rendering magic
