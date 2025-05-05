@@ -25,7 +25,7 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 	}
 
 	relays := sys.FetchOutboxRelays(ctx, pk, 3)
-	w := nip60.LoadWallet(ctx, kr, sys.Pool, relays)
+	w := nip60.LoadWallet(ctx, kr, sys.Pool, relays, nip60.WalletOptions{})
 	if w == nil {
 		return nil, nil, fmt.Errorf("error loading walle")
 	}
@@ -200,12 +200,9 @@ var wallet = &cli.Command{
 					return err
 				}
 
-				opts := make([]nip60.ReceiveOption, 0, 1)
-				for _, url := range c.StringSlice("mint") {
-					opts = append(opts, nip60.WithMintDestination(url))
-				}
-
-				if err := w.Receive(ctx, proofs, mint, opts...); err != nil {
+				if err := w.Receive(ctx, proofs, mint, nip60.ReceiveOptions{
+					IntoMint: c.StringSlice("mint"),
+				}); err != nil {
 					return err
 				}
 
@@ -239,12 +236,13 @@ var wallet = &cli.Command{
 					return err
 				}
 
-				opts := make([]nip60.SendOption, 0, 1)
+				var sourceMint string
 				if mint := c.String("mint"); mint != "" {
-					mint = "http" + nostr.NormalizeURL(mint)[2:]
-					opts = append(opts, nip60.WithMint(mint))
+					sourceMint = "http" + nostr.NormalizeURL(mint)[2:]
 				}
-				proofs, mint, err := w.Send(ctx, amount, opts...)
+				proofs, mint, err := w.Send(ctx, amount, nip60.SendOptions{
+					SpecificSourceMint: sourceMint,
+				})
 				if err != nil {
 					return err
 				}
@@ -277,13 +275,14 @@ var wallet = &cli.Command{
 					return err
 				}
 
-				opts := make([]nip60.SendOption, 0, 1)
+				var sourceMint string
 				if mint := c.String("mint"); mint != "" {
-					mint = "http" + nostr.NormalizeURL(mint)[2:]
-					opts = append(opts, nip60.WithMint(mint))
+					sourceMint = "http" + nostr.NormalizeURL(mint)[2:]
 				}
 
-				preimage, err := w.PayBolt11(ctx, args[0], opts...)
+				preimage, err := w.PayBolt11(ctx, args[0], nip60.PayOptions{
+					FromMint: sourceMint,
+				})
 				if err != nil {
 					return err
 				}
@@ -350,10 +349,9 @@ var wallet = &cli.Command{
 
 				log("sending %d sat to '%s' (%s)", amount, pm.ShortName(), pm.Npub())
 
-				opts := make([]nip60.SendOption, 0, 1)
+				var sourceMint string
 				if mint := c.String("mint"); mint != "" {
-					mint = "http" + nostr.NormalizeURL(mint)[2:]
-					opts = append(opts, nip60.WithMint(mint))
+					sourceMint = "http" + nostr.NormalizeURL(mint)[2:]
 				}
 
 				kr, _, _ := gatherKeyerFromArguments(ctx, c)
@@ -362,12 +360,15 @@ var wallet = &cli.Command{
 					kr,
 					w,
 					sys.Pool,
-					pm.PubKey,
-					sys.FetchInboxRelays,
-					sys.FetchOutboxRelays(ctx, pm.PubKey, 3),
-					eventId,
 					uint64(amount),
-					c.String("message"),
+					pm.PubKey,
+					sys.FetchWriteRelays(ctx, pm.PubKey),
+					nip61.NutzapOptions{
+						Message:            c.String("message"),
+						SendToRelays:       sys.FetchInboxRelays(ctx, pm.PubKey, 3),
+						EventID:            eventId,
+						SpecificSourceMint: sourceMint,
+					},
 				)
 				if err != nil {
 					return err
