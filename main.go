@@ -44,6 +44,7 @@ var app = &cli.Command{
 		mcpServer,
 		curl,
 		fsCmd,
+		publish,
 	},
 	Version: version,
 	Flags: []cli.Flag{

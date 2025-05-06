@@ -27,13 +27,6 @@ var fetch = &cli.Command{
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		defer func() {
-			sys.Pool.Relays.Range(func(_ string, relay *nostr.Relay) bool {
-				relay.Close()
-				return true
-			})
-		}()
-
 		for code := range getStdinLinesOrArguments(c.Args()) {
 			filter := nostr.Filter{}
 			var authorHint nostr.PubKey

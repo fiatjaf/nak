@@ -82,12 +82,6 @@ var count = &cli.Command{
 					biggerUrlSize = len(relay.URL)
 				}
 			}
-
-			defer func() {
-				for _, relay := range relays {
-					relay.Close()
-				}
-			}()
 		}
 
 		filter := nostr.Filter{}

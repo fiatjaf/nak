@@ -140,10 +140,6 @@ example:
 		// try to connect to the relays here
 		var relays []*nostr.Relay
 
-		// these are defaults, they will be replaced if we use the magic dynamic thing
-		logthis := func(relayUrl string, s string, args ...any) { log(s, args...) }
-		colorizethis := func(relayUrl string, colorize func(string, ...any) string) {}
-
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
 			relays = connectToAllRelays(ctx, c, relayUrls, nil,
 				nostr.PoolOptions{
@@ -157,18 +153,10 @@ example:
 				os.Exit(3)
 			}
 		}
-		defer func() {
-			for _, relay := range relays {
-				relay.Close()
-			}
-		}()
-
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
-
-		doAuth := c.Bool("auth")
 
 		// then process input and generate events:
 
@@ -314,123 +302,7 @@ example:
 			}
 			stdout(result)
 
-			// publish to relays
-			successRelays := make([]string, 0, len(relays))
-			if len(relays) > 0 {
-				os.Stdout.Sync()
-
-				if c.Bool("confirm") {
-					relaysStr := make([]string, len(relays))
-					for i, r := range relays {
-						relaysStr[i] = strings.ToLower(strings.Split(r.URL, "://")[1])
-					}
-					time.Sleep(time.Millisecond * 10)
-					if !askConfirmation("publish to [ " + strings.Join(relaysStr, " ") + " ]? ") {
-						return nil
-					}
-				}
-
-				if supportsDynamicMultilineMagic() {
-					// overcomplicated multiline rendering magic
-					ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-					defer cancel()
-
-					urls := make([]string, len(relays))
-					lines := make([][][]byte, len(urls))
-					flush := func() {
-						for _, line := range lines {
-							for _, part := range line {
-								os.Stderr.Write(part)
-							}
-							os.Stderr.Write([]byte{'\n'})
-						}
-					}
-					render := func() {
-						clearLines(len(lines))
-						flush()
-					}
-					flush()
-
-					logthis = func(relayUrl, s string, args ...any) {
-						idx := slices.Index(urls, relayUrl)
-						lines[idx] = append(lines[idx], []byte(fmt.Sprintf(s, args...)))
-						render()
-					}
-					colorizethis = func(relayUrl string, colorize func(string, ...any) string) {
-						cleanUrl, _ := strings.CutPrefix(relayUrl, "wss://")
-						idx := slices.Index(urls, relayUrl)
-						lines[idx][0] = []byte(fmt.Sprintf("publishing to %s... ", colorize(cleanUrl)))
-						render()
-					}
-
-					for i, relay := range relays {
-						urls[i] = relay.URL
-						lines[i] = make([][]byte, 1, 3)
-						colorizethis(relay.URL, color.CyanString)
-					}
-					render()
-
-					for res := range sys.Pool.PublishMany(ctx, urls, evt) {
-						if res.Error == nil {
-							colorizethis(res.RelayURL, colors.successf)
-							logthis(res.RelayURL, "success.")
-							successRelays = append(successRelays, res.RelayURL)
-						} else {
-							colorizethis(res.RelayURL, colors.errorf)
-
-							// in this case it's likely that the lowest-level error is the one that will be more helpful
-							low := unwrapAll(res.Error)
-
-							// hack for some messages such as from relay.westernbtc.com
-							msg := strings.ReplaceAll(low.Error(), evt.PubKey.Hex(), "author")
-
-							// do not allow the message to overflow the term window
-							msg = clampMessage(msg, 20+len(res.RelayURL))
-
-							logthis(res.RelayURL, msg)
-						}
-					}
-				} else {
-					// normal dumb flow
-					for _, relay := range relays {
-					publish:
-						cleanUrl, _ := strings.CutPrefix(relay.URL, "wss://")
-						log("publishing to %s... ", color.CyanString(cleanUrl))
-						ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-						defer cancel()
-
-						err := relay.Publish(ctx, evt)
-						if err == nil {
-							// published fine
-							log("success.\n")
-							successRelays = append(successRelays, relay.URL)
-							continue // continue to next relay
-						}
-
-						// error publishing
-						if strings.HasPrefix(err.Error(), "msg: auth-required:") && kr != nil && doAuth {
-							// if the relay is requesting auth and we can auth, let's do it
-							pk, _ := kr.GetPublicKey(ctx)
-							npub := nip19.EncodeNpub(pk)
-							log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
-							if err := relay.Auth(ctx, kr.SignEvent); err == nil {
-								// try to publish again, but this time don't try to auth again
-								doAuth = false
-								goto publish
-							} else {
-								log("auth error: %s. ", err)
-							}
-						}
-						log("failed: %s\n", err)
-					}
-				}
-
-				if len(successRelays) > 0 && c.Bool("nevent") {
-					log(nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey) + "\n")
-				}
-			}
-
-			return nil
+			return publishFlow(ctx, c, kr, evt, relays)
 		}
 
 		for stdinEvent := range getJsonsOrBlank() {
@@ -442,4 +314,126 @@ example:
 		exitIfLineProcessingError(ctx)
 		return nil
 	},
+}
+
+func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr.Event, relays []*nostr.Relay) error {
+	doAuth := c.Bool("auth")
+
+	// publish to relays
+	successRelays := make([]string, 0, len(relays))
+	if len(relays) > 0 {
+		os.Stdout.Sync()
+
+		if c.Bool("confirm") {
+			relaysStr := make([]string, len(relays))
+			for i, r := range relays {
+				relaysStr[i] = strings.ToLower(strings.Split(r.URL, "://")[1])
+			}
+			time.Sleep(time.Millisecond * 10)
+			if !askConfirmation("publish to [ " + strings.Join(relaysStr, " ") + " ]? ") {
+				return nil
+			}
+		}
+
+		if supportsDynamicMultilineMagic() {
+			// overcomplicated multiline rendering magic
+			ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+			defer cancel()
+
+			urls := make([]string, len(relays))
+			lines := make([][][]byte, len(urls))
+			flush := func() {
+				for _, line := range lines {
+					for _, part := range line {
+						os.Stderr.Write(part)
+					}
+					os.Stderr.Write([]byte{'\n'})
+				}
+			}
+			render := func() {
+				clearLines(len(lines))
+				flush()
+			}
+			flush()
+
+			logthis := func(relayUrl, s string, args ...any) {
+				idx := slices.Index(urls, relayUrl)
+				lines[idx] = append(lines[idx], []byte(fmt.Sprintf(s, args...)))
+				render()
+			}
+			colorizethis := func(relayUrl string, colorize func(string, ...any) string) {
+				cleanUrl, _ := strings.CutPrefix(relayUrl, "wss://")
+				idx := slices.Index(urls, relayUrl)
+				lines[idx][0] = []byte(fmt.Sprintf("publishing to %s... ", colorize(cleanUrl)))
+				render()
+			}
+
+			for i, relay := range relays {
+				urls[i] = relay.URL
+				lines[i] = make([][]byte, 1, 3)
+				colorizethis(relay.URL, color.CyanString)
+			}
+			render()
+
+			for res := range sys.Pool.PublishMany(ctx, urls, evt) {
+				if res.Error == nil {
+					colorizethis(res.RelayURL, colors.successf)
+					logthis(res.RelayURL, "success.")
+					successRelays = append(successRelays, res.RelayURL)
+				} else {
+					colorizethis(res.RelayURL, colors.errorf)
+
+					// in this case it's likely that the lowest-level error is the one that will be more helpful
+					low := unwrapAll(res.Error)
+
+					// hack for some messages such as from relay.westernbtc.com
+					msg := strings.ReplaceAll(low.Error(), evt.PubKey.Hex(), "author")
+
+					// do not allow the message to overflow the term window
+					msg = clampMessage(msg, 20+len(res.RelayURL))
+
+					logthis(res.RelayURL, msg)
+				}
+			}
+		} else {
+			// normal dumb flow
+			for _, relay := range relays {
+			publish:
+				cleanUrl, _ := strings.CutPrefix(relay.URL, "wss://")
+				log("publishing to %s... ", color.CyanString(cleanUrl))
+				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+				defer cancel()
+
+				err := relay.Publish(ctx, evt)
+				if err == nil {
+					// published fine
+					log("success.\n")
+					successRelays = append(successRelays, relay.URL)
+					continue // continue to next relay
+				}
+
+				// error publishing
+				if strings.HasPrefix(err.Error(), "msg: auth-required:") && kr != nil && doAuth {
+					// if the relay is requesting auth and we can auth, let's do it
+					pk, _ := kr.GetPublicKey(ctx)
+					npub := nip19.EncodeNpub(pk)
+					log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
+					if err := relay.Auth(ctx, kr.SignEvent); err == nil {
+						// try to publish again, but this time don't try to auth again
+						doAuth = false
+						goto publish
+					} else {
+						log("auth error: %s. ", err)
+					}
+				}
+				log("failed: %s\n", err)
+			}
+		}
+
+		if len(successRelays) > 0 && c.Bool("nevent") {
+			log(nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey) + "\n")
+		}
+	}
+
+	return nil
 }

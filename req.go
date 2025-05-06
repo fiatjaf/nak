@@ -113,12 +113,6 @@ example:
 			for i, relay := range relays {
 				relayUrls[i] = relay.URL
 			}
-
-			defer func() {
-				for _, relay := range relays {
-					relay.Close()
-				}
-			}()
 		}
 
 		// go line by line from stdin or run once with input from flags

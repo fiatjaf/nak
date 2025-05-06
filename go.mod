@@ -4,7 +4,6 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.1
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.4
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -23,6 +22,7 @@ require (
 )
 
 require (
+	fiatjaf.com/nostr v0.0.0-20250506031545-0d99789a54e2 // indirect
 	github.com/FastFilter/xorfilter v0.2.1 // indirect
 	github.com/ImVexed/fasturl v0.0.0-20230304231329-4e41488060f3 // indirect
 	github.com/andybalholm/brotli v1.1.1 // indirect
@@ -86,5 +86,3 @@ require (
 	google.golang.org/protobuf v1.36.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )
-
-replace fiatjaf.com/nostr => ../nostrlib
