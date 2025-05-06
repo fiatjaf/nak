@@ -102,7 +102,7 @@ demo videos with [2](https://njump.me/nevent1qqs8pmmae89agph80928l6gjm0wymechqaz
 
 ### generate a private key
 ```shell
-~> nak key generate                                                                              18:59
+~> nak key generate
 7b94e287b1fafa694ded1619b27de7effd3646104a158e187ff4edc56bc6148d
 ```
 
@@ -130,7 +130,7 @@ type the password to decrypt your secret key: **********
 
 ### sign an event using a remote NIP-46 bunker
 ```shell
-~> nak event --connect 'bunker://a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nsecbunker.com&relay=wss%3A%2F%2Fnos.lol&secret=TWfGbjQCLxUf' -c 'hello from bunker'
+~> nak event --sec 'bunker://a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nsecbunker.com&relay=wss%3A%2F%2Fnos.lol&secret=TWfGbjQCLxUf' -c 'hello from bunker'
 ```
 
 ### sign an event using a NIP-49 encrypted key
