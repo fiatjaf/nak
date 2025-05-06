@@ -2,15 +2,12 @@ package nostrfs
 
 import (
 	"context"
-	"slices"
 	"strings"
 	"sync/atomic"
 	"syscall"
 
 	"fiatjaf.com/lib/debouncer"
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip27"
-	"fiatjaf.com/nostr/nip73"
 	"github.com/fatih/color"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
@@ -147,36 +144,9 @@ func (n *ViewDir) publishNote() {
 		relays = n.root.sys.FetchOutboxRelays(n.root.ctx, n.root.rootPubKey, 6)
 	}
 
-	// add "p" tags from people mentioned and "q" tags from events mentioned
-	for ref := range nip27.Parse(evt.Content) {
-		if _, isExternal := ref.Pointer.(nip73.ExternalPointer); isExternal {
-			continue
-		}
-
-		tag := ref.Pointer.AsTag()
-		key := tag[0]
-		val := tag[1]
-		if key == "e" || key == "a" {
-			key = "q"
-		}
-		if existing := evt.Tags.FindWithValue(key, val); existing == nil {
-			evt.Tags = append(evt.Tags, tag)
-
-			// add their "read" relays
-			if key == "p" {
-				pk, err := nostr.PubKeyFromHex(val)
-				if err != nil {
-					continue
-				}
-
-				for _, r := range n.root.sys.FetchInboxRelays(n.root.ctx, pk, 4) {
-					if !slices.Contains(relays, r) {
-						relays = append(relays, r)
-					}
-				}
-			}
-		}
-	}
+	// massage and extract tags from raw text
+	targetRelays := n.root.sys.PrepareNoteEvent(n.root.ctx, &evt)
+	relays = nostr.AppendUnique(relays, targetRelays...)
 
 	// sign and publish
 	if err := n.root.signer.SignEvent(n.root.ctx, &evt); err != nil {
