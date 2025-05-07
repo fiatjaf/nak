@@ -262,6 +262,15 @@ cashuA1psxqyry8...
 ~> nak blossom --server aegis.utxo.one download acc8ea43d4e6b706f68b249144364f446854b7f63ba1927371831c05dcf0256c -o downloaded.png
 ```
 
+### publish a fully formed event with correct tags, URIs and to the correct read and write relays
+```shell
+echo "#surely you're joking, mr npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft olas.app is broken again" | nak publish
+
+# it will add the hashtag, turn the npub1 code into a nostr:npub1 URI, turn the olas.app string into https://olas.app, add the "p" tag (and "q" tags too if you were mentioning an nevent1 code or naddr1 code) and finally publish it to your "write" relays and to any mentioned person (or author of mentioned events)'s "read" relays.
+# there is also a --reply flag that you can pass an nevent, naddr or hex id to and it will do the right thing (including setting the correct kind to either 1 or 1111).
+# and there is a --confirm flag that gives you a chance to confirm before actually publishing the result to relays.
+```
+
 ## contributing to this repository
 
 Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
