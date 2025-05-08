@@ -240,7 +240,7 @@ var wallet = &cli.Command{
 				if mint := c.String("mint"); mint != "" {
 					sourceMint = "http" + nostr.NormalizeURL(mint)[2:]
 				}
-				proofs, mint, err := w.Send(ctx, amount, nip60.SendOptions{
+				proofs, mint, err := w.SendInternal(ctx, amount, nip60.SendOptions{
 					SpecificSourceMint: sourceMint,
 				})
 				if err != nil {

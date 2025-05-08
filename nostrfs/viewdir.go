@@ -183,8 +183,8 @@ func (n *ViewDir) publishNote() {
 
 func (n *ViewDir) Getattr(_ context.Context, f fs.FileHandle, out *fuse.AttrOut) syscall.Errno {
 	now := nostr.Now()
-	if n.filter.Until != nil {
-		now = *n.filter.Until
+	if n.filter.Until != 0 {
+		now = n.filter.Until
 	}
 	aMonthAgo := now - 30*24*60*60
 	out.Mtime = uint64(aMonthAgo)
@@ -199,14 +199,14 @@ func (n *ViewDir) Opendir(ctx context.Context) syscall.Errno {
 
 	if n.paginate {
 		now := nostr.Now()
-		if n.filter.Until != nil {
-			now = *n.filter.Until
+		if n.filter.Until != 0 {
+			now = n.filter.Until
 		}
 		aMonthAgo := now - 30*24*60*60
-		n.filter.Since = &aMonthAgo
+		n.filter.Since = aMonthAgo
 
 		filter := n.filter
-		filter.Until = &aMonthAgo
+		filter.Until = aMonthAgo
 
 		n.AddChild("@previous", n.NewPersistentInode(
 			n.root.ctx,

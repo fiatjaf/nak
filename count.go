@@ -46,13 +46,13 @@ var count = &cli.Command{
 			Usage:    "shortcut for --tag p=<value>",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.IntFlag{
+		&NaturalTimeFlag{
 			Name:     "since",
 			Aliases:  []string{"s"},
 			Usage:    "only accept events newer than this (unix timestamp)",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
-		&cli.IntFlag{
+		&NaturalTimeFlag{
 			Name:     "until",
 			Aliases:  []string{"u"},
 			Usage:    "only accept events older than this (unix timestamp)",
@@ -122,14 +122,13 @@ var count = &cli.Command{
 			}
 		}
 
-		if since := c.Int("since"); since != 0 {
-			ts := nostr.Timestamp(since)
-			filter.Since = &ts
+		if c.IsSet("since") {
+			filter.Since = getNaturalDate(c, "since")
 		}
-		if until := c.Int("until"); until != 0 {
-			ts := nostr.Timestamp(until)
-			filter.Until = &ts
+		if c.IsSet("until") {
+			filter.Until = getNaturalDate(c, "until")
 		}
+
 		if limit := c.Int("limit"); limit != 0 {
 			filter.Limit = int(limit)
 		}

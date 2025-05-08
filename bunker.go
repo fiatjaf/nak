@@ -140,11 +140,10 @@ var bunker = &cli.Command{
 		printBunkerInfo()
 
 		// subscribe to relays
-		now := nostr.Now()
 		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
 			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
 			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
-			Since:     &now,
+			Since:     nostr.Now(),
 			LimitZero: true,
 		}, nostr.SubscriptionOptions{
 			Label: "nak-bunker",

@@ -286,13 +286,10 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	}
 
 	if c.IsSet("since") {
-		nts := getNaturalDate(c, "since")
-		filter.Since = &nts
+		filter.Since = getNaturalDate(c, "since")
 	}
-
 	if c.IsSet("until") {
-		nts := getNaturalDate(c, "until")
-		filter.Until = &nts
+		filter.Until = getNaturalDate(c, "until")
 	}
 
 	if limit := c.Uint("limit"); limit != 0 {
