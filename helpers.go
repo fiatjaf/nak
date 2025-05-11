@@ -381,9 +381,15 @@ func unwrapAll(err error) error {
 func clampMessage(msg string, prefixAlreadyPrinted int) string {
 	termSize, _, _ := term.GetSize(int(os.Stderr.Fd()))
 
+	prf := "expected handshake response status code 101 but got "
+	if len(msg) > len(prf) && msg[0:len(prf)] == prf {
+		msg = "status " + msg[len(prf):]
+	}
+
 	if len(msg) > termSize-prefixAlreadyPrinted && prefixAlreadyPrinted+1 < termSize {
 		msg = msg[0:termSize-prefixAlreadyPrinted-1] + "…"
 	}
+
 	return msg
 }
 
