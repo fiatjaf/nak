@@ -4,7 +4,6 @@ import (
 	"bufio"
 	"context"
 	"fmt"
-	"math"
 	"os"
 	"time"
 
@@ -38,7 +37,7 @@ var serve = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
-		db := &slicestore.SliceStore{MaxLimit: math.MaxInt}
+		db := &slicestore.SliceStore{}
 
 		var scanner *bufio.Scanner
 		if path := c.String("events"); path != "" {
@@ -71,7 +70,7 @@ var serve = &cli.Command{
 		rl.Info.Software = "https://github.com/fiatjaf/nak"
 		rl.Info.Version = version
 
-		rl.UseEventstore(db)
+		rl.UseEventstore(db, 1_000_000)
 
 		started := make(chan bool)
 		exited := make(chan error)
@@ -108,9 +107,9 @@ var serve = &cli.Command{
 		d := debounce.New(time.Second * 2)
 		printStatus = func() {
 			d(func() {
-				totalEvents := 0
-				for range db.QueryEvents(nostr.Filter{}) {
-					totalEvents++
+				totalEvents, err := db.CountEvents(nostr.Filter{})
+				if err != nil {
+					log("failed to count: %s\n", err)
 				}
 				subs := rl.GetListeningFilters()
 
