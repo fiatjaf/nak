@@ -1,8 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"os"
 
 	"fiatjaf.com/nostr"
@@ -73,22 +75,44 @@ var blossomCmd = &cli.Command{
 					return err
 				}
 
-				hasError := false
-				for _, fpath := range c.Args().Slice() {
-					bd, err := client.UploadFilePath(ctx, fpath)
+				if isPiped() {
+					// get file from stdin
+					if c.Args().Len() > 0 {
+						return fmt.Errorf("do not pass arguments when piping from stdin")
+					}
+
+					data, err := io.ReadAll(os.Stdin)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "%s\n", err)
-						hasError = true
-						continue
+						return fmt.Errorf("failed to read stdin: %w", err)
+					}
+
+					bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
+					if err != nil {
+						return err
 					}
 
 					j, _ := json.Marshal(bd)
 					stdout(string(j))
+				} else {
+					// get filenames from arguments
+					hasError := false
+					for _, fpath := range c.Args().Slice() {
+						bd, err := client.UploadFilePath(ctx, fpath)
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "%s\n", err)
+							hasError = true
+							continue
+						}
+
+						j, _ := json.Marshal(bd)
+						stdout(string(j))
+					}
+
+					if hasError {
+						os.Exit(3)
+					}
 				}
 
-				if hasError {
-					os.Exit(3)
-				}
 				return nil
 			},
 		},
