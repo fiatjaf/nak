@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -104,6 +105,15 @@ var serve = &cli.Command{
 			return false, ""
 		}
 
+		totalConnections := atomic.Int32{}
+		rl.OnConnect = func(ctx context.Context) {
+			totalConnections.Add(1)
+			go func() {
+				<-ctx.Done()
+				totalConnections.Add(-1)
+			}()
+		}
+
 		d := debounce.New(time.Second * 2)
 		printStatus = func() {
 			d(func() {
@@ -113,7 +123,12 @@ var serve = &cli.Command{
 				}
 				subs := rl.GetListeningFilters()
 
-				log("  %s events stored: %s, subscriptions opened: %s\n", color.HiMagentaString("•"), color.HiMagentaString("%d", totalEvents), color.HiMagentaString("%d", len(subs)))
+				log("  %s events: %s, connections: %s, subscriptions: %s\n",
+					color.HiMagentaString("•"),
+					color.HiMagentaString("%d", totalEvents),
+					color.HiMagentaString("%d", totalConnections.Load()),
+					color.HiMagentaString("%d", len(subs)),
+				)
 			})
 		}
 
