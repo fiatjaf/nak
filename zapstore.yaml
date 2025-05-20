@@ -1,14 +1,7 @@
-nak:
-  cli:
-    name: nak
-    summary: a command line tool for doing all things nostr
-    repository: https://github.com/fiatjaf/nak
-    artifacts:
-      nak-v%v-darwin-arm64:
-        platforms: [darwin-arm64]
-      nak-v%v-darwin-amd64:
-        platforms: [darwin-x86_64]
-      nak-v%v-linux-arm64:
-        platforms: [linux-aarch64]
-      nak-v%v-linux-amd64:
-        platforms: [linux-x86_64]
+repository: https://github.com/fiatjaf/nak
+assets:
+  - nak-v\d+\.\d+\.\d+-darwin-arm64
+  - nak-v\d+\.\d+\.\d+-linux-amd64
+  - nak-v\d+\.\d+\.\d+-linux-arm64
+remote_metadata:
+  - github
