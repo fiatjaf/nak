@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 
 	"fiatjaf.com/nostr"
@@ -28,12 +27,9 @@ var mcpServer = &cli.Command{
 			version,
 		)
 
-		keyer, sk, err := gatherKeyerFromArguments(ctx, c)
+		keyer, _, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
-		}
-		if sk == nostr.KeyOne && !c.IsSet("sec") {
-			keyer = nil
 		}
 
 		s.AddTool(mcp.NewTool("publish_note",
@@ -46,10 +42,6 @@ var mcpServer = &cli.Command{
 			mention, _ := optional[string](r, "mention")
 			relay, _ := optional[string](r, "relay")
 
-			sk := os.Getenv("NOSTR_SECRET_KEY")
-			if sk == "" {
-				sk = "0000000000000000000000000000000000000000000000000000000000000001"
-			}
 			var relays []string
 
 			evt := nostr.Event{

@@ -20,10 +20,12 @@ import (
 var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "sec",
-		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL, it is more secure to use the environment variable NOSTR_SECRET_KEY than this flag",
+		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL",
 		DefaultText: "the key '1'",
-		Aliases:     []string{"connect"},
 		Category:    CATEGORY_SIGNER,
+		Sources:     cli.EnvVars("NOSTR_SECRET_KEY"),
+		Value:       nostr.KeyOne.Hex(),
+		HideDefault: true,
 	},
 	&cli.BoolFlag{
 		Name:     "prompt-sec",
@@ -78,15 +80,6 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		})
 
 		return nostr.SecretKey{}, bunker, err
-	}
-
-	// take private from flags, environment variable or default to 1
-	if sec == "" {
-		if key, ok := os.LookupEnv("NOSTR_SECRET_KEY"); ok {
-			sec = key
-		} else {
-			sec = "0000000000000000000000000000000000000000000000000000000000000001"
-		}
 	}
 
 	if c.Bool("prompt-sec") {
