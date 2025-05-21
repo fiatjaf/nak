@@ -85,7 +85,7 @@ var app = &cli.Command{
 		sys = sdk.NewSystem()
 
 		if err := initializeOutboxHintsDB(c, sys); err != nil {
-			return ctx, fmt.Errorf("failed to initialized outbox hints: %w", err)
+			return ctx, fmt.Errorf("failed to initialize outbox hints: %w", err)
 		}
 
 		sys.Pool = nostr.NewPool(nostr.PoolOptions{

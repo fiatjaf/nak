@@ -29,9 +29,9 @@ func initializeOutboxHintsDB(c *cli.Command, sys *sdk.System) error {
 		hintsFilePath = filepath.Join(configPath, "outbox/hints.bg")
 	}
 	if hintsFilePath != "" {
-		if _, err := os.Stat(hintsFilePath); !os.IsNotExist(err) {
+		if _, err := os.Stat(hintsFilePath); err == nil {
 			hintsFileExists = true
-		} else if err != nil {
+		} else if !os.IsNotExist(err) {
 			return err
 		}
 	}
