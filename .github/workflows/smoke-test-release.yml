@@ -1,13 +1,17 @@
 name: Smoke test the binary
 
 on:
-  push:
+  workflow_run:
+    workflows: ["build cli for all platforms"]
+    types:
+      - completed
     branches:
       - master
 
 jobs:
   smoke-test-linux-amd64:
     runs-on: ubuntu-latest
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
     steps:
       - name: Download and smoke test latest binary
         run: |
