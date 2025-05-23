@@ -17,10 +17,9 @@ import (
 
 func call(t *testing.T, cmd string) string {
 	var output strings.Builder
-	stdout = func(a ...any) (int, error) {
+	stdout = func(a ...any) {
 		output.WriteString(fmt.Sprint(a...))
 		output.WriteString("\n")
-		return 0, nil
 	}
 	err := app.Run(t.Context(), strings.Split(cmd, " "))
 	require.NoError(t, err)

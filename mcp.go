@@ -169,7 +169,7 @@ var mcpServer = &cli.Command{
 				l++
 				pm, _ := sdk.ParseMetadata(result.Event)
 				res.WriteString(fmt.Sprintf("\n\nResult %d\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
-					l, pm.ShortName, pm.PubKey.Hex(), pm.About))
+					l, pm.ShortName(), pm.PubKey.Hex(), pm.About))
 
 				if l >= int(limit) {
 					break

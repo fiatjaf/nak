@@ -424,7 +424,7 @@ func askConfirmation(msg string) bool {
 		}
 		defer tty.Close()
 
-		fmt.Fprintf(os.Stderr, color.YellowString(msg))
+		log(color.YellowString(msg))
 		answer, err := tty.ReadString()
 		if err != nil {
 			return false

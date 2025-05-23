@@ -139,7 +139,7 @@ func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, e
 		defer tty.Close()
 		for {
 			// print the prompt to stderr so it's visible to the user
-			fmt.Fprintf(os.Stderr, color.YellowString(msg))
+			log(color.YellowString(msg))
 
 			// read password from TTY with masking
 			password, err := tty.ReadPassword()
