@@ -175,7 +175,7 @@ func (r *NostrRoot) CreateEventDir(
 
 	if event.Kind == 1 {
 		if pointer := nip10.GetThreadRoot(event.Tags); pointer != nil {
-			nevent := nip19.EncodePointer(*pointer)
+			nevent := nip19.EncodePointer(pointer)
 			h.AddChild("@root", h.NewPersistentInode(
 				r.ctx,
 				&fs.MemSymlink{
@@ -185,7 +185,7 @@ func (r *NostrRoot) CreateEventDir(
 			), true)
 		}
 		if pointer := nip10.GetImmediateParent(event.Tags); pointer != nil {
-			nevent := nip19.EncodePointer(*pointer)
+			nevent := nip19.EncodePointer(pointer)
 			h.AddChild("@parent", h.NewPersistentInode(
 				r.ctx,
 				&fs.MemSymlink{
