@@ -2,9 +2,11 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
@@ -75,9 +77,20 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 			clientKey = nostr.Generate()
 		}
 
+		logverbose("[nip46]: connecting to bunker %s with client key %s", bunkerURL, clientKey.Hex())
+
+		ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
 			log(color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
+
+		if err != nil {
+			if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+				err = fmt.Errorf("timeout waiting for bunker to respond: %w", err)
+			}
+			return nostr.SecretKey{}, nil, fmt.Errorf("failed to connect to bunker %s: %w", bunkerURL, err)
+		}
 
 		return nostr.SecretKey{}, bunker, err
 	}
