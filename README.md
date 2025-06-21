@@ -128,16 +128,14 @@ type the password to decrypt your secret key: **********
 985d66d2644dfa7676e26046914470d66ebc7fa783a3f57f139fde32d0d631d7
 ```
 
-### sign an event using a remote NIP-46 bunker (e.g. [Amber](https://github.com/greenart7c3/Amber))
+### sign an event using [Amber](https://github.com/greenart7c3/Amber) (or other bunker provider)
 ```shell
 ~> export NOSTR_CLIENT_KEY="$(nak key generate)"
 ~> nak event --sec 'bunker://a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nsecbunker.com&relay=wss%3A%2F%2Fnos.lol&secret=TWfGbjQCLxUf' -c 'hello from bunker'
 ```
 
 > [!IMPORTANT]
-> If you don't set `NOSTR_CLIENT_KEY`, nak will generate a new client key on every run.
-This may cause signing to fail or trigger repeated authorization requests, depending on the remote signer setup.
-To avoid this, consider setting a fixed `NOSTR_CLIENT_KEY` in your shell configuration file, e.g., for `bash`:
+> Remember to set a `NOSTR_CLIENT_KEY` permanently on your shell, otherwise you'll only be able to use the bunker once. For `bash`:
 > ```shell
 > echo 'export NOSTR_CLIENT_KEY="$(nak key generate)"' >> ~/.bashrc
 > ```
