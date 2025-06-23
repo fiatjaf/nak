@@ -168,6 +168,7 @@ example:
 			evt.Content = ""
 
 			kindWasSupplied := strings.Contains(stdinEvent, `"kind"`)
+			contentWasSupplied := strings.Contains(stdinEvent, `"content"`)
 			mustRehashAndResign := false
 
 			if err := easyjson.Unmarshal([]byte(stdinEvent), &evt); err != nil {
@@ -194,7 +195,7 @@ example:
 					evt.Content = content
 				}
 				mustRehashAndResign = true
-			} else if evt.Content == "" && evt.Kind == 1 {
+			} else if !contentWasSupplied && evt.Content == "" && evt.Kind == 1 {
 				evt.Content = "hello from the nostr army knife"
 				mustRehashAndResign = true
 			}
