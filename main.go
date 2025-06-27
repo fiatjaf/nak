@@ -27,6 +27,7 @@ var app = &cli.Command{
 	Commands: []*cli.Command{
 		event,
 		req,
+		filter,
 		fetch,
 		count,
 		decode,
