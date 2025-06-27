@@ -124,7 +124,7 @@ func main() {
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		if err != nil {
-			log(color.YellowString(err.Error()) + "\n")
+			log("%s\n", color.YellowString(err.Error()))
 		}
 		colors.reset()
 		os.Exit(1)
