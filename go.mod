@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20250610194330-027d016d9706
+	fiatjaf.com/nostr v0.0.0-20250627165101-028a1637fbd0
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -55,7 +55,7 @@ require (
 	github.com/jalaali/go-jalaali v0.0.0-20210801064154-80525e88d958 // indirect
 	github.com/josharian/intern v1.0.0 // indirect
 	github.com/klauspost/compress v1.18.0 // indirect
-	github.com/klauspost/cpuid/v2 v2.2.10 // indirect
+	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/magefile/mage v1.14.0 // indirect
 	github.com/mattn/go-colorable v0.1.13 // indirect
