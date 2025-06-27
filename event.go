@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nip13"
 	"fiatjaf.com/nostr/nip19"
 	"github.com/fatih/color"
@@ -288,6 +290,9 @@ example:
 						return nil
 					}
 				} else if err := kr.SignEvent(ctx, &evt); err != nil {
+					if _, isBunker := kr.(keyer.BunkerSigner); isBunker && errors.Is(ctx.Err(), context.DeadlineExceeded) {
+						err = fmt.Errorf("timeout waiting for bunker to respond")
+					}
 					return fmt.Errorf("error signing with provided key: %w", err)
 				}
 			}
