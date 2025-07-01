@@ -174,6 +174,23 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
   bunker: bunker://f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Fnos.lol&relay=wss%3A%2F%2Frelay.nsecbunker.com&secret=XuuiMbcLwuwL
 ```
 
+### start a bunker that persists its list of authorized keys to disc
+```shell
+~> nak bunker --persist --sec ncryptsec1... relay.nsec.app nos.lol
+```
+
+then later just
+
+```shell
+~> nak bunker --persist
+```
+
+or give it a named profile:
+
+```shell
+~> nak bunker --profile myself ...
+```
+
 ### generate a NIP-70 protected event with a date set to two weeks ago and some multi-value tags
 ```shell
 ~> nak event --ts 'two weeks ago' -t '-' -t 'e=f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a;wss://relay.whatever.com;root;a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208' -t 'p=a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208;wss://p-relay.com' -c 'I know the future'
@@ -281,6 +298,11 @@ echo "#surely you're joking, mr npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn6
 ### record and publish an audio note of 10s (yakbak etc) signed from a bunker
 ```shell
 ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blossom.primal.net upload | jq -rc '{content: .url}' | nak event -k 1222 --sec 'bunker://urlgoeshere' pyramid.fiatjaf.com nostr.wine
+```
+
+### from a file with events get only those that have kind 1111 and were created by a given pubkey
+```shell
+~> cat all.jsonl | nak filter -k 1111 > filtered.jsonl
 ```
 
 ## contributing to this repository
