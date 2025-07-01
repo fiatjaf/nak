@@ -85,7 +85,6 @@ example:
 			if baseFilter.Matches(evt) {
 				stdout(evt)
 			} else {
-				fmt.Println(baseFilter.LimitZero)
 				logverbose("event %s didn't match %s", evt, baseFilter)
 			}
 		}
