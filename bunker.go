@@ -93,13 +93,7 @@ var bunker = &cli.Command{
 			}
 			if strings.HasPrefix(sec, "ncryptsec1") {
 				baseSecret.Encrypted = &sec
-			} else {
-				if sec == "" {
-					sec = os.Getenv("NOSTR_SECRET_KEY")
-					if sec == "" {
-						sec = defaultKey
-					}
-				}
+			} else if sec != "" {
 				if prefix, ski, err := nip19.Decode(sec); err == nil && prefix == "nsec" {
 					sk := ski.(nostr.SecretKey)
 					baseSecret.Plain = &sk
@@ -154,14 +148,34 @@ var bunker = &cli.Command{
 			config.AuthorizedKeys = appendUnique(config.AuthorizedKeys, baseAuthorizedKeys...)
 
 			if config.Secret.Plain == nil && config.Secret.Encrypted == nil {
+				// we don't have any secret key stored, so just use whatever was given via flags
 				config.Secret = baseSecret
-			} else if !baseSecret.equals(config.Secret) {
-				return fmt.Errorf("--sec provided conflicts with stored, you should create a new --profile or omit the --sec flag")
+			} else if baseSecret.Plain == nil && baseSecret.Encrypted == nil {
+				// we didn't provide any keys, so we just use the stored
+			} else {
+				// we have a secret key stored
+				// if we also provided a key we check if they match and fail otherwise
+				if !baseSecret.equals(config.Secret) {
+					return fmt.Errorf("--sec provided conflicts with stored, you should create a new --profile or omit the --sec flag")
+				}
 			}
 		} else {
 			config.Secret = baseSecret
 			config.Relays = baseRelaysUrls
 			config.AuthorizedKeys = baseAuthorizedKeys
+		}
+
+		// if we got here without any keys set (no flags, first time using a profile), use the default
+		{
+			sec := os.Getenv("NOSTR_SECRET_KEY")
+			if sec == "" {
+				sec = defaultKey
+			}
+			sk, err := nostr.SecretKeyFromHex(sec)
+			if err != nil {
+				return fmt.Errorf("default key is wrong: %w", err)
+			}
+			config.Secret.Plain = &sk
 		}
 
 		if len(config.Relays) == 0 {
