@@ -166,7 +166,7 @@ var bunker = &cli.Command{
 		}
 
 		// if we got here without any keys set (no flags, first time using a profile), use the default
-		{
+		if config.Secret.Plain == nil && config.Secret.Encrypted == nil {
 			sec := os.Getenv("NOSTR_SECRET_KEY")
 			if sec == "" {
 				sec = defaultKey
