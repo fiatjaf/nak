@@ -17,14 +17,16 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+var defaultKey = nostr.KeyOne.Hex()
+
 var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "sec",
 		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL",
-		DefaultText: "the key '1'",
+		DefaultText: "the key '01'",
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_SECRET_KEY"),
-		Value:       nostr.KeyOne.Hex(),
+		Value:       defaultKey,
 		HideDefault: true,
 	},
 	&cli.BoolFlag{

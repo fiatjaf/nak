@@ -20,11 +20,6 @@ var (
 
 func initializeOutboxHintsDB(c *cli.Command, sys *sdk.System) error {
 	configPath := c.String("config-path")
-	if configPath == "" {
-		if home, err := os.UserHomeDir(); err == nil {
-			configPath = filepath.Join(home, ".config/nak")
-		}
-	}
 	if configPath != "" {
 		hintsFilePath = filepath.Join(configPath, "outbox/hints.bg")
 	}

@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/textproto"
 	"os"
+	"path/filepath"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/sdk"
@@ -52,6 +53,13 @@ var app = &cli.Command{
 		&cli.StringFlag{
 			Name:   "config-path",
 			Hidden: true,
+			Value: (func() string {
+				if home, err := os.UserHomeDir(); err == nil {
+					return filepath.Join(home, ".config/nak")
+				} else {
+					return filepath.Join("/dev/null")
+				}
+			})(),
 		},
 		&cli.BoolFlag{
 			Name:    "quiet",
@@ -125,7 +133,7 @@ func main() {
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
 		if err != nil {
-			log("%s\n", color.YellowString(err.Error()))
+			log("%s\n", color.RedString(err.Error()))
 		}
 		colors.reset()
 		os.Exit(1)
