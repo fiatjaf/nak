@@ -174,6 +174,12 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
   bunker: bunker://f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Fnos.lol&relay=wss%3A%2F%2Frelay.nsecbunker.com&secret=XuuiMbcLwuwL
 ```
 
+You can also display a QR code for the bunker URI by adding the `--qrcode` flag:
+
+```shell
+~> nak bunker --qrcode --sec ncryptsec1... relay.damus.io
+```
+
 ### start a bunker that persists its list of authorized keys to disc
 ```shell
 ~> nak bunker --persist --sec ncryptsec1... relay.nsec.app nos.lol
