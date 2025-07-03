@@ -17,6 +17,7 @@ import (
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip46"
 	"github.com/fatih/color"
+	"github.com/mdp/qrterminal/v3"
 	"github.com/urfave/cli/v3"
 )
 
@@ -64,6 +65,10 @@ var bunker = &cli.Command{
 			Name:   "relay",
 			Usage:  "relays to connect to (can also be provided as naked arguments)",
 			Hidden: true,
+		},
+		&cli.BoolFlag{
+			Name:  "qrcode",
+			Usage: "display a QR code for the bunker URI",
 		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -292,6 +297,13 @@ var bunker = &cli.Command{
 					authorizedSecretsStr,
 					colors.bold(bunkerURI),
 				)
+			}
+
+			// Print QR code if requested
+			if c.Bool("qrcode") {
+				log("QR Code for bunker URI:\n")
+				qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
+				log("\n\n")
 			}
 		}
 		printBunkerInfo()

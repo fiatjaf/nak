@@ -17,10 +17,11 @@ require (
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/mattn/go-tty v0.0.7
+	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.0.0-beta1
 	golang.org/x/exp v0.0.0-20250620022241-b7579e27df2b
-	golang.org/x/term v0.30.0
+	golang.org/x/term v0.32.0
 )
 
 require (
@@ -58,7 +59,7 @@ require (
 	github.com/klauspost/cpuid/v2 v2.2.11 // indirect
 	github.com/kylelemons/godebug v1.1.0 // indirect
 	github.com/magefile/mage v1.14.0 // indirect
-	github.com/mattn/go-colorable v0.1.13 // indirect
+	github.com/mattn/go-colorable v0.1.14 // indirect
 	github.com/mattn/go-isatty v0.0.20 // indirect
 	github.com/modern-go/concurrent v0.0.0-20180306012644-bacd9c7ef1dd // indirect
 	github.com/modern-go/reflect2 v1.0.2 // indirect
@@ -85,4 +86,5 @@ require (
 	golang.org/x/text v0.23.0 // indirect
 	google.golang.org/protobuf v1.36.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	rsc.io/qr v0.2.0 // indirect
 )
