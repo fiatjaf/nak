@@ -185,6 +185,9 @@ You can also display a QR code for the bunker URI by adding the `--qrcode` flag:
 ~> nak bunker --persist --sec ncryptsec1... relay.nsec.app nos.lol
 ```
 
+> [!CAUTION]
+> When you start a bunker with `--persist`, it will store credentials in plain text at `~/.config/nak/bunker`.
+
 then later just
 
 ```shell
