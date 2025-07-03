@@ -304,6 +304,14 @@ ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blos
 ```shell
 ~> cat all.jsonl | nak filter -k 1111 > filtered.jsonl
 ```
+### run nak in Docker
+
+If you want to run nak inside a container (i.e. to run nak as a server, or to avoid installing the Go toolchain) you can run it with Docker:
+
+```shell
+docker build -t nak .
+docker run nak event
+```
 
 ## contributing to this repository
 
