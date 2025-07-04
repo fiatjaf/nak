@@ -186,8 +186,11 @@ You can also display a QR code for the bunker URI by adding the `--qrcode` flag:
 ```
 
 > [!CAUTION]
-> When you start a bunker with `--persist`, it will store credentials in plain text at `~/.config/nak/bunker`.
+> When you start a bunker with `--persist` or `--profile`, it will store `--sec` credentials and authorized keys in 
+> `~/.config/nak/bunker`. If you don't want your private key to be stored in plain text, you can 
+> [encrypt it with NIP-49](#encrypt-key-with-nip-49) it beforehand.
 
+```shell
 then later just
 
 ```shell
