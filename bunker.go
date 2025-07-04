@@ -235,16 +235,38 @@ var bunker = &cli.Command{
 		printLock := sync.Mutex{}
 		exitChan := make(chan bool, 1)
 
-		// subscribe to relays
-		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
-			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
-			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
-			Since:     nostr.Now(),
-			LimitZero: true,
-		}, nostr.SubscriptionOptions{
-			Label: "nak-bunker",
-		})
+		// subscription management
+		var events chan nostr.RelayEvent
+		var cancelSubscription context.CancelFunc
+		subscriptionMutex := sync.Mutex{}
 
+		// Function to create/recreate subscription
+		updateSubscription := func() {
+			subscriptionMutex.Lock()
+			defer subscriptionMutex.Unlock()
+
+			// Cancel existing subscription if it exists
+			if cancelSubscription != nil {
+				cancelSubscription()
+			}
+
+			// Create new context for the subscription
+			subCtx, cancel := context.WithCancel(ctx)
+			cancelSubscription = cancel
+
+			// Create new subscription with current relay list
+			events = sys.Pool.SubscribeMany(subCtx, relayURLs, nostr.Filter{
+				Kinds:     []nostr.Kind{nostr.KindNostrConnect},
+				Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
+				Since:     nostr.Now(),
+				LimitZero: true,
+			}, nostr.SubscriptionOptions{
+				Label: "nak-bunker",
+			})
+		}
+
+		// Initial subscription to relays
+		updateSubscription()
 		handlerWg := sync.WaitGroup{}
 
 		// == SUBCOMMANDS ==
@@ -438,6 +460,10 @@ var bunker = &cli.Command{
 					}
 				}
 				log("Updated subscription to listen on %d relay(s)\n", len(relayURLs))
+
+				// Cancel and recreate subscription with updated relay list
+				updateSubscription()
+				log("Subscription updated to include new relays\n")
 			}
 
 			responsePayload := nip46.Response{
