@@ -13,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -466,6 +467,7 @@ var bunker = &cli.Command{
 				log("Subscription updated to include new relays\n")
 			}
 
+			// Prepare the response payload
 			responsePayload := nip46.Response{
 				ID:     secret,
 				Result: "ack",
@@ -507,30 +509,36 @@ var bunker = &cli.Command{
 				return
 			}
 
-			// Create a fake Kind 24133 connect request to process through the signer
 			targetRelays := newRelayURLs
 			if len(targetRelays) == 0 {
 				targetRelays = relayURLs
 			}
 
 			log("Sending connect response...\n")
-			successCount := 0
+			successCount := atomic.Uint32{}
+			handlerWg.Add(len(targetRelays))
 			for _, relayURL := range targetRelays {
-				if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
-					err := relay.Publish(ctx, eventResponse)
-					if err != nil {
-						log("Failed to publish to %s: %v\n", relayURL, err)
-					} else {
-						log("Published connect response to %s\n", color.GreenString(relayURL))
-						successCount++
+				go func(relayURL string) {
+					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
+						err := relay.Publish(ctx, eventResponse)
+						printLock.Lock()
+						if err != nil {
+							log("Failed to publish to %s: %v\n", relayURL, err)
+						} else {
+							log("Published connect response to %s\n", color.GreenString(relayURL))
+							successCount.Add(1)
+						}
+						printLock.Unlock()
+						handlerWg.Done()
 					}
-				}
+				}(relayURL)
 			}
+			handlerWg.Wait()
 
-			if successCount == 0 {
+			if successCount.Load() == 0 {
 				log("Error: Failed to publish connect response to any relay\n")
 			} else {
-				log(color.GreenString("\nConnect response sent successfully to %d relay(s)!\n"), successCount)
+				log(color.GreenString("\nConnect response sent successfully to %d relay(s)!\n"), successCount.Load())
 			}
 		}
 
