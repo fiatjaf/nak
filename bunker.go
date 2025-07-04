@@ -540,6 +540,8 @@ var bunker = &cli.Command{
 			} else {
 				log(color.GreenString("\nConnect response sent successfully to %d relay(s)!\n"), successCount.Load())
 			}
+
+			printBunkerInfo()
 		}
 
 		// handleBunkerCommand processes user commands in the bunker interface
