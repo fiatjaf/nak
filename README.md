@@ -321,7 +321,3 @@ If you want to run nak inside a container (i.e. to run nak as a server, or to av
 docker build -t nak .
 docker run nak event
 ```
-
-## contributing to this repository
-
-Use NIP-34 to send your patches to `naddr1qqpkucttqy28wumn8ghj7un9d3shjtnwdaehgu3wvfnsz9nhwden5te0wfjkccte9ehx7um5wghxyctwvsq3gamnwvaz7tmjv4kxz7fwv3sk6atn9e5k7q3q80cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsxpqqqpmej2wctpn`.
