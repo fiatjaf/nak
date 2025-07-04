@@ -475,27 +475,6 @@ var bunker = &cli.Command{
 			}
 		}
 	},
-	Commands: []*cli.Command{
-		{
-			Name:      "connect",
-			Usage:     "use the client-initiated NostrConnect flow of NIP46",
-			ArgsUsage: "<nostrconnect-uri>",
-			Action: func(ctx context.Context, c *cli.Command) error {
-				if c.Args().Len() != 1 {
-					return fmt.Errorf("must be called with a nostrconnect://... uri")
-				}
-
-				uri, err := url.Parse(c.Args().First())
-				if err != nil || uri.Scheme != "nostrconnect" {
-					return fmt.Errorf("invalid uri")
-				}
-
-				// TODO
-
-				return fmt.Errorf("this is not implemented yet")
-			},
-		},
-	},
 }
 
 type plainOrEncryptedKey struct {
