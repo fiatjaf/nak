@@ -541,7 +541,11 @@ var bunker = &cli.Command{
 				log(color.GreenString("\nConnect response sent successfully to %d relay(s)!\n"), successCount.Load())
 			}
 
-			printBunkerInfo()
+			// print bunker info again after this
+			go func() {
+				time.Sleep(3 * time.Second)
+				printBunkerInfo()
+			}()
 		}
 
 		// handleBunkerCommand processes user commands in the bunker interface
