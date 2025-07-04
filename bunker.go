@@ -1,6 +1,7 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/hex"
@@ -229,6 +230,31 @@ var bunker = &cli.Command{
 		// static information
 		pubkey := sec.Public()
 		npub := nip19.EncodeNpub(pubkey)
+		printLock := sync.Mutex{}
+		exitChan := make(chan bool, 1)
+
+		// == SUB COMMANDS ==
+
+		// printHelp displays available commands for the bunker interface
+		printHelp := func() {
+			log("%s\n", color.CyanString("Available Commands:"))
+			log("  %s - Show this help message\n", color.GreenString("help, h, ?"))
+			log("  %s - Display current bunker information\n", color.GreenString("info, i"))
+			log("  %s - Generate and display QR code for the bunker URI\n", color.GreenString("qr"))
+			log("  %s - Shutdown the bunker\n", color.GreenString("exit, quit, q"))
+			log("\n")
+		}
+
+		// Create a function to print QR code on demand
+		printQR := func() {
+			qs.Set("secret", newSecret)
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
+			printLock.Lock()
+			log("\nQR Code for bunker URI:\n")
+			qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
+			log("\n\n")
+			printLock.Unlock()
+		}
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
@@ -301,11 +327,30 @@ var bunker = &cli.Command{
 
 			// print QR code if requested
 			if c.Bool("qrcode") {
-				log("QR Code for bunker URI:\n")
-				qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
-				log("\n\n")
+				printQR()
 			}
 		}
+
+		// handleBunkerCommand processes user commands in the bunker interface
+		handleBunkerCommand := func(command string) {
+			switch strings.ToLower(command) {
+			case "help", "h", "?":
+				printHelp()
+			case "info", "i":
+				printBunkerInfo()
+			case "qr":
+				printQR()
+			case "exit", "quit", "q":
+				log("Exit command received.\n")
+				exitChan <- true
+			case "":
+				// Ignore empty commands
+			default:
+				log("Unknown command: %s. Type 'help' for available commands.\n", command)
+			}
+		}
+
+		// Print initial bunker information
 		printBunkerInfo()
 
 		// subscribe to relays
@@ -320,7 +365,6 @@ var bunker = &cli.Command{
 
 		signer := nip46.NewStaticKeySigner(sec)
 		handlerWg := sync.WaitGroup{}
-		printLock := sync.Mutex{}
 
 		// just a gimmick
 		var cancelPreviousBunkerInfoPrint context.CancelFunc
@@ -354,56 +398,82 @@ var bunker = &cli.Command{
 			return false
 		}
 
-		for ie := range events {
-			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
+		// Start command input handler in a separate goroutine
+		go func() {
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				command := strings.TrimSpace(scanner.Text())
+				handleBunkerCommand(command)
+			}
+			if err := scanner.Err(); err != nil {
+				log("error reading command: %v\n", err)
+			}
+		}()
 
-			// handle the NIP-46 request event
-			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
-			if err != nil {
-				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
+		// Print initial command help
+		log("%s\nType 'help' for available commands or 'exit' to quit.\n%s\n",
+			color.CyanString("--------------- Bunker Command Interface ---------------"),
+			color.CyanString("--------------------------------------------------------"))
+
+		for {
+			// Check if exit was requested first
+			select {
+			case <-exitChan:
+				log("Shutting down bunker...\n")
+				return nil
+			case ie := <-events:
+				cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
+
+				// handle the NIP-46 request event
+				req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
+				if err != nil {
+					log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
+					continue
+				}
+
+				jreq, _ := json.MarshalIndent(req, "", "  ")
+				log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
+				jresp, _ := json.MarshalIndent(resp, "", "  ")
+				log("~ responding with %s\n", string(jresp))
+
+				handlerWg.Add(len(relayURLs))
+				for _, relayURL := range relayURLs {
+					go func(relayURL string) {
+						defer handlerWg.Done()
+						if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
+							err := relay.Publish(ctx, eventResponse)
+							printLock.Lock()
+							if err == nil {
+								log("* sent response through %s\n", relay.URL)
+							} else {
+								log("* failed to send response: %s\n", err)
+							}
+							printLock.Unlock()
+
+						}
+					}(relayURL)
+				}
+				handlerWg.Wait()
+
+				// just after handling one request we trigger this
+				go func() {
+					ctx, cancel := context.WithCancel(ctx)
+					defer cancel()
+					cancelPreviousBunkerInfoPrint = cancel
+					// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
+					// but we will only do if the bunker is inactive for more than 5 minutes
+					select {
+					case <-ctx.Done():
+					case <-time.After(time.Minute * 5):
+						log("\n")
+						printBunkerInfo()
+					}
+				}()
+			case <-time.After(100 * time.Millisecond):
+				// Continue to check for exit signal even when no events
 				continue
 			}
-
-			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
-			jresp, _ := json.MarshalIndent(resp, "", "  ")
-			log("~ responding with %s\n", string(jresp))
-
-			handlerWg.Add(len(relayURLs))
-			for _, relayURL := range relayURLs {
-				go func(relayURL string) {
-					defer handlerWg.Done()
-					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
-						err := relay.Publish(ctx, eventResponse)
-						printLock.Lock()
-						if err == nil {
-							log("* sent response through %s\n", relay.URL)
-						} else {
-							log("* failed to send response: %s\n", err)
-						}
-						printLock.Unlock()
-					}
-				}(relayURL)
-			}
-			handlerWg.Wait()
-
-			// just after handling one request we trigger this
-			go func() {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-				cancelPreviousBunkerInfoPrint = cancel
-				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
-				// but we will only do if the bunker is inactive for more than 5 minutes
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Minute * 5):
-					log("\n")
-					printBunkerInfo()
-				}
-			}()
 		}
-
-		return nil
 	},
 	Commands: []*cli.Command{
 		{
