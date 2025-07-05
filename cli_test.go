@@ -136,13 +136,13 @@ func TestMultipleFetch(t *testing.T) {
 
 	require.Len(t, events, 2)
 
-	// First event validation
+	// first event validation
 	require.Equal(t, nostr.Kind(31923), events[0].Kind)
 	require.Equal(t, "9ae5014573fc75ced00b343868d2cd9343ebcbbae50591c6fa8ae1cd99568f05", events[0].ID.Hex())
 	require.Equal(t, "5b0183ab6c3e322bf4d41c6b3aef98562a144847b7499543727c5539a114563e", events[0].PubKey.Hex())
 	require.Equal(t, nostr.Timestamp(1707764605), events[0].CreatedAt)
 
-	// Second event validation
+	// second event validation
 	require.Equal(t, nostr.Kind(1), events[1].Kind)
 	require.Equal(t, "3ff0d19493e661faa90ac06b5d8963ef1e48fe780368fe67ed0fd410df8a6dd5", events[1].ID.Hex())
 	require.Equal(t, "3bf0c63fcb93463407af97a5e5ee64fa883d107ef9e558472c4eb9aaaefa459d", events[1].PubKey.Hex())

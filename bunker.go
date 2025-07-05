@@ -299,7 +299,7 @@ var bunker = &cli.Command{
 				)
 			}
 
-			// Print QR code if requested
+			// print QR code if requested
 			if c.Bool("qrcode") {
 				log("QR Code for bunker URI:\n")
 				qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
