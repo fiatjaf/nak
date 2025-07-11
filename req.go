@@ -164,7 +164,7 @@ example:
 				if c.Bool("bare") {
 					result = filter.String()
 				} else {
-					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filter: filter})
+					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filters: []nostr.Filter{filter}})
 					result = string(j)
 				}
 
