@@ -41,7 +41,7 @@ var blossomCmd = &cli.Command{
 					if pk, err := nostr.PubKeyFromHex(pubkey); err != nil {
 						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
 					} else {
-						client = blossom.NewClient(client.GetMediaServer(), keyer.NewReadOnlySigner(pk))
+						client = blossom.NewClient(c.String("server"), keyer.NewReadOnlySigner(pk))
 					}
 				} else {
 					var err error
