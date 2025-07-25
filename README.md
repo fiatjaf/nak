@@ -3,6 +3,8 @@
 install with `go install github.com/fiatjaf/nak@latest` or
 [download a binary](https://github.com/fiatjaf/nak/releases).
 
+or get the source with `git clone https://github.com/fiatjaf/nak` then install with `go install` or run with docker using `docker build -t nak . && docker run nak event`.
+
 ## what can you do with it?
 
 take a look at the help text that comes in it to learn all possibilities, but here are some:
@@ -128,17 +130,13 @@ type the password to decrypt your secret key: **********
 985d66d2644dfa7676e26046914470d66ebc7fa783a3f57f139fde32d0d631d7
 ```
 
-### sign an event using [Amber](https://github.com/greenart7c3/Amber) (or other bunker provider)
+### sign an event using a bunker provider (amber, promenade etc)
 ```shell
 ~> export NOSTR_CLIENT_KEY="$(nak key generate)"
 ~> nak event --sec 'bunker://a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Frelay.nsecbunker.com&relay=wss%3A%2F%2Fnos.lol&secret=TWfGbjQCLxUf' -c 'hello from bunker'
 ```
 
-> [!IMPORTANT]
-> Remember to set a `NOSTR_CLIENT_KEY` permanently on your shell, otherwise you'll only be able to use the bunker once. For `bash`:
-> ```shell
-> echo 'export NOSTR_CLIENT_KEY="$(nak key generate)"' >> ~/.bashrc
-> ```
+(in most cases it's better to set `NOSTR_CLIENT_KEY` permanently on your shell, as that identity will be recorded by the bunker provider.)
 
 ### sign an event using a NIP-49 encrypted key
 ```shell
@@ -180,15 +178,10 @@ you can also display a QR code for the bunker URI by adding the `--qrcode` flag:
 ~> nak bunker --qrcode --sec ncryptsec1... relay.damus.io
 ```
 
-### start a bunker that persists its metadata to disc
+### start a bunker that persists its metadata (secret key, relays, authorized client pubkeys) to disc
 ```shell
 ~> nak bunker --persist --sec ncryptsec1... relay.nsec.app nos.lol
 ```
-
-> [!CAUTION]
-> when you start a bunker with `--persist` or `--profile`, it will store `--sec` credentials and authorized keys in
-> `~/.config/nak/bunker`. if you don't want your private key to be stored in plain text, you can
-> [encrypt it with NIP-49](#encrypt-key-with-nip-49) it beforehand.
 
 ```shell
 then later just
@@ -250,7 +243,7 @@ type the password to decrypt your secret key: ********
 ~> nak req -i 412f2d3e73acc312942c055ac2a695dc60bf58ff97e06689a8a79e97796c4cdb relay.westernbtc.com | jq -r .content > ~/.jq
 ```
 
-### watch a NIP-53 livestream (zap.stream etc)
+### watch a NIP-53 livestream (zap.stream, amethyst, shosho etc)
 ```shell
 ~> # this requires the jq utils from the step above
 ~> mpv $(nak fetch naddr1qqjxvvm9xscnsdtx95cxvcfk956rsvtx943rje3k95mx2dp389jnwwrp8ymxgqg4waehxw309aex2mrp0yhxgctdw4eju6t09upzpn6956apxcad0mfp8grcuugdysg44eepex68h50t73zcathmfs49qvzqqqrkvu7ed38k | jq -r 'tag_value("streaming")')
@@ -307,20 +300,12 @@ echo "#surely you're joking, mr npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn6
 # and there is a --confirm flag that gives you a chance to confirm before actually publishing the result to relays.
 ```
 
-### record and publish an audio note of 10s (yakbak etc) signed from a bunker
+### record and publish an audio note (yakbak, nostur etc) signed from a bunker
 ```shell
 ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blossom.primal.net upload | jq -rc '{content: .url}' | nak event -k 1222 --sec 'bunker://urlgoeshere' pyramid.fiatjaf.com nostr.wine
 ```
 
 ### from a file with events get only those that have kind 1111 and were created by a given pubkey
 ```shell
-~> cat all.jsonl | nak filter -k 1111 > filtered.jsonl
-```
-### run nak in Docker
-
-If you want to run nak inside a container (i.e. to run nak as a server, or to avoid installing the Go toolchain) you can run it with Docker:
-
-```shell
-docker build -t nak .
-docker run nak event
+~> cat all.jsonl | nak filter -k 1111 -a 117673e191b10fe1aedf1736ee74de4cffd4c132ca701960b70a5abad5870faa > filtered.jsonl
 ```
