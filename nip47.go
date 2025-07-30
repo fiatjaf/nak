@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/url"
 	"strings"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
@@ -48,6 +49,11 @@ type EncryptionTag string
 
 const (
 	EncryptionTagNip44V2 EncryptionTag = "nip44_v2"
+)
+
+var (
+	// timeout per request or response
+	timeout = 10 * time.Second
 )
 
 var nwc = &cli.Command{
@@ -172,8 +178,8 @@ func (c *nip47Client) info(ctx context.Context) (*nostr.Event, error) {
 		select {
 		case ev := <-sub.Events:
 			return &ev, nil
-		case <-ctx.Done():
-			return nil, fmt.Errorf("timed out waiting for info event")
+		case <-time.After(timeout):
+			return nil, timeoutError()
 		}
 	}
 }
@@ -236,8 +242,8 @@ func (c *nip47Client) method(ctx context.Context, req *nip47Request) (*nip47Resp
 	select {
 	case resEvent = <-sub.Events:
 		break
-	case <-ctx.Done():
-		return nil, fmt.Errorf("timed out waiting for response")
+	case <-time.After(timeout):
+		return nil, timeoutError()
 	}
 
 	// content might be nip04 for old wallet services
@@ -252,4 +258,8 @@ func (c *nip47Client) method(ctx context.Context, req *nip47Request) (*nip47Resp
 	}
 
 	return &res, nil
+}
+
+func timeoutError() error {
+	return fmt.Errorf("timeout after %s", timeout)
 }
