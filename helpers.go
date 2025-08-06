@@ -24,6 +24,7 @@ import (
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-tty"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
@@ -312,6 +313,10 @@ func supportsDynamicMultilineMagic() bool {
 		return false
 	}
 	if !term.IsTerminal(0) {
+		return false
+	}
+
+	if !isatty.IsTerminal(os.Stdout.Fd()) {
 		return false
 	}
 
