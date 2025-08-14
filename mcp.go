@@ -165,7 +165,9 @@ var mcpServer = &cli.Command{
 			res := strings.Builder{}
 			res.WriteString("Search results: ")
 			l := 0
-			for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine"}, filter, nostr.SubscriptionOptions{}) {
+			for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine"}, filter, nostr.SubscriptionOptions{
+				Label: "nak-mcp-search",
+			}) {
 				l++
 				pm, _ := sdk.ParseMetadata(result.Event)
 				res.WriteString(fmt.Sprintf("\n\nResult %d\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
@@ -219,7 +221,9 @@ var mcpServer = &cli.Command{
 				}
 			}
 
-			events := sys.Pool.FetchMany(ctx, []string{relay}, filter, nostr.SubscriptionOptions{})
+			events := sys.Pool.FetchMany(ctx, []string{relay}, filter, nostr.SubscriptionOptions{
+				Label: "nak-mcp-profile-events",
+			})
 
 			result := strings.Builder{}
 			for ie := range events {

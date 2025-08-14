@@ -154,7 +154,9 @@ example:
 						fn = sys.Pool.SubscribeMany
 					}
 
-					for ie := range fn(ctx, relayUrls, filter, nostr.SubscriptionOptions{}) {
+					for ie := range fn(ctx, relayUrls, filter, nostr.SubscriptionOptions{
+						Label: "nak-req",
+					}) {
 						stdout(ie.Event)
 					}
 				}

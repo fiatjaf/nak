@@ -141,7 +141,9 @@ var count = &cli.Command{
 			}
 			for _, relayUrl := range relayUrls {
 				relay, _ := sys.Pool.EnsureRelay(relayUrl)
-				count, hllRegisters, err := relay.Count(ctx, filter, nostr.SubscriptionOptions{})
+				count, hllRegisters, err := relay.Count(ctx, filter, nostr.SubscriptionOptions{
+					Label: "nak-count",
+				})
 				fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
 
 				if err != nil {

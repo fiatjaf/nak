@@ -106,7 +106,9 @@ var fetch = &cli.Command{
 				continue
 			}
 
-			for ie := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{}) {
+			for ie := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
+				Label: "nak-fetch",
+			}) {
 				stdout(ie.Event)
 			}
 		}
