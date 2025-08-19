@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20250715161459-840e2846ed15
+	fiatjaf.com/nostr v0.0.0-20250818235102-c8d5aa703fab
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -21,7 +21,7 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.0.0-beta1
-	golang.org/x/exp v0.0.0-20250717185816-542afb5b7346
+	golang.org/x/exp v0.0.0-20250813145105-42675adae3e6
 	golang.org/x/term v0.32.0
 )
 
@@ -43,7 +43,7 @@ require (
 	github.com/dgraph-io/ristretto/v2 v2.1.0 // indirect
 	github.com/dustin/go-humanize v1.0.1 // indirect
 	github.com/elliotchance/pie/v2 v2.7.0 // indirect
-	github.com/elnosh/gonuts v0.3.1-0.20250123162555-7c0381a585e3 // indirect
+	github.com/elnosh/gonuts v0.4.2 // indirect
 	github.com/fasthttp/websocket v1.5.12 // indirect
 	github.com/fxamacker/cbor/v2 v2.7.0 // indirect
 	github.com/golang/groupcache v0.0.0-20241129210726-2c02b8208cf8 // indirect
@@ -82,5 +82,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
-
-replace fiatjaf.com/nostr => ../nostrlib
