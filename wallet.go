@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -171,6 +172,35 @@ var wallet = &cli.Command{
 
 				closew()
 				return nil
+			},
+			Commands: []*cli.Command{
+				{
+					Name:                      "drop",
+					Usage:                     "deletes a token from the wallet",
+					DisableSliceFlagSeparator: true,
+					ArgsUsage:                 "<id>...",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						ids := c.Args().Slice()
+						if len(ids) == 0 {
+							return fmt.Errorf("no token ids specified")
+						}
+
+						w, closew, err := prepareWallet(ctx, c)
+						if err != nil {
+							return err
+						}
+
+						for _, token := range w.Tokens {
+							if slices.Contains(ids, token.ID()) {
+								w.DropToken(ctx, token.ID())
+								log("dropped %s %d %s\n", token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
+							}
+						}
+
+						closew()
+						return nil
+					},
+				},
 			},
 		},
 		{
