@@ -34,6 +34,24 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 	w.Processed = func(evt nostr.Event, err error) {
 		if err == nil {
 			logverbose("processed event %s\n", evt)
+
+			if c.Bool("stream") {
+				// after EOSE log updates and the new balance
+				select {
+				case <-w.Stable:
+					switch evt.Kind {
+					case 5:
+						log("- token deleted\n")
+					case 7375:
+						log("- token added\n")
+					default:
+						return
+					}
+
+					log("  balance: %d\n", w.Balance())
+				default:
+				}
+			}
 		} else {
 			log("error processing event %s: %s\n", evt, err)
 		}
@@ -87,14 +105,24 @@ var wallet = &cli.Command{
 	Usage:                     "displays the current wallet balance",
 	Description:               "all wallet data is stored on Nostr relays, signed and encrypted with the given key, and reloaded again from relays on every call.\n\nthe same data can be accessed by other compatible nip60 clients.",
 	DisableSliceFlagSeparator: true,
-	Flags:                     defaultKeyFlags,
+	Flags: append(defaultKeyFlags,
+		&cli.BoolFlag{
+			Name:  "stream",
+			Usage: "keep listening for wallet-related events and logging them",
+		},
+	),
 	Action: func(ctx context.Context, c *cli.Command) error {
 		w, closew, err := prepareWallet(ctx, c)
 		if err != nil {
 			return err
 		}
 
+		log("balance: ")
 		stdout(w.Balance())
+
+		if c.Bool("stream") {
+			<-ctx.Done() // this will hang forever
+		}
 
 		closew()
 		return nil
