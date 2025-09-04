@@ -8,7 +8,7 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/sdk"
-	"fiatjaf.com/nostr/sdk/hints/badgerh"
+	"fiatjaf.com/nostr/sdk/hints/bbolth"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
@@ -21,7 +21,7 @@ var (
 func initializeOutboxHintsDB(c *cli.Command, sys *sdk.System) error {
 	configPath := c.String("config-path")
 	if configPath != "" {
-		hintsFilePath = filepath.Join(configPath, "outbox/hints.bg")
+		hintsFilePath = filepath.Join(configPath, "outbox/hints.db")
 	}
 	if hintsFilePath != "" {
 		if _, err := os.Stat(hintsFilePath); err == nil {
@@ -31,7 +31,7 @@ func initializeOutboxHintsDB(c *cli.Command, sys *sdk.System) error {
 		}
 	}
 	if hintsFileExists && hintsFilePath != "" {
-		hintsdb, err := badgerh.NewBadgerHints(hintsFilePath)
+		hintsdb, err := bbolth.NewBoltHints(hintsFilePath)
 		if err == nil {
 			sys.Hints = hintsdb
 		}
@@ -58,9 +58,9 @@ var outbox = &cli.Command{
 				}
 
 				os.MkdirAll(hintsFilePath, 0755)
-				_, err := badgerh.NewBadgerHints(hintsFilePath)
+				_, err := bbolth.NewBoltHints(hintsFilePath)
 				if err != nil {
-					return fmt.Errorf("failed to create badger hints db at '%s': %w", hintsFilePath, err)
+					return fmt.Errorf("failed to create bolt hints db at '%s': %w", hintsFilePath, err)
 				}
 
 				log("initialized hints database at %s\n", hintsFilePath)
