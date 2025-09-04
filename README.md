@@ -147,7 +147,7 @@ type the password to decrypt your secret key: **********
 
 ### talk to a relay's NIP-86 management API
 ```shell
-nak relay allowpubkey --sec ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls --pubkey a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208 pyramid.fiatjaf.com
+nak admin allowpubkey --sec ncryptsec1qggx54cg270zy9y8krwmfz29jyypsuxken2fkk99gr52qhje968n6mwkrfstqaqhq9eq94pnzl4nff437l4lp4ur2cs4f9um8738s35l2esx2tas48thtfhrk5kq94pf9j2tpk54yuermra0xu6hl5ls --pubkey a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208 pyramid.fiatjaf.com
 type the password to decrypt your secret key: **********
 calling 'allowpubkey' on https://pyramid.fiatjaf.com...
 {

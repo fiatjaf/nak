@@ -36,6 +36,7 @@ var app = &cli.Command{
 		key,
 		verify,
 		relay,
+		admin,
 		bunker,
 		serve,
 		blossomCmd,
