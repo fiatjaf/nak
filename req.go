@@ -45,6 +45,17 @@ example:
 				DefaultText: "false, will close on EOSE",
 			},
 			&cli.BoolFlag{
+				Name:        "outbox",
+				Usage:       "use outbox relays from specified public keys",
+				DefaultText: "false, will only use manually-specified relays",
+			},
+			&cli.UintFlag{
+				Name:    "outbox-relays-number",
+				Aliases: []string{"n"},
+				Usage:   "number of outbox relays to use for each pubkey",
+				Value:   3,
+			},
+			&cli.BoolFlag{
 				Name:        "paginate",
 				Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
 				DefaultText: "false",
@@ -76,6 +87,14 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
+		if c.Bool("paginate") && c.Bool("stream") {
+			return fmt.Errorf("incompatible flags --paginate and --stream")
+		}
+
+		if c.Bool("paginate") && c.Bool("outbox") {
+			return fmt.Errorf("incompatible flags --paginate and --outbox")
+		}
+
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
 			// this is used both for the normal AUTH (after "auth-required:" is received) or forced pre-auth
@@ -129,7 +148,7 @@ example:
 				return err
 			}
 
-			if len(relayUrls) > 0 {
+			if len(relayUrls) > 0 || c.Bool("outbox") {
 				if c.Bool("ids-only") {
 					seen := make(map[nostr.ID]struct{}, max(500, filter.Limit))
 					for _, url := range relayUrls {
@@ -147,16 +166,52 @@ example:
 						}
 					}
 				} else {
-					fn := sys.Pool.FetchMany
-					if c.Bool("paginate") {
-						fn = sys.Pool.PaginatorWithInterval(c.Duration("paginate-interval"))
-					} else if c.Bool("stream") {
-						fn = sys.Pool.SubscribeMany
+					var results chan nostr.RelayEvent
+					opts := nostr.SubscriptionOptions{
+						Label: "nak-req",
 					}
 
-					for ie := range fn(ctx, relayUrls, filter, nostr.SubscriptionOptions{
-						Label: "nak-req",
-					}) {
+					if c.Bool("paginate") {
+						paginator := sys.Pool.PaginatorWithInterval(c.Duration("paginate-interval"))
+						results = paginator(ctx, relayUrls, filter, opts)
+					} else if c.Bool("outbox") {
+						defs := make([]nostr.DirectedFilter, 0, len(filter.Authors)*2)
+
+						// hardcoded relays, if any
+						for _, relayUrl := range relayUrls {
+							defs = append(defs, nostr.DirectedFilter{
+								Filter: filter,
+								Relay:  relayUrl,
+							})
+						}
+
+						// relays for each pubkey
+						for _, pubkey := range filter.Authors {
+							n := int(c.Uint("outbox-relays-number"))
+							this := filter.Clone()
+							this.Authors = []nostr.PubKey{pubkey}
+							for _, url := range sys.FetchOutboxRelays(ctx, pubkey, n) {
+								defs = append(defs, nostr.DirectedFilter{
+									Filter: this,
+									Relay:  url,
+								})
+							}
+						}
+
+						if c.Bool("stream") {
+							results = sys.Pool.BatchedSubscribeMany(ctx, defs, opts)
+						} else {
+							results = sys.Pool.BatchedQueryMany(ctx, defs, opts)
+						}
+					} else {
+						if c.Bool("stream") {
+							results = sys.Pool.SubscribeMany(ctx, relayUrls, filter, opts)
+						} else {
+							results = sys.Pool.FetchMany(ctx, relayUrls, filter, opts)
+						}
+					}
+
+					for ie := range results {
 						stdout(ie.Event)
 					}
 				}
