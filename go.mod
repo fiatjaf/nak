@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20250829192328-aa321f6e7f10
+	fiatjaf.com/nostr v0.0.0-20250905141851-8750197ea7a8
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.5
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -35,7 +35,7 @@ require (
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/chzyer/logex v1.1.10 // indirect
 	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
-	github.com/coder/websocket v1.8.13 // indirect
+	github.com/coder/websocket v1.8.14 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/decred/dcrd/crypto/blake256 v1.1.0 // indirect
 	github.com/dgraph-io/ristretto/v2 v2.3.0 // indirect
@@ -61,7 +61,7 @@ require (
 	github.com/savsgio/gotils v0.0.0-20240704082632-aef3928b8a38 // indirect
 	github.com/tetratelabs/wazero v1.8.0 // indirect
 	github.com/tidwall/gjson v1.18.0 // indirect
-	github.com/tidwall/match v1.1.1 // indirect
+	github.com/tidwall/match v1.2.0 // indirect
 	github.com/tidwall/pretty v1.2.1 // indirect
 	github.com/valyala/bytebufferpool v1.0.0 // indirect
 	github.com/valyala/fasthttp v1.59.0 // indirect
@@ -76,5 +76,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
-
-replace fiatjaf.com/nostr => ../nostrlib
