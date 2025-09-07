@@ -4,7 +4,9 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"slices"
 	"strings"
+	"sync"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip42"
@@ -12,6 +14,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/sync/errgroup"
 )
 
 const (
@@ -186,17 +189,52 @@ example:
 						}
 
 						// relays for each pubkey
+						errg := errgroup.Group{}
+						errg.SetLimit(16)
+						mu := sync.Mutex{}
 						for _, pubkey := range filter.Authors {
-							n := int(c.Uint("outbox-relays-number"))
-							this := filter.Clone()
-							this.Authors = []nostr.PubKey{pubkey}
-							for _, url := range sys.FetchOutboxRelays(ctx, pubkey, n) {
-								defs = append(defs, nostr.DirectedFilter{
-									Filter: this,
-									Relay:  url,
-								})
-							}
+							errg.Go(func() error {
+								n := int(c.Uint("outbox-relays-number"))
+								for _, url := range sys.FetchOutboxRelays(ctx, pubkey, n) {
+									if slices.Contains(relayUrls, url) {
+										// already hardcoded, ignore
+										continue
+									}
+									if !nostr.IsValidRelayURL(url) {
+										continue
+									}
+
+									matchUrl := func(def nostr.DirectedFilter) bool { return def.Relay == url }
+									idx := slices.IndexFunc(defs, matchUrl)
+									if idx == -1 {
+										// new relay, add it
+										mu.Lock()
+										// check again after locking to prevent races
+										idx = slices.IndexFunc(defs, matchUrl)
+										if idx == -1 {
+											// then add it
+											filter := filter.Clone()
+											filter.Authors = []nostr.PubKey{pubkey}
+											defs = append(defs, nostr.DirectedFilter{
+												Filter: filter,
+												Relay:  url,
+											})
+											mu.Unlock()
+											continue // done with this relay url
+										}
+
+										// otherwise we'll just use the idx
+										mu.Unlock()
+									}
+
+									// existing relay, add this pubkey
+									defs[idx].Authors = append(defs[idx].Authors, pubkey)
+								}
+
+								return nil
+							})
 						}
+						errg.Wait()
 
 						if c.Bool("stream") {
 							results = sys.Pool.BatchedSubscribeMany(ctx, defs, opts)
