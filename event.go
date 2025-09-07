@@ -403,12 +403,19 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 			}
 		} else {
 			// normal dumb flow
-			for _, relay := range relays {
+			for i, relay := range relays {
 			publish:
 				cleanUrl, _ := strings.CutPrefix(relay.URL, "wss://")
 				log("publishing to %s... ", color.CyanString(cleanUrl))
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
+
+				if !relay.IsConnected() {
+					if new_, err := sys.Pool.EnsureRelay(relay.URL); err == nil {
+						relays[i] = new_
+						relay = new_
+					}
+				}
 
 				err := relay.Publish(ctx, evt)
 				if err == nil {
