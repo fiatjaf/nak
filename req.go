@@ -354,19 +354,19 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	for _, tagFlag := range c.StringSlice("tag") {
 		spl := strings.SplitN(tagFlag, "=", 2)
 		if len(spl) == 2 {
-			tags = append(tags, spl)
+			tags = append(tags, []string{spl[0], decodeTagValue(spl[1])})
 		} else {
 			return fmt.Errorf("invalid --tag '%s'", tagFlag)
 		}
 	}
 	for _, etag := range c.StringSlice("e") {
-		tags = append(tags, []string{"e", etag})
+		tags = append(tags, []string{"e", decodeTagValue(etag)})
 	}
 	for _, ptag := range c.StringSlice("p") {
-		tags = append(tags, []string{"p", ptag})
+		tags = append(tags, []string{"p", decodeTagValue(ptag)})
 	}
 	for _, dtag := range c.StringSlice("d") {
-		tags = append(tags, []string{"d", dtag})
+		tags = append(tags, []string{"d", decodeTagValue(dtag)})
 	}
 
 	if len(tags) > 0 && filter.Tags == nil {

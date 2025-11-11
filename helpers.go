@@ -508,6 +508,15 @@ func parseEventID(value string) (nostr.ID, error) {
 	return nostr.ID{}, fmt.Errorf("invalid event id (\"%s\"): expected hex, note, or nevent", value)
 }
 
+func decodeTagValue(value string) string {
+	if strings.HasPrefix(value, "npub1") || strings.HasPrefix(value, "nevent1") || strings.HasPrefix(value, "note1") || strings.HasPrefix(value, "nprofile1") || strings.HasPrefix(value, "naddr1") {
+		if ptr, err := nip19.ToPointer(value); err == nil {
+			return ptr.AsTagReference()
+		}
+	}
+	return value
+}
+
 var colors = struct {
 	reset    func(...any) (int, error)
 	italic   func(...any) string

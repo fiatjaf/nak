@@ -211,24 +211,30 @@ example:
 				if found {
 					// tags may also contain extra elements separated with a ";"
 					tagValues := strings.Split(tagValue, ";")
+					if len(tagValues) >= 1 {
+						tagValues[0] = decodeTagValue(tagValues[0])
+					}
 					tag = append(tag, tagValues...)
 				}
 				tags = append(tags, tag)
 			}
 
 			for _, etag := range c.StringSlice("e") {
-				if tags.FindWithValue("e", etag) == nil {
-					tags = append(tags, nostr.Tag{"e", etag})
+				decodedEtag := decodeTagValue(etag)
+				if tags.FindWithValue("e", decodedEtag) == nil {
+					tags = append(tags, nostr.Tag{"e", decodedEtag})
 				}
 			}
 			for _, ptag := range c.StringSlice("p") {
-				if tags.FindWithValue("p", ptag) == nil {
-					tags = append(tags, nostr.Tag{"p", ptag})
+				decodedPtag := decodeTagValue(ptag)
+				if tags.FindWithValue("p", decodedPtag) == nil {
+					tags = append(tags, nostr.Tag{"p", decodedPtag})
 				}
 			}
 			for _, dtag := range c.StringSlice("d") {
-				if tags.FindWithValue("d", dtag) == nil {
-					tags = append(tags, nostr.Tag{"d", dtag})
+				decodedDtag := decodeTagValue(dtag)
+				if tags.FindWithValue("d", decodedDtag) == nil {
+					tags = append(tags, nostr.Tag{"d", decodedDtag})
 				}
 			}
 			if len(tags) > 0 {
