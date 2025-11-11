@@ -163,7 +163,7 @@ var encode = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getStdinLinesOrArguments(c.Args()) {
-					id, err := nostr.IDFromHex(target)
+					id, err := parseEventID(target)
 					if err != nil {
 						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
 						continue

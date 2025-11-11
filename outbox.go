@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 
-	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/sdk"
 	"fiatjaf.com/nostr/sdk/hints/bbolth"
 	"github.com/fatih/color"
@@ -82,7 +81,7 @@ var outbox = &cli.Command{
 					return fmt.Errorf("expected exactly one argument (pubkey)")
 				}
 
-				pk, err := nostr.PubKeyFromHex(c.Args().First())
+				pk, err := parsePubKey(c.Args().First())
 				if err != nil {
 					return fmt.Errorf("invalid public key '%s': %w", c.Args().First(), err)
 				}

@@ -96,8 +96,8 @@ func (t pubkeyValue) Create(val nostr.PubKey, p *nostr.PubKey, c struct{}) cli.V
 func (t pubkeyValue) ToString(b nostr.PubKey) string { return t.pubkey.String() }
 
 func (t *pubkeyValue) Set(value string) error {
-	pk, err := nostr.PubKeyFromHex(value)
-	t.pubkey = pk
+	pubkey, err := parsePubKey(value)
+	t.pubkey = pubkey
 	t.hasBeenSet = true
 	return err
 }
@@ -147,8 +147,8 @@ func (t idValue) Create(val nostr.ID, p *nostr.ID, c struct{}) cli.Value {
 func (t idValue) ToString(b nostr.ID) string { return t.id.String() }
 
 func (t *idValue) Set(value string) error {
-	pk, err := nostr.IDFromHex(value)
-	t.id = pk
+	id, err := parseEventID(value)
+	t.id = id
 	t.hasBeenSet = true
 	return err
 }

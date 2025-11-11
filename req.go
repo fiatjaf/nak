@@ -276,13 +276,13 @@ var reqFilterFlags = []cli.Flag{
 	&PubKeySliceFlag{
 		Name:     "author",
 		Aliases:  []string{"a"},
-		Usage:    "only accept events from these authors (pubkey as hex)",
+		Usage:    "only accept events from these authors",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
 	&IDSliceFlag{
 		Name:     "id",
 		Aliases:  []string{"i"},
-		Usage:    "only accept events with these ids (hex)",
+		Usage:    "only accept events with these ids",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
 	&cli.IntSliceFlag{

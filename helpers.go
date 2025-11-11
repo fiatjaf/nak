@@ -464,6 +464,50 @@ func askConfirmation(msg string) bool {
 	}
 }
 
+func parsePubKey(value string) (nostr.PubKey, error) {
+	pk, err := nostr.PubKeyFromHex(value)
+	if err == nil {
+		return pk, nil
+	}
+
+	if prefix, decoded, err := nip19.Decode(value); err == nil {
+		switch prefix {
+		case "npub":
+			if pk, ok := decoded.(nostr.PubKey); ok {
+				return pk, nil
+			}
+		case "nprofile":
+			if profile, ok := decoded.(nostr.ProfilePointer); ok {
+				return profile.PublicKey, nil
+			}
+		}
+	}
+
+	return nostr.PubKey{}, fmt.Errorf("invalid pubkey (\"%s\"): expected hex, npub, or nprofile", value)
+}
+
+func parseEventID(value string) (nostr.ID, error) {
+	id, err := nostr.IDFromHex(value)
+	if err == nil {
+		return id, nil
+	}
+
+	if prefix, decoded, err := nip19.Decode(value); err == nil {
+		switch prefix {
+		case "note":
+			if id, ok := decoded.(nostr.ID); ok {
+				return id, nil
+			}
+		case "nevent":
+			if event, ok := decoded.(nostr.EventPointer); ok {
+				return event.ID, nil
+			}
+		}
+	}
+
+	return nostr.ID{}, fmt.Errorf("invalid event id (\"%s\"): expected hex, note, or nevent", value)
+}
+
 var colors = struct {
 	reset    func(...any) (int, error)
 	italic   func(...any) string

@@ -21,7 +21,7 @@ var count = &cli.Command{
 		&PubKeySliceFlag{
 			Name:     "author",
 			Aliases:  []string{"a"},
-			Usage:    "only accept events from these authors (pubkey as hex)",
+			Usage:    "only accept events from these authors",
 			Category: CATEGORY_FILTER_ATTRIBUTES,
 		},
 		&cli.IntSliceFlag{
