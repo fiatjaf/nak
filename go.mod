@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20251104112613-38a6ca92b954
+	fiatjaf.com/nostr v0.0.0-20251112024900-1c43f0d66643
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
