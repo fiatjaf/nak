@@ -212,25 +212,8 @@ var gitInit = &cli.Command{
 		ownerNpub := nip19.EncodeNpub(pk)
 
 		// check existing git remotes
-		cmd = exec.Command("git", "remote", "-v")
-		output, err := cmd.Output()
+		nostrRemote, _, _, err := getGitNostrRemote(c)
 		if err != nil {
-			return fmt.Errorf("failed to get git remotes: %w", err)
-		}
-
-		remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-		var nostrRemote string
-		for _, remote := range remotes {
-			if strings.Contains(remote, "nostr://") {
-				parts := strings.Fields(remote)
-				if len(parts) >= 2 {
-					nostrRemote = parts[1]
-					break
-				}
-			}
-		}
-
-		if nostrRemote == "" {
 			remoteURL := fmt.Sprintf("nostr://%s/%s/%s", ownerNpub, config.GraspServers[0], config.Identifier)
 			cmd = exec.Command("git", "remote", "add", "origin", remoteURL)
 			if err := cmd.Run(); err != nil {
@@ -400,37 +383,14 @@ func promptForConfig(config *Nip34Config) error {
 	return nil
 }
 
-func gitSanityCheck(localConfig Nip34Config, nostrRemote string) (nostr.PubKey, error) {
-	urlParts := strings.TrimPrefix(nostrRemote, "nostr://")
-	parts := strings.Split(urlParts, "/")
-	if len(parts) != 3 {
-		return nostr.ZeroPK, fmt.Errorf("invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", nostrRemote)
-	}
-
-	remoteNpub := parts[0]
-	remoteHostname := parts[1]
-	remoteIdentifier := parts[2]
-
-	ownerPk, err := parsePubKey(localConfig.Owner)
-	if err != nil {
-		return nostr.ZeroPK, fmt.Errorf("invalid owner public key: %w", err)
-	}
-	if nip19.EncodeNpub(ownerPk) != remoteNpub {
-		return nostr.ZeroPK, fmt.Errorf("owner in nip34.json does not match git remote npub")
-	}
-	if remoteIdentifier != localConfig.Identifier {
-		return nostr.ZeroPK, fmt.Errorf("git remote identifier '%s' differs from nip34.json identifier '%s'", remoteIdentifier, localConfig.Identifier)
-	}
-	if !slices.Contains(localConfig.GraspServers, remoteHostname) {
-		return nostr.ZeroPK, fmt.Errorf("git remote relay '%s' not in grasp servers %v", remoteHostname, localConfig.GraspServers)
-	}
-	return ownerPk, nil
-}
-
 var gitPush = &cli.Command{
 	Name:  "push",
 	Usage: "push git changes",
-	Flags: defaultKeyFlags,
+	Flags: append(defaultKeyFlags, &cli.BoolFlag{
+		Name:    "force",
+		Aliases: []string{"f"},
+		Usage:   "force push to git remotes",
+	}),
 	Action: func(ctx context.Context, c *cli.Command) error {
 		// setup signer
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
@@ -455,26 +415,9 @@ var gitPush = &cli.Command{
 		}
 
 		// get git remotes
-		cmd := exec.Command("git", "remote", "-v")
-		output, err := cmd.Output()
+		nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c)
 		if err != nil {
-			return fmt.Errorf("failed to get git remotes: %w", err)
-		}
-
-		remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-		var nostrRemote string
-		for _, remote := range remotes {
-			if strings.Contains(remote, "nostr://") {
-				parts := strings.Fields(remote)
-				if len(parts) >= 2 {
-					nostrRemote = parts[1]
-					break
-				}
-			}
-		}
-
-		if nostrRemote == "" {
-			return fmt.Errorf("no nostr:// remote found")
+			return err
 		}
 
 		// parse the URL: nostr://<npub>/<relay_hostname>/<identifier>
@@ -521,20 +464,14 @@ var gitPush = &cli.Command{
 			log("found state event: %s\n", state.Event.ID)
 		}
 
-		// get current branch and commit
-		res, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+		// get commit for the local branch
+		res, err := exec.Command("git", "rev-parse", localBranch).Output()
 		if err != nil {
-			return fmt.Errorf("failed to get current branch: %w", err)
-		}
-		currentBranch := strings.TrimSpace(string(res))
-
-		res, err = exec.Command("git", "rev-parse", "HEAD").Output()
-		if err != nil {
-			return fmt.Errorf("failed to get current commit: %w", err)
+			return fmt.Errorf("failed to get commit for branch %s: %w", localBranch, err)
 		}
 		currentCommit := strings.TrimSpace(string(res))
 
-		log("current branch: %s, commit: %s\n", currentBranch, currentCommit)
+		log("pushing branch %s to remote branch %s, commit: %s\n", localBranch, remoteBranch, currentCommit)
 
 		// create a new state if we didn't find any
 		if state.Event.ID == nostr.ZeroID {
@@ -546,13 +483,22 @@ var gitPush = &cli.Command{
 		}
 
 		// update the branch
-		state.Branches[currentBranch] = currentCommit
-		log("> setting branch %s to commit %s\n", currentBranch, currentCommit)
+		if !c.Bool("force") {
+			if prevCommit, exists := state.Branches[remoteBranch]; exists {
+				// check if prevCommit is an ancestor of currentCommit (fast-forward check)
+				cmd := exec.Command("git", "merge-base", "--is-ancestor", prevCommit, currentCommit)
+				if err := cmd.Run(); err != nil {
+					return fmt.Errorf("non-fast-forward push not allowed, use --force to override")
+				}
+			}
+		}
+		state.Branches[remoteBranch] = currentCommit
+		log("> setting branch %s to commit %s\n", remoteBranch, currentCommit)
 
-		// set the HEAD to the current branch if none is set
+		// set the HEAD to the local branch if none is set
 		if state.HEAD == "" {
-			state.HEAD = currentBranch
-			log("> setting HEAD to branch %s\n", currentBranch)
+			state.HEAD = remoteBranch
+			log("> setting HEAD to branch %s\n", remoteBranch)
 		}
 
 		// create and sign the new state event
@@ -573,13 +519,21 @@ var gitPush = &cli.Command{
 
 		// push to git clone URLs
 		for _, cloneURL := range repo.Clone {
-			log("> pushing to: %s\n", cloneURL)
-			cmd := exec.Command("git", "push", cloneURL, fmt.Sprintf("refs/heads/%s:refs/heads/%s", currentBranch, currentBranch))
+			log("> pushing to: %s\n", color.CyanString(cloneURL))
+			args := []string{"push"}
+			if c.Bool("force") {
+				args = append(args, "--force")
+			}
+			args = append(args,
+				cloneURL,
+				fmt.Sprintf("refs/heads/%s:refs/heads/%s", localBranch, remoteBranch),
+			)
+			cmd := exec.Command("git", args...)
 			output, err := cmd.CombinedOutput()
 			if err != nil {
-				log("(!) failed to push to %s: %v\n%s\n", cloneURL, err, string(output))
+				log("> failed to push to %s: %v\n%s\n", color.RedString(cloneURL), err, string(output))
 			} else {
-				log("> successfully pushed to %s\n", cloneURL)
+				log("> successfully pushed to %s\n", color.GreenString(cloneURL))
 			}
 		}
 
@@ -626,26 +580,9 @@ var gitAnnounce = &cli.Command{
 		}
 
 		// get git remotes
-		cmd = exec.Command("git", "remote", "-v")
-		output, err := cmd.Output()
+		nostrRemote, _, _, err := getGitNostrRemote(c)
 		if err != nil {
-			return fmt.Errorf("failed to get git remotes: %w", err)
-		}
-
-		remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-		var nostrRemote string
-		for _, remote := range remotes {
-			if strings.Contains(remote, "nostr://") {
-				parts := strings.Fields(remote)
-				if len(parts) >= 2 {
-					nostrRemote = parts[1]
-					break
-				}
-			}
-		}
-
-		if nostrRemote == "" {
-			return fmt.Errorf("no nostr:// remote found")
+			return err
 		}
 
 		ownerPk, err := gitSanityCheck(localConfig, nostrRemote)
@@ -733,4 +670,118 @@ var gitAnnounce = &cli.Command{
 
 		return nil
 	},
+}
+
+func getGitNostrRemote(c *cli.Command) (
+	remoteURL string,
+	localBranch string,
+	remoteBranch string,
+	err error,
+) {
+	// remote
+	var remoteName string
+	var cmd *exec.Cmd
+	args := c.Args()
+	if args.Len() > 0 {
+		remoteName = args.Get(0)
+	} else {
+		// get current branch
+		cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+		output, err := cmd.Output()
+		if err != nil {
+			return "", "", "", fmt.Errorf("failed to get current branch: %w", err)
+		}
+		branch := strings.TrimSpace(string(output))
+		// get remote for branch
+		cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.remote", branch))
+		output, err = cmd.Output()
+		if err != nil {
+			remoteName = "origin"
+		} else {
+			remoteName = strings.TrimSpace(string(output))
+		}
+	}
+	// get the URL
+	cmd = exec.Command("git", "remote", "get-url", remoteName)
+	output, err := cmd.Output()
+	if err != nil {
+		return "", "", "", fmt.Errorf("remote '%s' does not exist", remoteName)
+	}
+	remoteURL = strings.TrimSpace(string(output))
+	if !strings.Contains(remoteURL, "nostr://") {
+		return "", "", "", fmt.Errorf("remote '%s' is not a nostr remote: %s", remoteName, remoteURL)
+	}
+
+	// branch (local and remote)
+	if args.Len() > 1 {
+		branchSpec := args.Get(1)
+		if strings.Contains(branchSpec, ":") {
+			parts := strings.Split(branchSpec, ":")
+			if len(parts) == 2 {
+				localBranch = parts[0]
+				remoteBranch = parts[1]
+			} else {
+				return "", "", "", fmt.Errorf("invalid branch spec: %s", branchSpec)
+			}
+		} else {
+			localBranch = branchSpec
+		}
+	} else {
+		// get current branch
+		cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
+		output, err := cmd.Output()
+		if err != nil {
+			return "", "", "", fmt.Errorf("failed to get current branch: %w", err)
+		}
+		localBranch = strings.TrimSpace(string(output))
+	}
+
+	// get the upstream branch from git config
+	cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.merge", localBranch))
+	output, err = cmd.Output()
+	if err == nil {
+		// parse refs/heads/<branch-name> to get just the branch name
+		mergeRef := strings.TrimSpace(string(output))
+		if strings.HasPrefix(mergeRef, "refs/heads/") {
+			remoteBranch = strings.TrimPrefix(mergeRef, "refs/heads/")
+		} else {
+			// fallback if it's not in expected format
+			remoteBranch = localBranch
+		}
+	} else {
+		// no upstream configured, assume same branch name
+		remoteBranch = localBranch
+	}
+
+	return remoteURL, localBranch, remoteBranch, nil
+}
+
+func gitSanityCheck(
+	localConfig Nip34Config,
+	nostrRemote string,
+) (nostr.PubKey, error) {
+	urlParts := strings.TrimPrefix(nostrRemote, "nostr://")
+	parts := strings.Split(urlParts, "/")
+	if len(parts) != 3 {
+		return nostr.ZeroPK, fmt.Errorf("invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", nostrRemote)
+	}
+
+	remoteNpub := parts[0]
+	remoteHostname := parts[1]
+	remoteIdentifier := parts[2]
+
+	ownerPk, err := parsePubKey(localConfig.Owner)
+	if err != nil {
+		return nostr.ZeroPK, fmt.Errorf("invalid owner public key: %w", err)
+	}
+	if nip19.EncodeNpub(ownerPk) != remoteNpub {
+		return nostr.ZeroPK, fmt.Errorf("owner in nip34.json does not match git remote npub")
+	}
+	if remoteIdentifier != localConfig.Identifier {
+		return nostr.ZeroPK, fmt.Errorf("git remote identifier '%s' differs from nip34.json identifier '%s'", remoteIdentifier, localConfig.Identifier)
+	}
+	if !slices.Contains(localConfig.GraspServers, remoteHostname) {
+		return nostr.ZeroPK, fmt.Errorf("git remote relay '%s' not in grasp servers %v", remoteHostname, localConfig.GraspServers)
+	}
+	return ownerPk, nil
 }
