@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20251112024900-1c43f0d66643
+	fiatjaf.com/nostr v0.0.0-20251117111008-078e9b4cc257
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -21,8 +21,8 @@ require (
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/stretchr/testify v1.10.0
 	github.com/urfave/cli/v3 v3.0.0-beta1
-	golang.org/x/exp v0.0.0-20251023183803-a4bb9ffd2546
-	golang.org/x/sync v0.17.0
+	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
+	golang.org/x/sync v0.18.0
 	golang.org/x/term v0.32.0
 )
 
