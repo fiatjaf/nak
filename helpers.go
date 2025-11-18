@@ -75,7 +75,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 			return true
 		})
 
-		if !hasStdin {
+		if !hasStdin && !isPiped() {
 			yield("{}")
 		}
 
