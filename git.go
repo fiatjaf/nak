@@ -461,7 +461,7 @@ var gitPush = &cli.Command{
 		}
 
 		if state.Event.ID != nostr.ZeroID {
-			log("found state event: %s\n", state.Event.ID)
+			logverbose("found state event: %s\n", state.Event.ID)
 		}
 
 		// get commit for the local branch
@@ -471,7 +471,7 @@ var gitPush = &cli.Command{
 		}
 		currentCommit := strings.TrimSpace(string(res))
 
-		log("pushing branch %s to remote branch %s, commit: %s\n", localBranch, remoteBranch, currentCommit)
+		logverbose("pushing branch %s to remote branch %s, commit: %s\n", localBranch, remoteBranch, currentCommit)
 
 		// create a new state if we didn't find any
 		if state.Event.ID == nostr.ZeroID {
@@ -493,12 +493,12 @@ var gitPush = &cli.Command{
 			}
 		}
 		state.Branches[remoteBranch] = currentCommit
-		log("> setting branch %s to commit %s\n", remoteBranch, currentCommit)
+		log("- setting branch %s to commit %s\n", color.CyanString(remoteBranch), color.CyanString(currentCommit))
 
 		// set the HEAD to the local branch if none is set
 		if state.HEAD == "" {
 			state.HEAD = remoteBranch
-			log("> setting HEAD to branch %s\n", remoteBranch)
+			log("- setting HEAD to branch %s\n", color.CyanString(remoteBranch))
 		}
 
 		// create and sign the new state event
@@ -508,12 +508,12 @@ var gitPush = &cli.Command{
 			return fmt.Errorf("error signing state event: %w", err)
 		}
 
-		log("> publishing updated repository state %s\n", newStateEvent.ID)
+		log("- publishing updated repository state to " + color.CyanString("%v", relays) + "\n")
 		for res := range sys.Pool.PublishMany(ctx, relays, newStateEvent) {
 			if res.Error != nil {
-				log("(!) error publishing event to relay %s: %v\n", res.RelayURL, res.Error)
+				log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
 			} else {
-				log("> published to relay %s\n", res.RelayURL)
+				log("> published to %s\n", color.GreenString(res.RelayURL))
 			}
 		}
 
@@ -625,9 +625,15 @@ var gitAnnounce = &cli.Command{
 			}
 		}
 
-		// fetch repository announcement (30617) events
-		var repo nip34.Repository
+		// these are the relays where we'll publish the announcement to
 		relays := append(sys.FetchOutboxRelays(ctx, ownerPk, 3), localConfig.GraspServers...)
+		for i := range relays {
+			relays[i] = nostr.NormalizeURL(relays[i])
+		}
+
+		// fetch repository announcement (30617) events
+		oks := make([]bool, len(relays))
+		var repo nip34.Repository
 		results := sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 			Kinds: []nostr.Kind{30617},
 			Tags: nostr.TagMap{
@@ -635,37 +641,40 @@ var gitAnnounce = &cli.Command{
 			},
 			Limit: 1,
 		}, nostr.SubscriptionOptions{
-			Label: "nak-git-announce",
+			Label:          "nak-git-announce",
+			CheckDuplicate: func(id nostr.ID, relay string) bool { return false }, // get the same event from multiple relays
 		})
 		for ie := range results {
 			repo = nip34.ParseRepository(ie.Event)
+
+			// check if this is ok or the announcement in this relay needs to be updated
+			if repositoriesEqual(repo, localRepo) {
+				relayIdx := slices.Index(relays, ie.Relay.URL)
+				oks[relayIdx] = true
+			}
 		}
 
 		// publish repository announcement if needed
-		var needsAnnouncement bool
-		if repo.Event.ID == nostr.ZeroID {
-			log("no existing repository announcement found, will create one\n")
-			needsAnnouncement = true
-		} else if !repositoriesEqual(repo, localRepo) {
-			log("local repository config differs from published announcement, will update\n")
-			needsAnnouncement = true
-		}
-		if needsAnnouncement {
+		if slices.Contains(oks, false) {
 			announcementEvent := localRepo.ToEvent()
 			if err := kr.SignEvent(ctx, &announcementEvent); err != nil {
 				return fmt.Errorf("failed to sign announcement event: %w", err)
 			}
 
-			log("> publishing repository announcement %s\n", announcementEvent.ID)
-			for res := range sys.Pool.PublishMany(ctx, relays, announcementEvent) {
-				if res.Error != nil {
-					log("(!) error publishing announcement to relay %s: %v\n", res.RelayURL, res.Error)
-				} else {
-					log("> published announcement to relay %s\n", res.RelayURL)
+			targets := make([]string, 0, len(oks))
+			for i, ok := range oks {
+				if !ok {
+					targets = append(targets, relays[i])
 				}
 			}
-		} else {
-			log("repository announcement is up to date\n")
+			log("- publishing repository announcement to " + color.CyanString("%v", targets) + "\n")
+			for res := range sys.Pool.PublishMany(ctx, targets, announcementEvent) {
+				if res.Error != nil {
+					log("! error publishing announcement to relay %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+				} else {
+					log("> published announcement to relay %s\n", color.GreenString(res.RelayURL))
+				}
+			}
 		}
 
 		return nil
