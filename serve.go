@@ -44,6 +44,10 @@ var serve = &cli.Command{
 			DefaultText: "the relay will start empty",
 		},
 		&cli.BoolFlag{
+			Name:  "negentropy",
+			Usage: "enable negentropy syncing",
+		},
+		&cli.BoolFlag{
 			Name:  "grasp",
 			Usage: "enable grasp server",
 		},
@@ -90,6 +94,10 @@ var serve = &cli.Command{
 		rl.Info.Version = version
 
 		rl.UseEventstore(db, 500)
+
+		if c.Bool("negentropy") {
+			rl.Negentropy = true
+		}
 
 		started := make(chan bool)
 		exited := make(chan error)
@@ -152,7 +160,12 @@ var serve = &cli.Command{
 
 		// relay logging
 		rl.OnRequest = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
-			log("    got %s %v\n", color.HiYellowString("request"), colors.italic(filter))
+			negentropy := ""
+			if khatru.IsNegentropySession(ctx) {
+				negentropy = color.HiBlueString("negentropy ")
+			}
+
+			log("    got %s%s %v\n", negentropy, color.HiYellowString("request"), colors.italic(filter))
 			printStatus()
 			return false, ""
 		}
