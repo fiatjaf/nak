@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -33,6 +34,7 @@ var git = &cli.Command{
 	Usage: "git-related operations",
 	Commands: []*cli.Command{
 		gitInit,
+		gitClone,
 		gitPush,
 		gitPull,
 		gitFetch,
@@ -236,7 +238,7 @@ var gitInit = &cli.Command{
 			if repoNpub != ownerNpub {
 				return fmt.Errorf("git remote npub '%s' does not match owner '%s'", repoNpub, ownerNpub)
 			}
-			if !slices.Contains(config.GraspServers, relayHostname) {
+			if !slices.Contains(config.GraspServers, nostr.NormalizeURL(relayHostname)) {
 				return fmt.Errorf("git remote relay '%s' not in grasp servers %v", relayHostname, config.GraspServers)
 			}
 			if identifier != config.Identifier {
@@ -383,6 +385,188 @@ func promptForConfig(config *Nip34Config) error {
 	return nil
 }
 
+var gitClone = &cli.Command{
+	Name:      "clone",
+	Usage:     "clone a NIP-34 repository from a nostr:// URI",
+	ArgsUsage: "nostr://<npub>/<relay>/<identifier> [directory]",
+	Action: func(ctx context.Context, c *cli.Command) error {
+		args := c.Args()
+		if args.Len() == 0 {
+			return fmt.Errorf("missing repository URI (expected nostr://<npub>/<relay>/<identifier>)")
+		}
+
+		repoURI := args.Get(0)
+		if !strings.HasPrefix(repoURI, "nostr://") {
+			return fmt.Errorf("invalid nostr URI: %s", repoURI)
+		}
+
+		uriParts := strings.Split(strings.TrimPrefix(repoURI, "nostr://"), "/")
+		if len(uriParts) != 3 {
+			return fmt.Errorf("invalid nostr URI format, expected nostr://<npub>/<relay>/<identifier>, got: %s", repoURI)
+		}
+
+		ownerNpub := uriParts[0]
+		relayHost := uriParts[1]
+		identifier := uriParts[2]
+
+		prefix, decoded, err := nip19.Decode(ownerNpub)
+		if err != nil || prefix != "npub" {
+			return fmt.Errorf("invalid owner npub in URI: %w", err)
+		}
+
+		ownerPk := decoded.(nostr.PubKey)
+		primaryRelay := nostr.NormalizeURL(relayHost)
+
+		// fetch repository announcement (30617)
+		relays := appendUnique([]string{primaryRelay}, sys.FetchOutboxRelays(ctx, ownerPk, 3)...)
+		var repo nip34.Repository
+		for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
+			Kinds:   []nostr.Kind{30617},
+			Authors: []nostr.PubKey{ownerPk},
+			Tags: nostr.TagMap{
+				"d": []string{identifier},
+			},
+			Limit: 2,
+		}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
+			if ie.Event.CreatedAt > repo.CreatedAt {
+				repo = nip34.ParseRepository(ie.Event)
+			}
+		}
+		if repo.Event.ID == nostr.ZeroID {
+			return fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+		}
+
+		// fetch repository state (30618)
+		var state nip34.RepositoryState
+		var stateFound bool
+		var stateErr error
+		for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+			Kinds:   []nostr.Kind{30618},
+			Authors: []nostr.PubKey{ownerPk},
+			Tags: nostr.TagMap{
+				"d": []string{identifier},
+			},
+			Limit: 2,
+		}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
+			if ie.Event.CreatedAt > state.CreatedAt {
+				state = nip34.ParseRepositoryState(ie.Event)
+				stateFound = true
+
+				if state.HEAD == "" {
+					stateErr = fmt.Errorf("state is missing HEAD")
+					continue
+				}
+				if _, ok := state.Branches[state.HEAD]; !ok {
+					stateErr = fmt.Errorf("state is missing commit for HEAD branch '%s'", state.HEAD)
+					continue
+				}
+
+				stateErr = nil
+			}
+		}
+		if !stateFound {
+			return fmt.Errorf("no repository state (kind 30618) found")
+		}
+		if stateErr != nil {
+			return stateErr
+		}
+
+		// determine target directory
+		targetDir := ""
+		if args.Len() >= 2 {
+			targetDir = args.Get(1)
+		} else {
+			targetDir = repo.ID
+		}
+		if targetDir == "" {
+			targetDir = identifier
+		}
+
+		// if targetDir exists and is non-empty, bail
+		if fi, err := os.Stat(targetDir); err == nil && fi.IsDir() {
+			entries, err := os.ReadDir(targetDir)
+			if err == nil && len(entries) > 0 {
+				return fmt.Errorf("target directory '%s' already exists and is not empty", targetDir)
+			}
+		}
+
+		// decide which clone URL to use
+		if len(repo.Clone) == 0 {
+			return fmt.Errorf("no clone urls found for repository")
+		}
+
+		cloned := false
+		for _, url := range repo.Clone {
+			log("- cloning %s... ", color.CyanString(url))
+			if err := tryCloneAndCheckState(ctx, url, targetDir, &state); err != nil {
+				log(color.YellowString("failed: %v\n", err))
+				continue
+			}
+			log("%s\n", color.GreenString("ok"))
+			cloned = true
+			break
+		}
+
+		if !cloned {
+			return fmt.Errorf("failed to clone")
+		}
+
+		// write nip34.json inside cloned directory
+		// normalize relay URLs for consistency
+		normalizedRelays := make([]string, 0, len(repo.Relays))
+		for _, r := range repo.Relays {
+			normalizedRelays = append(normalizedRelays, nostr.NormalizeURL(r))
+		}
+
+		cfg := Nip34Config{
+			Identifier:           repo.ID,
+			Name:                 repo.Name,
+			Description:          repo.Description,
+			Web:                  repo.Web,
+			Owner:                nip19.EncodeNpub(repo.Event.PubKey),
+			GraspServers:         normalizedRelays,
+			EarliestUniqueCommit: repo.EarliestUniqueCommitID,
+			Maintainers:          make([]string, 0, len(repo.Maintainers)),
+		}
+		for _, m := range repo.Maintainers {
+			cfg.Maintainers = append(cfg.Maintainers, nip19.EncodeNpub(m))
+		}
+
+		data, err := json.MarshalIndent(cfg, "", "  ")
+		if err != nil {
+			return fmt.Errorf("failed to marshal nip34.json: %w", err)
+		}
+
+		configPath := filepath.Join(targetDir, "nip34.json")
+		if err := os.WriteFile(configPath, data, 0644); err != nil {
+			return fmt.Errorf("failed to write %s: %w", configPath, err)
+		}
+
+		// add nip34.json to .git/info/exclude in cloned repo
+		gitDir := filepath.Join(targetDir, ".git")
+		if st, err := os.Stat(gitDir); err == nil && st.IsDir() {
+			excludePath := filepath.Join(gitDir, "info", "exclude")
+			excludeContent, err := os.ReadFile(excludePath)
+			if err != nil {
+				excludeContent = []byte("")
+			}
+			if !strings.Contains(string(excludeContent), "nip34.json") {
+				newContent := string(excludeContent)
+				if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
+					newContent += "\n"
+				}
+				newContent += "nip34.json\n"
+				if err := os.WriteFile(excludePath, []byte(newContent), 0644); err != nil {
+					log(color.YellowString("failed to add nip34.json to %s: %v\n", excludePath, err))
+				}
+			}
+		}
+
+		log("cloned into %s\n", color.GreenString(targetDir))
+		return nil
+	},
+}
+
 var gitPush = &cli.Command{
 	Name:  "push",
 	Usage: "push git changes",
@@ -445,9 +629,13 @@ var gitPush = &cli.Command{
 		})
 		for ie := range results {
 			if ie.Event.Kind == 30617 {
-				repo = nip34.ParseRepository(ie.Event)
+				if ie.Event.CreatedAt > repo.CreatedAt {
+					repo = nip34.ParseRepository(ie.Event)
+				}
 			} else if ie.Event.Kind == 30618 {
-				state = nip34.ParseRepositoryState(ie.Event)
+				if ie.Event.CreatedAt > state.CreatedAt {
+					state = nip34.ParseRepositoryState(ie.Event)
+				}
 			}
 		}
 
@@ -457,7 +645,7 @@ var gitPush = &cli.Command{
 
 		// check if signer matches owner or is in maintainers
 		if currentPk != ownerPk && !slices.Contains(repo.Maintainers, currentPk) {
-			return fmt.Errorf("current user is not allowed to push")
+			return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
 		}
 
 		if state.Event.ID != nostr.ZeroID {
@@ -789,8 +977,67 @@ func gitSanityCheck(
 	if remoteIdentifier != localConfig.Identifier {
 		return nostr.ZeroPK, fmt.Errorf("git remote identifier '%s' differs from nip34.json identifier '%s'", remoteIdentifier, localConfig.Identifier)
 	}
-	if !slices.Contains(localConfig.GraspServers, remoteHostname) {
+	if !slices.Contains(localConfig.GraspServers, nostr.NormalizeURL(remoteHostname)) {
 		return nostr.ZeroPK, fmt.Errorf("git remote relay '%s' not in grasp servers %v", remoteHostname, localConfig.GraspServers)
 	}
 	return ownerPk, nil
+}
+
+func tryCloneAndCheckState(ctx context.Context, cloneURL, targetDir string, state *nip34.RepositoryState) (err error) {
+	// if we get here we know we were the ones who created the target directory, so we're safe to remove it
+	defer func() {
+		if err != nil {
+			if err := os.RemoveAll(targetDir); err != nil {
+				log("failed to remove '%s' when handling error from clone: %s", targetDir, err)
+			}
+		}
+	}()
+
+	cmd := exec.CommandContext(ctx, "git", "clone", cloneURL, targetDir)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		return fmt.Errorf("git clone failed: %v: %s", err, strings.TrimSpace(string(output)))
+	}
+
+	// if we don't have any state information, we can't verify anything
+	if state == nil || state.Event.ID == nostr.ZeroID {
+		return nil
+	}
+
+	// check that the HEAD branch matches the state HEAD
+	cmd = exec.Command("git", "-C", targetDir, "rev-parse", "--abbrev-ref", "HEAD")
+	headOut, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to read HEAD")
+	}
+	currentBranch := strings.TrimSpace(string(headOut))
+	if currentBranch != state.HEAD {
+		return fmt.Errorf("received HEAD '%s' isn't the expected '%s'", currentBranch, state.HEAD)
+	}
+
+	// verify the HEAD branch only as it's the only one we have
+	expectedCommit := state.Branches[state.HEAD] // we've tested before if state has this
+	cmd = exec.Command("git", "-C", targetDir, "rev-parse", state.HEAD)
+	actualOut, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to check commit for '%s': %s", state.HEAD, err)
+	}
+	actualCommit := strings.TrimSpace(string(actualOut))
+	if actualCommit != expectedCommit {
+		return fmt.Errorf("branch %s is at %s, expected %s", state.HEAD, actualCommit, expectedCommit)
+	}
+
+	// set nostr remote
+	parsed, _ := url.Parse(cloneURL)
+	repoURI := fmt.Sprintf("nostr://%s/%s/%s",
+		nip19.EncodeNpub(state.PubKey),
+		parsed.Host,
+		state.ID,
+	)
+	cmd = exec.Command("git", "-C", targetDir, "remote", "set-url", "origin", repoURI)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to add git remote: %v\n", err)
+	}
+
+	return nil
 }
