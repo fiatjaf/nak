@@ -395,81 +395,7 @@ var gitClone = &cli.Command{
 			return fmt.Errorf("missing repository URI (expected nostr://<npub>/<relay>/<identifier>)")
 		}
 
-		repoURI := args.Get(0)
-		if !strings.HasPrefix(repoURI, "nostr://") {
-			return fmt.Errorf("invalid nostr URI: %s", repoURI)
-		}
-
-		uriParts := strings.Split(strings.TrimPrefix(repoURI, "nostr://"), "/")
-		if len(uriParts) != 3 {
-			return fmt.Errorf("invalid nostr URI format, expected nostr://<npub>/<relay>/<identifier>, got: %s", repoURI)
-		}
-
-		ownerNpub := uriParts[0]
-		relayHost := uriParts[1]
-		identifier := uriParts[2]
-
-		prefix, decoded, err := nip19.Decode(ownerNpub)
-		if err != nil || prefix != "npub" {
-			return fmt.Errorf("invalid owner npub in URI: %w", err)
-		}
-
-		ownerPk := decoded.(nostr.PubKey)
-		primaryRelay := nostr.NormalizeURL(relayHost)
-
-		// fetch repository announcement (30617)
-		relays := appendUnique([]string{primaryRelay}, sys.FetchOutboxRelays(ctx, ownerPk, 3)...)
-		var repo nip34.Repository
-		for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
-			Kinds:   []nostr.Kind{30617},
-			Authors: []nostr.PubKey{ownerPk},
-			Tags: nostr.TagMap{
-				"d": []string{identifier},
-			},
-			Limit: 2,
-		}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
-			if ie.Event.CreatedAt > repo.CreatedAt {
-				repo = nip34.ParseRepository(ie.Event)
-			}
-		}
-		if repo.Event.ID == nostr.ZeroID {
-			return fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
-		}
-
-		// fetch repository state (30618)
-		var state nip34.RepositoryState
-		var stateFound bool
-		var stateErr error
-		for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
-			Kinds:   []nostr.Kind{30618},
-			Authors: []nostr.PubKey{ownerPk},
-			Tags: nostr.TagMap{
-				"d": []string{identifier},
-			},
-			Limit: 2,
-		}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
-			if ie.Event.CreatedAt > state.CreatedAt {
-				state = nip34.ParseRepositoryState(ie.Event)
-				stateFound = true
-
-				if state.HEAD == "" {
-					stateErr = fmt.Errorf("state is missing HEAD")
-					continue
-				}
-				if _, ok := state.Branches[state.HEAD]; !ok {
-					stateErr = fmt.Errorf("state is missing commit for HEAD branch '%s'", state.HEAD)
-					continue
-				}
-
-				stateErr = nil
-			}
-		}
-		if !stateFound {
-			return fmt.Errorf("no repository state (kind 30618) found")
-		}
-		if stateErr != nil {
-			return stateErr
-		}
+		repo, state, err := fetchRepositoryAndState(ctx, args.Get(0))
 
 		// determine target directory
 		targetDir := ""
@@ -479,7 +405,7 @@ var gitClone = &cli.Command{
 			targetDir = repo.ID
 		}
 		if targetDir == "" {
-			targetDir = identifier
+			targetDir = repo.ID
 		}
 
 		// if targetDir exists and is non-empty, bail
@@ -604,47 +530,13 @@ var gitPush = &cli.Command{
 			return err
 		}
 
-		// parse the URL: nostr://<npub>/<relay_hostname>/<identifier>
-		if !strings.HasPrefix(nostrRemote, "nostr://") {
-			return fmt.Errorf("invalid nostr remote URL: %s", nostrRemote)
-		}
-
-		ownerPk, err := gitSanityCheck(localConfig, nostrRemote)
+		repo, state, err := fetchRepositoryAndState(ctx, nostrRemote)
 		if err != nil {
 			return err
 		}
 
-		// fetch repository announcement (30617) and state (30618) events
-		var repo nip34.Repository
-		var state nip34.RepositoryState
-		relays := append(sys.FetchOutboxRelays(ctx, ownerPk, 3), localConfig.GraspServers...)
-		results := sys.Pool.FetchMany(ctx, relays, nostr.Filter{
-			Kinds: []nostr.Kind{30617, 30618},
-			Tags: nostr.TagMap{
-				"d": []string{localConfig.Identifier},
-			},
-			Limit: 2,
-		}, nostr.SubscriptionOptions{
-			Label: "nak-git-push",
-		})
-		for ie := range results {
-			if ie.Event.Kind == 30617 {
-				if ie.Event.CreatedAt > repo.CreatedAt {
-					repo = nip34.ParseRepository(ie.Event)
-				}
-			} else if ie.Event.Kind == 30618 {
-				if ie.Event.CreatedAt > state.CreatedAt {
-					state = nip34.ParseRepositoryState(ie.Event)
-				}
-			}
-		}
-
-		if repo.Event.ID == nostr.ZeroID {
-			return fmt.Errorf("no existing repository announcement found")
-		}
-
 		// check if signer matches owner or is in maintainers
-		if currentPk != ownerPk && !slices.Contains(repo.Maintainers, currentPk) {
+		if currentPk != repo.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
 			return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
 		}
 
@@ -696,8 +588,8 @@ var gitPush = &cli.Command{
 			return fmt.Errorf("error signing state event: %w", err)
 		}
 
-		log("- publishing updated repository state to " + color.CyanString("%v", relays) + "\n")
-		for res := range sys.Pool.PublishMany(ctx, relays, newStateEvent) {
+		log("- publishing updated repository state to " + color.CyanString("%v", repo.Relays) + "\n")
+		for res := range sys.Pool.PublishMany(ctx, repo.Relays, newStateEvent) {
 			if res.Error != nil {
 				log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
 			} else {
@@ -733,7 +625,18 @@ var gitPull = &cli.Command{
 	Name:  "pull",
 	Usage: "pull git changes",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		return fmt.Errorf("git pull not implemented yet")
+		state, localBranch, remoteBranch, err := gitFetchInternal(ctx, c)
+		if err != nil {
+			return err
+		}
+
+		cmd := exec.Command("git", "checkout", fmt.Sprintf("origin/%s", state.HEAD))
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("failed to checkout %s: %w", state.HEAD, err)
+		}
+		log("- checked out to %s\n", color.CyanString(state.HEAD))
+
+		return nil
 	},
 }
 
@@ -741,7 +644,8 @@ var gitFetch = &cli.Command{
 	Name:  "fetch",
 	Usage: "fetch git data",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		return fmt.Errorf("git fetch not implemented yet")
+		_, err := gitFetchInternal(ctx, c)
+		return err
 	},
 }
 
@@ -1040,4 +944,159 @@ func tryCloneAndCheckState(ctx context.Context, cloneURL, targetDir string, stat
 	}
 
 	return nil
+}
+
+func gitFetchInternal(ctx context.Context, c *cli.Command) (
+	state nip34.RepositoryState,
+	localBranch string,
+	remoteBranch string,
+	err error,
+) {
+	// read nip34.json
+	configPath := "nip34.json"
+	var localConfig Nip34Config
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return state, localBranch, remoteBranch, fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
+	}
+	if err := json.Unmarshal(data, &localConfig); err != nil {
+		return state, localBranch, remoteBranch, fmt.Errorf("failed to parse nip34.json: %w", err)
+	}
+
+	// get nostr remote
+	nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c)
+	if err != nil {
+		return state, localBranch, remoteBranch, err
+	}
+
+	if _, err = gitSanityCheck(localConfig, nostrRemote); err != nil {
+		return state, localBranch, remoteBranch, err
+	}
+
+	// fetch repo and state
+	repo, state, err := fetchRepositoryAndState(ctx, nostrRemote)
+	if err != nil {
+		return state, localBranch, remoteBranch, err
+	}
+
+	// try fetch from each clone url
+	fetched := false
+	for _, cloneURL := range repo.Clone {
+		log("- fetching from %s... ", color.CyanString(cloneURL))
+		cmd := exec.Command("git", "fetch", cloneURL, "--update-head-ok")
+		if err := cmd.Run(); err != nil {
+			log(color.YellowString("failed: %v\n", err))
+			continue
+		}
+
+		// check downloaded remote branches
+		mismatch := false
+		for branch, commit := range state.Branches {
+			cmd = exec.Command("git", "rev-parse", fmt.Sprintf("refs/remotes/origin/%s", branch))
+			out, err := cmd.Output()
+			if err != nil {
+				log(color.YellowString("branch %s not found\n", branch))
+				mismatch = true
+				break
+			}
+			if strings.TrimSpace(string(out)) != commit {
+				log(color.YellowString("branch %s commit mismatch: got %s, expected %s\n", branch, strings.TrimSpace(string(out)), commit))
+				mismatch = true
+				break
+			}
+		}
+		if !mismatch {
+			log("%s\n", color.GreenString("ok"))
+			fetched = true
+			break
+		} else {
+			log(color.YellowString("mismatch\n"))
+		}
+	}
+
+	if !fetched {
+		return state, localBranch, remoteBranch, fmt.Errorf("failed to fetch from any clone url")
+	}
+
+	return state, localBranch, remoteBranch, nil
+}
+
+func fetchRepositoryAndState(
+	ctx context.Context,
+	repoURI string,
+) (repo nip34.Repository, state nip34.RepositoryState, err error) {
+	if !strings.HasPrefix(repoURI, "nostr://") {
+		return repo, state, fmt.Errorf("invalid nostr URI: %s", repoURI)
+	}
+
+	uriParts := strings.Split(strings.TrimPrefix(repoURI, "nostr://"), "/")
+	if len(uriParts) != 3 {
+		return repo, state, fmt.Errorf("invalid nostr URI format, expected nostr://<npub>/<relay>/<identifier>, got: %s", repoURI)
+	}
+
+	ownerNpub := uriParts[0]
+	relayHost := uriParts[1]
+	identifier := uriParts[2]
+
+	prefix, decoded, err := nip19.Decode(ownerNpub)
+	if err != nil || prefix != "npub" {
+		return repo, state, fmt.Errorf("invalid owner npub in URI: %w", err)
+	}
+
+	ownerPk := decoded.(nostr.PubKey)
+	primaryRelay := nostr.NormalizeURL(relayHost)
+
+	// fetch repository announcement (30617)
+	relays := appendUnique([]string{primaryRelay}, sys.FetchOutboxRelays(ctx, ownerPk, 3)...)
+	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
+		Kinds:   []nostr.Kind{30617},
+		Authors: []nostr.PubKey{ownerPk},
+		Tags: nostr.TagMap{
+			"d": []string{identifier},
+		},
+		Limit: 2,
+	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
+		if ie.Event.CreatedAt > repo.CreatedAt {
+			repo = nip34.ParseRepository(ie.Event)
+		}
+	}
+	if repo.Event.ID == nostr.ZeroID {
+		return repo, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+	}
+
+	// fetch repository state (30618)
+	var stateFound bool
+	var stateErr error
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds:   []nostr.Kind{30618},
+		Authors: []nostr.PubKey{ownerPk},
+		Tags: nostr.TagMap{
+			"d": []string{identifier},
+		},
+		Limit: 2,
+	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
+		if ie.Event.CreatedAt > state.CreatedAt {
+			state = nip34.ParseRepositoryState(ie.Event)
+			stateFound = true
+
+			if state.HEAD == "" {
+				stateErr = fmt.Errorf("state is missing HEAD")
+				continue
+			}
+			if _, ok := state.Branches[state.HEAD]; !ok {
+				stateErr = fmt.Errorf("state is missing commit for HEAD branch '%s'", state.HEAD)
+				continue
+			}
+
+			stateErr = nil
+		}
+	}
+	if !stateFound {
+		return repo, state, fmt.Errorf("no repository state (kind 30618) found")
+	}
+	if stateErr != nil {
+		return repo, state, stateErr
+	}
+
+	return repo, state, nil
 }
