@@ -47,6 +47,11 @@ nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw
 }
 ```
 
+### fetch all events except those that are present in a given line-delimited json file (negentropy sync)
+```shell
+~> nak req --only-missing ./events.jsonl -k 30617 pyramid.fiatjaf.com
+```
+
 ### fetch an event using relay and author hints automatically from a nevent1 code, pretty-print it
 ```shell
 nak fetch nevent1qqs2e3k48vtrkzjm8vvyzcmsmkf58unrxtq2k4h5yspay6vhcqm4wqcpz9mhxue69uhkummnw3ezuamfdejj7q3ql2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqxpqqqqqqz7ttjyq | jq
@@ -223,6 +228,21 @@ or give it a named profile:
   • events stored: 4, subscriptions opened: 1
 ```
 
+### enable negentropy (nip77) support in your development relay
+```shell
+~> nak serve --negentropy
+```
+
+### run a grasp server (with a relay)
+```shell
+~> nak serve --grasp
+```
+
+### run a blossom server (with a relay)
+```shell
+~> nak serve --blossom
+```
+
 ### make an event with a PoW target
 ```shell
 ~> nak event -c 'hello getwired.app and labour.fiatjaf.com' --pow 24
@@ -308,4 +328,9 @@ ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blos
 ### from a file with events get only those that have kind 1111 and were created by a given pubkey
 ```shell
 ~> cat all.jsonl | nak filter -k 1111 -a 117673e191b10fe1aedf1736ee74de4cffd4c132ca701960b70a5abad5870faa > filtered.jsonl
+```
+
+### use negentropy (nip77) to only fetch the ids for a given query
+```shell
+~> nak req --ids-only -k 1111 -a npub1vyrx2prp0mne8pczrcvv38ahn5wahsl8hlceeu3f3aqyvmu8zh5s7kfy55 relay.damus.io
 ```
