@@ -29,6 +29,13 @@ type Nip34Config struct {
 	Maintainers          []string `json:"maintainers"`
 }
 
+type nostrRemote struct {
+	formatted  string
+	owner      nostr.PubKey
+	identifier string
+	relayHost  string
+}
+
 var git = &cli.Command{
 	Name:  "git",
 	Usage: "git-related operations",
@@ -101,9 +108,8 @@ var gitInit = &cli.Command{
 		}
 
 		// check if nip34.json already exists
-		configPath := "nip34.json"
 		var existingConfig Nip34Config
-		if data, err := os.ReadFile(configPath); err == nil {
+		if data, err := os.ReadFile("nip34.json"); err == nil {
 			// file exists, read it
 			if !c.Bool("force") && !c.Bool("interactive") {
 				return fmt.Errorf("nip34.json already exists, use --force to overwrite or --interactive to update")
@@ -139,17 +145,11 @@ var gitInit = &cli.Command{
 					if len(parts) >= 2 {
 						nostrURL := parts[1]
 						// parse nostr://npub.../relay_hostname/identifier
-						if strings.HasPrefix(nostrURL, "nostr://") {
-							urlParts := strings.TrimPrefix(nostrURL, "nostr://")
-							components := strings.Split(urlParts, "/")
-							if len(components) == 3 {
-								npub := components[0]
-								relayHostname := components[1]
-								identifier := components[2]
-								// convert to https://relay_hostname/npub.../identifier.git
-								cloneURL := fmt.Sprintf("http%s/%s/%s.git", nostr.NormalizeURL(relayHostname)[2:], npub, identifier)
-								defaultCloneURLs = appendUnique(defaultCloneURLs, cloneURL)
-							}
+						if remote, err := parseRemote(nostrURL); err == nil {
+							// convert to https://relay_hostname/npub.../identifier.git
+							cloneURL := fmt.Sprintf("http%s/%s/%s.git",
+								nostr.NormalizeURL(remote.relayHost)[2:], nip19.EncodeNpub(remote.owner), remote.identifier)
+							defaultCloneURLs = appendUnique(defaultCloneURLs, cloneURL)
 						}
 					}
 				}
@@ -195,28 +195,23 @@ var gitInit = &cli.Command{
 		}
 
 		// write config file
-		data, err := json.MarshalIndent(config, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal config: %w", err)
+		if err := writeNip34ConfigFile("", config); err != nil {
+			return err
 		}
 
-		if err := os.WriteFile(configPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write nip34.json: %w", err)
-		}
-
-		log("created %s\n", color.GreenString(configPath))
+		log("created %s\n", color.GreenString("nip34.json"))
 
 		// parse owner to npub
-		pk, err := parsePubKey(config.Owner)
+		owner, err := parsePubKey(config.Owner)
 		if err != nil {
 			return fmt.Errorf("invalid owner public key: %w", err)
 		}
-		ownerNpub := nip19.EncodeNpub(pk)
 
 		// check existing git remotes
-		nostrRemote, _, _, err := getGitNostrRemote(c)
+		remote, _, _, err := getGitNostrRemote(c)
 		if err != nil {
-			remoteURL := fmt.Sprintf("nostr://%s/%s/%s", ownerNpub, config.GraspServers[0], config.Identifier)
+			remoteURL := fmt.Sprintf("nostr://%s/%s/%s",
+				nip19.EncodeNpub(owner), config.GraspServers[0], config.Identifier)
 			cmd = exec.Command("git", "remote", "add", "origin", remoteURL)
 			if err := cmd.Run(); err != nil {
 				return fmt.Errorf("failed to add git remote: %w", err)
@@ -224,49 +219,22 @@ var gitInit = &cli.Command{
 			log("added git remote: %s\n", remoteURL)
 		} else {
 			// validate existing remote
-			if !strings.HasPrefix(nostrRemote, "nostr://") {
-				return fmt.Errorf("invalid nostr remote URL: %s", nostrRemote)
+			if remote.owner != owner {
+				return fmt.Errorf("git remote npub '%s' does not match owner '%s'",
+					nip19.EncodeNpub(remote.owner), nip19.EncodeNpub(owner))
 			}
-			urlParts := strings.TrimPrefix(nostrRemote, "nostr://")
-			parts := strings.Split(urlParts, "/")
-			if len(parts) != 3 {
-				return fmt.Errorf("invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", nostrRemote)
+			if !slices.Contains(config.GraspServers, nostr.NormalizeURL(remote.relayHost)) {
+				return fmt.Errorf("git remote relay '%s' not in grasp servers %v",
+					remote.relayHost, config.GraspServers)
 			}
-			repoNpub := parts[0]
-			relayHostname := parts[1]
-			identifier := parts[2]
-			if repoNpub != ownerNpub {
-				return fmt.Errorf("git remote npub '%s' does not match owner '%s'", repoNpub, ownerNpub)
-			}
-			if !slices.Contains(config.GraspServers, nostr.NormalizeURL(relayHostname)) {
-				return fmt.Errorf("git remote relay '%s' not in grasp servers %v", relayHostname, config.GraspServers)
-			}
-			if identifier != config.Identifier {
-				return fmt.Errorf("git remote identifier '%s' does not match config '%s'", identifier, config.Identifier)
+			if remote.identifier != config.Identifier {
+				return fmt.Errorf("git remote identifier '%s' does not match config '%s'",
+					remote.identifier, config.Identifier)
 			}
 		}
 
 		// gitignore it
-		excludePath := ".git/info/exclude"
-		excludeContent, err := os.ReadFile(excludePath)
-		if err != nil {
-			// file doesn't exist, create it
-			excludeContent = []byte("")
-		}
-
-		// check if nip34.json is already in exclude
-		if !strings.Contains(string(excludeContent), "nip34.json") {
-			newContent := string(excludeContent)
-			if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
-				newContent += "\n"
-			}
-			newContent += "nip34.json\n"
-			if err := os.WriteFile(excludePath, []byte(newContent), 0644); err != nil {
-				log(color.YellowString("failed to add nip34.json to .git/info/exclude: %v\n", err))
-			} else {
-				log("added nip34.json to %s\n", color.GreenString(".git/info/exclude"))
-			}
-		}
+		excludeNip34ConfigFile()
 
 		log("edit %s if needed, then run %s to publish.\n",
 			color.CyanString("nip34.json"),
@@ -395,7 +363,15 @@ var gitClone = &cli.Command{
 			return fmt.Errorf("missing repository URI (expected nostr://<npub>/<relay>/<identifier>)")
 		}
 
-		repo, state, err := fetchRepositoryAndState(ctx, args.Get(0))
+		remote, err := parseRemote(args.Get(0))
+		if err != nil {
+			return fmt.Errorf("failed to parse remote url '%s': %s", args.Get(0), err)
+		}
+
+		repo, state, err := fetchRepositoryAndState(ctx, remote)
+		if err != nil {
+			return err
+		}
 
 		// determine target directory
 		targetDir := ""
@@ -444,7 +420,7 @@ var gitClone = &cli.Command{
 			normalizedRelays = append(normalizedRelays, nostr.NormalizeURL(r))
 		}
 
-		cfg := Nip34Config{
+		localConfig := Nip34Config{
 			Identifier:           repo.ID,
 			Name:                 repo.Name,
 			Description:          repo.Description,
@@ -455,38 +431,16 @@ var gitClone = &cli.Command{
 			Maintainers:          make([]string, 0, len(repo.Maintainers)),
 		}
 		for _, m := range repo.Maintainers {
-			cfg.Maintainers = append(cfg.Maintainers, nip19.EncodeNpub(m))
+			localConfig.Maintainers = append(localConfig.Maintainers, nip19.EncodeNpub(m))
 		}
 
-		data, err := json.MarshalIndent(cfg, "", "  ")
-		if err != nil {
-			return fmt.Errorf("failed to marshal nip34.json: %w", err)
-		}
-
-		configPath := filepath.Join(targetDir, "nip34.json")
-		if err := os.WriteFile(configPath, data, 0644); err != nil {
-			return fmt.Errorf("failed to write %s: %w", configPath, err)
+		// write nip34.json
+		if err := writeNip34ConfigFile("", localConfig); err != nil {
+			return err
 		}
 
 		// add nip34.json to .git/info/exclude in cloned repo
-		gitDir := filepath.Join(targetDir, ".git")
-		if st, err := os.Stat(gitDir); err == nil && st.IsDir() {
-			excludePath := filepath.Join(gitDir, "info", "exclude")
-			excludeContent, err := os.ReadFile(excludePath)
-			if err != nil {
-				excludeContent = []byte("")
-			}
-			if !strings.Contains(string(excludeContent), "nip34.json") {
-				newContent := string(excludeContent)
-				if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
-					newContent += "\n"
-				}
-				newContent += "nip34.json\n"
-				if err := os.WriteFile(excludePath, []byte(newContent), 0644); err != nil {
-					log(color.YellowString("failed to add nip34.json to %s: %v\n", excludePath, err))
-				}
-			}
-		}
+		excludeNip34ConfigFile()
 
 		log("cloned into %s\n", color.GreenString(targetDir))
 		return nil
@@ -514,14 +468,9 @@ var gitPush = &cli.Command{
 		log("publishing as %s\n", color.CyanString(currentNpub))
 
 		// read nip34.json configuration
-		configPath := "nip34.json"
-		var localConfig Nip34Config
-		data, err := os.ReadFile(configPath)
+		localConfig, err := readNip34ConfigFile("")
 		if err != nil {
-			return fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
-		}
-		if err := json.Unmarshal(data, &localConfig); err != nil {
-			return fmt.Errorf("failed to parse nip34.json: %w", err)
+			return err
 		}
 
 		// get git remotes
@@ -532,6 +481,10 @@ var gitPush = &cli.Command{
 
 		repo, state, err := fetchRepositoryAndState(ctx, nostrRemote)
 		if err != nil {
+			return err
+		}
+
+		if err := gitSanityCheck(localConfig, nostrRemote); err != nil {
 			return err
 		}
 
@@ -625,16 +578,16 @@ var gitPull = &cli.Command{
 	Name:  "pull",
 	Usage: "pull git changes",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		state, localBranch, remoteBranch, err := gitFetchInternal(ctx, c)
+		_, _, remoteBranch, err := gitFetchInternal(ctx, c)
 		if err != nil {
 			return err
 		}
 
-		cmd := exec.Command("git", "checkout", fmt.Sprintf("origin/%s", state.HEAD))
+		cmd := exec.Command("git", "checkout", fmt.Sprintf("origin/%s", remoteBranch))
 		if err := cmd.Run(); err != nil {
-			return fmt.Errorf("failed to checkout %s: %w", state.HEAD, err)
+			return fmt.Errorf("failed to checkout %s: %w", remoteBranch, err)
 		}
-		log("- checked out to %s\n", color.CyanString(state.HEAD))
+		log("- checked out to %s\n", color.CyanString(remoteBranch))
 
 		return nil
 	},
@@ -644,7 +597,7 @@ var gitFetch = &cli.Command{
 	Name:  "fetch",
 	Usage: "fetch git data",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		_, err := gitFetchInternal(ctx, c)
+		_, _, _, err := gitFetchInternal(ctx, c)
 		return err
 	},
 }
@@ -661,14 +614,9 @@ var gitAnnounce = &cli.Command{
 		}
 
 		// read nip34.json configuration
-		configPath := "nip34.json"
-		var localConfig Nip34Config
-		data, err := os.ReadFile(configPath)
+		localConfig, err := readNip34ConfigFile("")
 		if err != nil {
-			return fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
-		}
-		if err := json.Unmarshal(data, &localConfig); err != nil {
-			return fmt.Errorf("failed to parse nip34.json: %w", err)
+			return err
 		}
 
 		// get git remotes
@@ -677,10 +625,10 @@ var gitAnnounce = &cli.Command{
 			return err
 		}
 
-		ownerPk, err := gitSanityCheck(localConfig, nostrRemote)
-		if err != nil {
+		if err := gitSanityCheck(localConfig, nostrRemote); err != nil {
 			return err
 		}
+		owner, _ := parsePubKey(localConfig.Owner)
 
 		// setup signer
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
@@ -690,7 +638,7 @@ var gitAnnounce = &cli.Command{
 		currentPk, _ := kr.GetPublicKey(ctx)
 
 		// current signer must match owner otherwise we can't announce
-		if currentPk != ownerPk {
+		if currentPk != owner {
 			return fmt.Errorf("current user is not the owner of this repository, can't announce")
 		}
 
@@ -705,7 +653,8 @@ var gitAnnounce = &cli.Command{
 		}
 		for _, server := range localConfig.GraspServers {
 			graspRelayURL := nostr.NormalizeURL(server)
-			url := fmt.Sprintf("http%s/%s/%s.git", graspRelayURL[2:], nip19.EncodeNpub(ownerPk), localConfig.Identifier)
+			url := fmt.Sprintf("http%s/%s/%s.git",
+				graspRelayURL[2:], nip19.EncodeNpub(owner), localConfig.Identifier)
 			localRepo.Clone = append(localRepo.Clone, url)
 			localRepo.Relays = append(localRepo.Relays, graspRelayURL)
 		}
@@ -718,7 +667,7 @@ var gitAnnounce = &cli.Command{
 		}
 
 		// these are the relays where we'll publish the announcement to
-		relays := append(sys.FetchOutboxRelays(ctx, ownerPk, 3), localConfig.GraspServers...)
+		relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
 		for i := range relays {
 			relays[i] = nostr.NormalizeURL(relays[i])
 		}
@@ -774,9 +723,9 @@ var gitAnnounce = &cli.Command{
 }
 
 func getGitNostrRemote(c *cli.Command) (
-	remoteURL string,
-	localBranch string,
-	remoteBranch string,
+	remote nostrRemote,
+	sourceBranch string,
+	targetBranch string,
 	err error,
 ) {
 	// remote
@@ -790,7 +739,7 @@ func getGitNostrRemote(c *cli.Command) (
 		cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 		output, err := cmd.Output()
 		if err != nil {
-			return "", "", "", fmt.Errorf("failed to get current branch: %w", err)
+			return remote, "", "", fmt.Errorf("failed to get current branch: %w", err)
 		}
 		branch := strings.TrimSpace(string(output))
 		// get remote for branch
@@ -806,85 +755,101 @@ func getGitNostrRemote(c *cli.Command) (
 	cmd = exec.Command("git", "remote", "get-url", remoteName)
 	output, err := cmd.Output()
 	if err != nil {
-		return "", "", "", fmt.Errorf("remote '%s' does not exist", remoteName)
-	}
-	remoteURL = strings.TrimSpace(string(output))
-	if !strings.Contains(remoteURL, "nostr://") {
-		return "", "", "", fmt.Errorf("remote '%s' is not a nostr remote: %s", remoteName, remoteURL)
+		return remote, "", "", fmt.Errorf("remote '%s' does not exist", remoteName)
 	}
 
-	// branch (local and remote)
+	remoteURL := strings.TrimSpace(string(output))
+	if !strings.Contains(remoteURL, "nostr://") {
+		return remote, "", "", fmt.Errorf("remote '%s' is not a nostr remote: %s", remoteName, remoteURL)
+	}
+
+	// branch (src and dst)
 	if args.Len() > 1 {
 		branchSpec := args.Get(1)
 		if strings.Contains(branchSpec, ":") {
 			parts := strings.Split(branchSpec, ":")
 			if len(parts) == 2 {
-				localBranch = parts[0]
-				remoteBranch = parts[1]
+				sourceBranch = parts[0]
+				targetBranch = parts[1]
 			} else {
-				return "", "", "", fmt.Errorf("invalid branch spec: %s", branchSpec)
+				return remote, "", "", fmt.Errorf("invalid branch spec: %s", branchSpec)
 			}
 		} else {
-			localBranch = branchSpec
+			sourceBranch = branchSpec
 		}
 	} else {
 		// get current branch
 		cmd = exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD")
 		output, err := cmd.Output()
 		if err != nil {
-			return "", "", "", fmt.Errorf("failed to get current branch: %w", err)
+			return remote, "", "", fmt.Errorf("failed to get current branch: %w", err)
 		}
-		localBranch = strings.TrimSpace(string(output))
+		sourceBranch = strings.TrimSpace(string(output))
 	}
 
-	// get the upstream branch from git config
-	cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.merge", localBranch))
+	// get the target branch from git config
+	cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.merge", sourceBranch))
 	output, err = cmd.Output()
 	if err == nil {
 		// parse refs/heads/<branch-name> to get just the branch name
 		mergeRef := strings.TrimSpace(string(output))
 		if strings.HasPrefix(mergeRef, "refs/heads/") {
-			remoteBranch = strings.TrimPrefix(mergeRef, "refs/heads/")
+			targetBranch = strings.TrimPrefix(mergeRef, "refs/heads/")
 		} else {
 			// fallback if it's not in expected format
-			remoteBranch = localBranch
+			targetBranch = sourceBranch
 		}
 	} else {
 		// no upstream configured, assume same branch name
-		remoteBranch = localBranch
+		targetBranch = sourceBranch
 	}
 
-	return remoteURL, localBranch, remoteBranch, nil
+	// parse remote
+	remote, err = parseRemote(remoteURL)
+
+	return remote, sourceBranch, targetBranch, err
+}
+
+func parseRemote(remoteURL string) (remote nostrRemote, err error) {
+	parts := strings.Split(remoteURL, "/")
+	if len(parts) != 5 {
+		return remote, fmt.Errorf(
+			"invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", remoteURL,
+		)
+	}
+
+	prefix, data, err := nip19.Decode(parts[2])
+	if err != nil || prefix != "npub" {
+		return remote, fmt.Errorf("invalid owner public key: %w", err)
+	}
+	remote.formatted = remoteURL
+	remote.owner = data.(nostr.PubKey)
+	remote.relayHost = parts[3]
+	remote.identifier = parts[4]
+
+	return remote, nil
 }
 
 func gitSanityCheck(
 	localConfig Nip34Config,
-	nostrRemote string,
-) (nostr.PubKey, error) {
-	urlParts := strings.TrimPrefix(nostrRemote, "nostr://")
-	parts := strings.Split(urlParts, "/")
-	if len(parts) != 3 {
-		return nostr.ZeroPK, fmt.Errorf("invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", nostrRemote)
-	}
-
-	remoteNpub := parts[0]
-	remoteHostname := parts[1]
-	remoteIdentifier := parts[2]
-
-	ownerPk, err := parsePubKey(localConfig.Owner)
+	remote nostrRemote,
+) error {
+	owner, err := parsePubKey(localConfig.Owner)
 	if err != nil {
-		return nostr.ZeroPK, fmt.Errorf("invalid owner public key: %w", err)
+		return fmt.Errorf("invalid owner pubkey in nip34.json: %w", err)
 	}
-	if nip19.EncodeNpub(ownerPk) != remoteNpub {
-		return nostr.ZeroPK, fmt.Errorf("owner in nip34.json does not match git remote npub")
+
+	if owner != remote.owner {
+		return fmt.Errorf("owner in nip34.json does not match git remote npub")
 	}
-	if remoteIdentifier != localConfig.Identifier {
-		return nostr.ZeroPK, fmt.Errorf("git remote identifier '%s' differs from nip34.json identifier '%s'", remoteIdentifier, localConfig.Identifier)
+	if remote.identifier != localConfig.Identifier {
+		return fmt.Errorf("git remote identifier '%s' differs from nip34.json identifier '%s'",
+			remote.identifier, localConfig.Identifier)
 	}
-	if !slices.Contains(localConfig.GraspServers, nostr.NormalizeURL(remoteHostname)) {
-		return nostr.ZeroPK, fmt.Errorf("git remote relay '%s' not in grasp servers %v", remoteHostname, localConfig.GraspServers)
+	if !slices.Contains(localConfig.GraspServers, nostr.NormalizeURL(remote.relayHost)) {
+		return fmt.Errorf("git remote relay '%s' not in grasp servers %v", remote.relayHost, localConfig.GraspServers)
 	}
-	return ownerPk, nil
+	return nil
 }
 
 func tryCloneAndCheckState(ctx context.Context, cloneURL, targetDir string, state *nip34.RepositoryState) (err error) {
@@ -946,30 +911,23 @@ func tryCloneAndCheckState(ctx context.Context, cloneURL, targetDir string, stat
 	return nil
 }
 
-func gitFetchInternal(ctx context.Context, c *cli.Command) (
-	state nip34.RepositoryState,
-	localBranch string,
-	remoteBranch string,
-	err error,
-) {
-	// read nip34.json
-	configPath := "nip34.json"
-	var localConfig Nip34Config
-	data, err := os.ReadFile(configPath)
+func gitFetchInternal(
+	ctx context.Context,
+	c *cli.Command,
+) (state nip34.RepositoryState, localBranch string, remoteBranch string, err error) {
+	localConfig, err := readNip34ConfigFile("")
 	if err != nil {
-		return state, localBranch, remoteBranch, fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
-	}
-	if err := json.Unmarshal(data, &localConfig); err != nil {
-		return state, localBranch, remoteBranch, fmt.Errorf("failed to parse nip34.json: %w", err)
+		return state, "", "", err
 	}
 
-	// get nostr remote
-	nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c)
+	nostrRemote, sourceBranch, targetBranch, err := getGitNostrRemote(c)
+	localBranch = targetBranch
+	remoteBranch = sourceBranch
 	if err != nil {
 		return state, localBranch, remoteBranch, err
 	}
 
-	if _, err = gitSanityCheck(localConfig, nostrRemote); err != nil {
+	if err := gitSanityCheck(localConfig, nostrRemote); err != nil {
 		return state, localBranch, remoteBranch, err
 	}
 
@@ -983,7 +941,15 @@ func gitFetchInternal(ctx context.Context, c *cli.Command) (
 	fetched := false
 	for _, cloneURL := range repo.Clone {
 		log("- fetching from %s... ", color.CyanString(cloneURL))
-		cmd := exec.Command("git", "fetch", cloneURL, "--update-head-ok")
+		// construct git fetch command with appropriate refspec
+		args := []string{"fetch", cloneURL}
+		if remoteBranch != "" {
+			// fetch specific branch when refspec is provided
+			refspec := fmt.Sprintf("%s:%s", remoteBranch, remoteBranch)
+			args = append(args, refspec)
+		}
+		args = append(args, "--update-head-ok")
+		cmd := exec.Command("git", args...)
 		if err := cmd.Run(); err != nil {
 			log(color.YellowString("failed: %v\n", err))
 			continue
@@ -1023,36 +989,17 @@ func gitFetchInternal(ctx context.Context, c *cli.Command) (
 
 func fetchRepositoryAndState(
 	ctx context.Context,
-	repoURI string,
+	remote nostrRemote,
 ) (repo nip34.Repository, state nip34.RepositoryState, err error) {
-	if !strings.HasPrefix(repoURI, "nostr://") {
-		return repo, state, fmt.Errorf("invalid nostr URI: %s", repoURI)
-	}
-
-	uriParts := strings.Split(strings.TrimPrefix(repoURI, "nostr://"), "/")
-	if len(uriParts) != 3 {
-		return repo, state, fmt.Errorf("invalid nostr URI format, expected nostr://<npub>/<relay>/<identifier>, got: %s", repoURI)
-	}
-
-	ownerNpub := uriParts[0]
-	relayHost := uriParts[1]
-	identifier := uriParts[2]
-
-	prefix, decoded, err := nip19.Decode(ownerNpub)
-	if err != nil || prefix != "npub" {
-		return repo, state, fmt.Errorf("invalid owner npub in URI: %w", err)
-	}
-
-	ownerPk := decoded.(nostr.PubKey)
-	primaryRelay := nostr.NormalizeURL(relayHost)
+	primaryRelay := nostr.NormalizeURL(remote.relayHost)
 
 	// fetch repository announcement (30617)
-	relays := appendUnique([]string{primaryRelay}, sys.FetchOutboxRelays(ctx, ownerPk, 3)...)
+	relays := appendUnique([]string{primaryRelay}, sys.FetchOutboxRelays(ctx, remote.owner, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30617},
-		Authors: []nostr.PubKey{ownerPk},
+		Authors: []nostr.PubKey{remote.owner},
 		Tags: nostr.TagMap{
-			"d": []string{identifier},
+			"d": []string{remote.identifier},
 		},
 		Limit: 2,
 	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
@@ -1061,7 +1008,7 @@ func fetchRepositoryAndState(
 		}
 	}
 	if repo.Event.ID == nostr.ZeroID {
-		return repo, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+		return repo, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", remote.identifier)
 	}
 
 	// fetch repository state (30618)
@@ -1069,9 +1016,9 @@ func fetchRepositoryAndState(
 	var stateErr error
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30618},
-		Authors: []nostr.PubKey{ownerPk},
+		Authors: []nostr.PubKey{remote.owner},
 		Tags: nostr.TagMap{
-			"d": []string{identifier},
+			"d": []string{remote.identifier},
 		},
 		Limit: 2,
 	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
@@ -1099,4 +1046,53 @@ func fetchRepositoryAndState(
 	}
 
 	return repo, state, nil
+}
+
+func readNip34ConfigFile(baseDir string) (Nip34Config, error) {
+	var localConfig Nip34Config
+	data, err := os.ReadFile(filepath.Join(baseDir, "nip34.json"))
+	if err != nil {
+		return localConfig, fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
+	}
+	if err := json.Unmarshal(data, &localConfig); err != nil {
+		return localConfig, fmt.Errorf("failed to parse nip34.json: %w", err)
+	}
+	return localConfig, nil
+}
+
+func excludeNip34ConfigFile() {
+	excludePath := ".git/info/exclude"
+	excludeContent, err := os.ReadFile(excludePath)
+	if err != nil {
+		// file doesn't exist, create it
+		excludeContent = []byte("")
+	}
+
+	// check if nip34.json is already in exclude
+	if !strings.Contains(string(excludeContent), "nip34.json") {
+		newContent := string(excludeContent)
+		if len(newContent) > 0 && !strings.HasSuffix(newContent, "\n") {
+			newContent += "\n"
+		}
+		newContent += "nip34.json\n"
+		if err := os.WriteFile(excludePath, []byte(newContent), 0644); err != nil {
+			log(color.YellowString("failed to add nip34.json to .git/info/exclude: %v\n", err))
+		} else {
+			log("added nip34.json to %s\n", color.GreenString(".git/info/exclude"))
+		}
+	}
+}
+
+func writeNip34ConfigFile(baseDir string, cfg Nip34Config) error {
+	data, err := json.MarshalIndent(cfg, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal nip34.json: %w", err)
+	}
+
+	configPath := filepath.Join(baseDir, "nip34.json")
+	if err := os.WriteFile(configPath, data, 0644); err != nil {
+		return fmt.Errorf("failed to write %s: %w", configPath, err)
+	}
+
+	return nil
 }
