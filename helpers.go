@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk"
@@ -465,6 +466,17 @@ func askConfirmation(msg string) bool {
 }
 
 func parsePubKey(value string) (nostr.PubKey, error) {
+	// try nip05 first
+	if nip05.IsValidIdentifier(value) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		pp, err := nip05.QueryIdentifier(ctx, value)
+		cancel()
+		if err == nil {
+			return pp.PublicKey, nil
+		}
+		// if nip05 fails, fall through to try as pubkey
+	}
+
 	pk, err := nostr.PubKeyFromHex(value)
 	if err == nil {
 		return pk, nil
