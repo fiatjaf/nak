@@ -208,7 +208,7 @@ var gitInit = &cli.Command{
 		}
 
 		// check existing git remotes
-		remote, _, _, err := getGitNostrRemote(c)
+		remote, _, _, err := getGitNostrRemote(c, false)
 		if err != nil {
 			remoteURL := fmt.Sprintf("nostr://%s/%s/%s",
 				nip19.EncodeNpub(owner), config.GraspServers[0], config.Identifier)
@@ -474,7 +474,7 @@ var gitPush = &cli.Command{
 		}
 
 		// get git remotes
-		nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c)
+		nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c, true)
 		if err != nil {
 			return err
 		}
@@ -620,7 +620,7 @@ var gitAnnounce = &cli.Command{
 		}
 
 		// get git remotes
-		nostrRemote, _, _, err := getGitNostrRemote(c)
+		nostrRemote, _, _, err := getGitNostrRemote(c, false)
 		if err != nil {
 			return err
 		}
@@ -722,10 +722,10 @@ var gitAnnounce = &cli.Command{
 	},
 }
 
-func getGitNostrRemote(c *cli.Command) (
+func getGitNostrRemote(c *cli.Command, isPush bool) (
 	remote nostrRemote,
-	sourceBranch string,
-	targetBranch string,
+	localBranch string,
+	remoteBranch string,
 	err error,
 ) {
 	// remote
@@ -742,6 +742,7 @@ func getGitNostrRemote(c *cli.Command) (
 			return remote, "", "", fmt.Errorf("failed to get current branch: %w", err)
 		}
 		branch := strings.TrimSpace(string(output))
+
 		// get remote for branch
 		cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.remote", branch))
 		output, err = cmd.Output()
@@ -765,17 +766,25 @@ func getGitNostrRemote(c *cli.Command) (
 
 	// branch (src and dst)
 	if args.Len() > 1 {
+		var src, dst string
 		branchSpec := args.Get(1)
 		if strings.Contains(branchSpec, ":") {
 			parts := strings.Split(branchSpec, ":")
 			if len(parts) == 2 {
-				sourceBranch = parts[0]
-				targetBranch = parts[1]
+				src = parts[0]
+				dst = parts[1]
 			} else {
 				return remote, "", "", fmt.Errorf("invalid branch spec: %s", branchSpec)
 			}
 		} else {
-			sourceBranch = branchSpec
+			src = branchSpec
+		}
+		if isPush {
+			localBranch = src
+			remoteBranch = dst
+		} else {
+			localBranch = dst
+			remoteBranch = src
 		}
 	} else {
 		// get current branch
@@ -784,30 +793,39 @@ func getGitNostrRemote(c *cli.Command) (
 		if err != nil {
 			return remote, "", "", fmt.Errorf("failed to get current branch: %w", err)
 		}
-		sourceBranch = strings.TrimSpace(string(output))
+		localBranch = strings.TrimSpace(string(output))
 	}
 
 	// get the target branch from git config
-	cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.merge", sourceBranch))
-	output, err = cmd.Output()
-	if err == nil {
-		// parse refs/heads/<branch-name> to get just the branch name
-		mergeRef := strings.TrimSpace(string(output))
-		if strings.HasPrefix(mergeRef, "refs/heads/") {
-			targetBranch = strings.TrimPrefix(mergeRef, "refs/heads/")
-		} else {
-			// fallback if it's not in expected format
-			targetBranch = sourceBranch
+	if isPush {
+		cmd = exec.Command("git", "config", "--get", fmt.Sprintf("branch.%s.merge", localBranch))
+		output, err = cmd.Output()
+		if err == nil {
+			// parse refs/heads/<branch-name> to get just the branch name
+			mergeRef := strings.TrimSpace(string(output))
+			if strings.HasPrefix(mergeRef, "refs/heads/") {
+				remoteBranch = strings.TrimPrefix(mergeRef, "refs/heads/")
+			} else {
+				// fallback if it's not in expected format
+				remoteBranch = localBranch
+			}
+		}
+
+		if remoteBranch == "" {
+			// no upstream configured, assume same branch name
+			remoteBranch = localBranch
 		}
 	} else {
-		// no upstream configured, assume same branch name
-		targetBranch = sourceBranch
+		if localBranch == "" {
+			// no local branch configured, assume same branch name
+			localBranch = remoteBranch
+		}
 	}
 
 	// parse remote
 	remote, err = parseRemote(remoteURL)
 
-	return remote, sourceBranch, targetBranch, err
+	return remote, localBranch, remoteBranch, err
 }
 
 func parseRemote(remoteURL string) (remote nostrRemote, err error) {
@@ -920,9 +938,7 @@ func gitFetchInternal(
 		return state, "", "", err
 	}
 
-	nostrRemote, sourceBranch, targetBranch, err := getGitNostrRemote(c)
-	localBranch = targetBranch
-	remoteBranch = sourceBranch
+	nostrRemote, localBranch, remoteBranch, err := getGitNostrRemote(c, false)
 	if err != nil {
 		return state, localBranch, remoteBranch, err
 	}
@@ -945,7 +961,7 @@ func gitFetchInternal(
 		args := []string{"fetch", cloneURL}
 		if remoteBranch != "" {
 			// fetch specific branch when refspec is provided
-			refspec := fmt.Sprintf("%s:%s", remoteBranch, remoteBranch)
+			refspec := fmt.Sprintf("%s:%s", remoteBranch, localBranch)
 			args = append(args, refspec)
 		}
 		args = append(args, "--update-head-ok")
@@ -1050,6 +1066,9 @@ func fetchRepositoryAndState(
 
 func readNip34ConfigFile(baseDir string) (Nip34Config, error) {
 	var localConfig Nip34Config
+
+	// TODO: the baseDir should inspect parents until we reach the directory that has the ".git"
+
 	data, err := os.ReadFile(filepath.Join(baseDir, "nip34.json"))
 	if err != nil {
 		return localConfig, fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
@@ -1061,6 +1080,8 @@ func readNip34ConfigFile(baseDir string) (Nip34Config, error) {
 }
 
 func excludeNip34ConfigFile() {
+	// TODO: inspect parents until we reach the directory that has the ".git"
+
 	excludePath := ".git/info/exclude"
 	excludeContent, err := os.ReadFile(excludePath)
 	if err != nil {
@@ -1084,6 +1105,8 @@ func excludeNip34ConfigFile() {
 }
 
 func writeNip34ConfigFile(baseDir string, cfg Nip34Config) error {
+	// TODO: baseDir should inspect parents until we reach the directory that has the ".git"
+
 	data, err := json.MarshalIndent(cfg, "", "  ")
 	if err != nil {
 		return fmt.Errorf("failed to marshal nip34.json: %w", err)
