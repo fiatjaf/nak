@@ -29,11 +29,55 @@ type Nip34Config struct {
 	Maintainers          []string `json:"maintainers"`
 }
 
-type nostrRemote struct {
-	formatted  string
-	owner      nostr.PubKey
-	identifier string
-	relayHost  string
+func (localConfig Nip34Config) Validate() error {
+	_, err := parsePubKey(localConfig.Owner)
+	if err != nil {
+		return fmt.Errorf("owner pubkey '%s' is not valid: %w", localConfig.Owner, err)
+	}
+
+	for _, maintainer := range localConfig.Maintainers {
+		_, err := parsePubKey(maintainer)
+		if err != nil {
+			return fmt.Errorf("maintainer pubkey '%s' is not valid: %w", maintainer, err)
+		}
+	}
+
+	return nil
+}
+
+func (localConfig Nip34Config) ToRepository() nip34.Repository {
+	owner, err := parsePubKey(localConfig.Owner)
+	if err != nil {
+		panic(err)
+	}
+
+	localRepo := nip34.Repository{
+		ID:                     localConfig.Identifier,
+		Name:                   localConfig.Name,
+		Description:            localConfig.Description,
+		Web:                    localConfig.Web,
+		EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
+		Maintainers:            []nostr.PubKey{},
+		Event: nostr.Event{
+			PubKey: owner,
+		},
+	}
+	for _, server := range localConfig.GraspServers {
+		graspServerURL := nostr.NormalizeURL(server)
+		url := fmt.Sprintf("http%s/%s/%s.git",
+			graspServerURL[2:], nip19.EncodeNpub(localRepo.PubKey), localConfig.Identifier)
+		localRepo.Clone = append(localRepo.Clone, url)
+		localRepo.Relays = append(localRepo.Relays, graspServerURL)
+	}
+	for _, maintainer := range localConfig.Maintainers {
+		pk, err := parsePubKey(maintainer)
+		if err != nil {
+			panic(err)
+		}
+		localRepo.Maintainers = append(localRepo.Maintainers, pk)
+	}
+
+	return localRepo
 }
 
 var git = &cli.Command{
@@ -206,6 +250,10 @@ var gitInit = &cli.Command{
 			}
 		}
 
+		if err := config.Validate(); err != nil {
+			return fmt.Errorf("invalid config: %w", err)
+		}
+
 		// write config file
 		if err := writeNip34ConfigFile("", config); err != nil {
 			return err
@@ -213,34 +261,8 @@ var gitInit = &cli.Command{
 
 		log("created %s\n", color.GreenString("nip34.json"))
 
-		// parse owner to npub
-		owner, err := parsePubKey(config.Owner)
-		if err != nil {
-			return fmt.Errorf("invalid owner public key: %w", err)
-		}
-
-		// convert local config to nip34.Repository for setting up remotes
-		localRepo := nip34.Repository{
-			ID:                     config.Identifier,
-			Name:                   config.Name,
-			Description:            config.Description,
-			Web:                    config.Web,
-			EarliestUniqueCommitID: config.EarliestUniqueCommit,
-			Maintainers:            []nostr.PubKey{},
-			Event:                  nostr.Event{PubKey: owner},
-		}
-		for _, server := range config.GraspServers {
-			graspRelayURL := nostr.NormalizeURL(server)
-			localRepo.Relays = append(localRepo.Relays, graspRelayURL)
-		}
-		for _, maintainer := range config.Maintainers {
-			if pk, err := parsePubKey(maintainer); err == nil {
-				localRepo.Maintainers = append(localRepo.Maintainers, pk)
-			}
-		}
-
 		// setup git remotes
-		gitSetupRemotes(ctx, "", localRepo)
+		gitSetupRemotes(ctx, "", config.ToRepository())
 
 		// gitignore it
 		excludeNip34ConfigFile("")
@@ -397,6 +419,10 @@ var gitClone = &cli.Command{
 		}
 		for _, m := range repo.Maintainers {
 			localConfig.Maintainers = append(localConfig.Maintainers, nip19.EncodeNpub(m))
+		}
+
+		if err := localConfig.Validate(); err != nil {
+			return fmt.Errorf("invalid config: %w", err)
 		}
 
 		// write nip34.json
@@ -781,48 +807,14 @@ func syncRepository(ctx context.Context, signer nostr.Signer) (nip34.Repository,
 	if err != nil {
 		logverbose("failed to fetch repository metadata: %v\n", err)
 		// create a local repository object from config
-		repo = nip34.Repository{
-			ID:                     localConfig.Identifier,
-			Name:                   localConfig.Name,
-			Description:            localConfig.Description,
-			Web:                    localConfig.Web,
-			EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
-			Event:                  nostr.Event{PubKey: owner},
-			Maintainers:            []nostr.PubKey{},
-		}
-		for _, server := range localConfig.GraspServers {
-			graspRelayURL := nostr.NormalizeURL(server)
-			repo.Relays = append(repo.Relays, graspRelayURL)
-		}
-		for _, maintainer := range localConfig.Maintainers {
-			if pk, err := parsePubKey(maintainer); err == nil {
-				repo.Maintainers = append(repo.Maintainers, pk)
-			}
-		}
+		repo = localConfig.ToRepository()
 	} else {
 		// check if local config differs from remote announcement
 		// construct local repo from config for comparison
-		localRepo := nip34.Repository{
-			ID:                     localConfig.Identifier,
-			Name:                   localConfig.Name,
-			Description:            localConfig.Description,
-			Web:                    localConfig.Web,
-			EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
-			Maintainers:            []nostr.PubKey{},
-			Event:                  nostr.Event{PubKey: owner},
-		}
-		for _, server := range localConfig.GraspServers {
-			graspRelayURL := nostr.NormalizeURL(server)
-			localRepo.Relays = append(localRepo.Relays, graspRelayURL)
-		}
-		for _, maintainer := range localConfig.Maintainers {
-			if pk, err := parsePubKey(maintainer); err == nil {
-				localRepo.Maintainers = append(localRepo.Maintainers, pk)
-			}
-		}
+		localRepo := localConfig.ToRepository()
 
+		// check if we need to update local config or publish new announcement
 		if !repo.Equals(localRepo) {
-			// check if we need to update local config or publish new announcement
 			// check modification times
 			configPath := filepath.Join(findGitRoot(""), "nip34.json")
 			if fi, err := os.Stat(configPath); err == nil {
@@ -832,7 +824,7 @@ func syncRepository(ctx context.Context, signer nostr.Signer) (nip34.Repository,
 				if configModTime.After(announcementTime) {
 					// local config is newer, publish new announcement if signer is available
 					if signer != nil {
-						log("local configuration is newer, publishing updated announcement...\n")
+						log("local configuration is newer, publishing updated repository announcement...\n")
 						// prepare clone URLs
 						for _, server := range localConfig.GraspServers {
 							graspRelayURL := nostr.NormalizeURL(server)
@@ -861,7 +853,7 @@ func syncRepository(ctx context.Context, signer nostr.Signer) (nip34.Repository,
 					}
 				} else {
 					// remote is newer, update local config
-					log("remote announcement is newer, updating local configuration...\n")
+					log("remote announcement is newer than local, updating local configuration...\n")
 					localConfig.Name = repo.Name
 					localConfig.Description = repo.Description
 					localConfig.Web = repo.Web
@@ -944,14 +936,18 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 
 		// construct the git URL
 		gitURL := fmt.Sprintf("http%s/%s/%s.git",
-			relayURL[2:], nip19.EncodeNpub(repo.Event.PubKey), repo.ID)
+			relayURL[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
 
 		addCmd := exec.Command("git", "remote", "add", remoteName, gitURL)
 		if dir != "" {
 			addCmd.Dir = dir
 		}
-		if err := addCmd.Run(); err != nil {
-			logverbose("failed to add remote %s: %v\n", remoteName, err)
+		if out, err := addCmd.Output(); err != nil {
+			var stderr string
+			if exiterr, ok := err.(*exec.ExitError); ok {
+				stderr = string(exiterr.Stderr)
+			}
+			logverbose("failed to add remote %s: %s %s\n", remoteName, stderr, string(out))
 		}
 	}
 }
@@ -1127,6 +1123,10 @@ func readNip34ConfigFile(baseDir string) (Nip34Config, error) {
 	// normalize grasp relay URLs
 	for i := range localConfig.GraspServers {
 		localConfig.GraspServers[i] = nostr.NormalizeURL(localConfig.GraspServers[i])
+	}
+
+	if err := localConfig.Validate(); err != nil {
+		return localConfig, fmt.Errorf("nip34.json is invalid: %w", err)
 	}
 
 	return localConfig, nil
