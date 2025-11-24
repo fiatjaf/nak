@@ -4,7 +4,7 @@ go 1.24.1
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20251117111008-078e9b4cc257
+	fiatjaf.com/nostr v0.0.0-20251124002842-de54dd1fa4b8
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
@@ -80,5 +80,3 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
-
-replace fiatjaf.com/nostr => ../nostrlib

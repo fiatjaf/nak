@@ -8,7 +8,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
@@ -676,7 +675,7 @@ var gitSync = &cli.Command{
 	},
 }
 
-func syncRepository(ctx context.Context, signer nostr.Signer) (nip34.Repository, nip34.RepositoryState, error) {
+func syncRepository(ctx context.Context, signer nostr.Keyer) (nip34.Repository, nip34.RepositoryState, error) {
 	// read current nip34.json
 	localConfig, err := readNip34ConfigFile("")
 	if err != nil {
@@ -706,35 +705,34 @@ func syncRepository(ctx context.Context, signer nostr.Signer) (nip34.Repository,
 			configPath := filepath.Join(findGitRoot(""), "nip34.json")
 			if fi, err := os.Stat(configPath); err == nil {
 				configModTime := fi.ModTime()
-				announcementTime := time.Unix(int64(repo.Event.CreatedAt), 0)
+				announcementTime := repo.Event.CreatedAt.Time()
 
 				if configModTime.After(announcementTime) {
-					// local config is newer, publish new announcement if signer is available
+					// local config is newer, publish new announcement if signer is available and matches owner
 					if signer != nil {
-						log("local configuration is newer, publishing updated repository announcement...\n")
-						// prepare clone URLs
-						for _, server := range localConfig.GraspServers {
-							graspRelayURL := nostr.NormalizeURL(server)
-							url := fmt.Sprintf("http%s/%s/%s.git",
-								graspRelayURL[2:], nip19.EncodeNpub(owner), localConfig.Identifier)
-							localRepo.Clone = append(localRepo.Clone, url)
-							localRepo.Relays = append(localRepo.Relays, graspRelayURL)
+						signerPk, err := signer.GetPublicKey(ctx)
+						if err != nil {
+							return repo, state, fmt.Errorf("failed to get signer pubkey: %w", err)
 						}
-
-						announcementEvent := localRepo.ToEvent()
-						if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
-							return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
-						}
-
-						relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
-						for res := range sys.Pool.PublishMany(ctx, relays, announcementEvent) {
-							if res.Error != nil {
-								log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-							} else {
-								log("> published to %s\n", color.GreenString(res.RelayURL))
+						if signerPk != owner {
+							log("local configuration is newer, but signer pubkey does not match owner, skipping announcement publish\n")
+						} else {
+							log("local configuration is newer, publishing updated repository announcement...\n")
+							announcementEvent := localRepo.ToEvent()
+							if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
+								return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 							}
+
+							relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
+							for res := range sys.Pool.PublishMany(ctx, relays, announcementEvent) {
+								if res.Error != nil {
+									log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+								} else {
+									log("> published to %s\n", color.GreenString(res.RelayURL))
+								}
+							}
+							repo = nip34.ParseRepository(announcementEvent)
 						}
-						repo = nip34.ParseRepository(announcementEvent)
 					} else {
 						log("local configuration is newer than remote, but no signer provided to publish update\n")
 					}
