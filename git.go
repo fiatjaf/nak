@@ -12,7 +12,7 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip34"
-	"github.com/chzyer/readline"
+	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
@@ -274,76 +274,167 @@ var gitInit = &cli.Command{
 	},
 }
 
-func promptForConfig(config *Nip34Config) error {
-	rlConfig := &readline.Config{
-		Stdout:                 os.Stderr,
-		InterruptPrompt:        "^C",
-		DisableAutoSaveHistory: true,
+func promptForStringList(
+	name string,
+	existing []string,
+	defaults []string,
+	normalize func(string) string,
+	validate func(string) bool,
+) ([]string, error) {
+	options := make([]string, 0, len(defaults)+len(existing)+1)
+	options = append(options, defaults...)
+	options = append(options, "add another")
+
+	// add existing not in options
+	for _, item := range existing {
+		if !slices.Contains(options, item) {
+			options = append(options, item)
+		}
 	}
 
-	rl, err := readline.NewEx(rlConfig)
+	selected := make([]string, len(existing))
+	copy(selected, existing)
+
+	for {
+		prompt := &survey.MultiSelect{
+			Message:  name,
+			Options:  options,
+			Default:  selected,
+			PageSize: 20,
+		}
+
+		if err := survey.AskOne(prompt, &selected); err != nil {
+			return nil, err
+		}
+
+		if slices.Contains(selected, "add another") {
+			selected = slices.DeleteFunc(selected, func(s string) bool { return s == "add another" })
+
+			singular := name
+			if strings.HasSuffix(singular, "s") {
+				singular = singular[:len(singular)-1]
+			}
+
+			newPrompt := &survey.Input{
+				Message: fmt.Sprintf("enter new %s", singular),
+			}
+			var newItem string
+			if err := survey.AskOne(newPrompt, &newItem); err != nil {
+				return nil, err
+			}
+
+			if newItem != "" {
+				if normalize != nil {
+					newItem = normalize(newItem)
+				}
+				if validate != nil && !validate(newItem) {
+					// invalid, ask again
+					continue
+				}
+
+				if !slices.Contains(options, newItem) {
+					options = append(options, newItem)
+					// swap to put "add another" at end
+					options[len(options)-1], options[len(options)-2] = options[len(options)-2], options[len(options)-1]
+				}
+				if !slices.Contains(selected, newItem) {
+					selected = append(selected, newItem)
+				}
+			}
+		} else {
+			break
+		}
+	}
+
+	return selected, nil
+}
+
+func promptForConfig(config *Nip34Config) error {
+	log("\nenter repository details (use arrow keys to navigate, space to select/deselect, enter to confirm):\n\n")
+
+	// prompt for identifier
+	identifierPrompt := &survey.Input{
+		Message: "identifier",
+		Default: config.Identifier,
+	}
+	if err := survey.AskOne(identifierPrompt, &config.Identifier); err != nil {
+		return err
+	}
+
+	// prompt for name
+	namePrompt := &survey.Input{
+		Message: "name",
+		Default: config.Name,
+	}
+	if err := survey.AskOne(namePrompt, &config.Name); err != nil {
+		return err
+	}
+
+	// prompt for description
+	descPrompt := &survey.Input{
+		Message: "description",
+		Default: config.Description,
+	}
+	if err := survey.AskOne(descPrompt, &config.Description); err != nil {
+		return err
+	}
+
+	// prompt for owner
+	for {
+		ownerPrompt := &survey.Input{
+			Message: "owner (npub or hex)",
+			Default: config.Owner,
+		}
+		if err := survey.AskOne(ownerPrompt, &config.Owner); err != nil {
+			return err
+		}
+		if pubkey, err := parsePubKey(config.Owner); err == nil {
+			config.Owner = pubkey.Hex()
+			break
+		}
+	}
+
+	// prompt for grasp servers
+	graspServers, err := promptForStringList("grasp servers", config.GraspServers, []string{
+		"gitnostr.com",
+		"relay.ngit.dev",
+		"pyramid.fiatjaf.com",
+		"git.shakespeare.dyi",
+	}, graspServerHost, nil)
 	if err != nil {
 		return err
 	}
-	defer rl.Close()
+	config.GraspServers = graspServers
 
-	promptString := func(currentVal *string, prompt string) error {
-		rl.SetPrompt(color.YellowString("%s [%s]: ", prompt, *currentVal))
-		answer, err := rl.Readline()
+	// prompt for web URLs
+	webURLs, err := promptForStringList("web URLs", config.Web, []string{
+		fmt.Sprintf("https://gitworkshop.dev/%s/%s",
+			nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
+			config.Identifier,
+		),
+	}, func(s string) string {
+		return "http" + nostr.NormalizeURL(s)[2:]
+	}, nil)
+	if err != nil {
+		return err
+	}
+	config.Web = webURLs
+
+	// Prompt for maintainers
+	maintainers, err := promptForStringList("maintainers", config.Maintainers, []string{}, nil, func(s string) bool {
+		pk, err := parsePubKey(s)
 		if err != nil {
-			return err
+			return false
 		}
-		answer = strings.TrimSpace(answer)
-		if answer != "" {
-			*currentVal = answer
+		if pk.Hex() == config.Owner {
+			return false
 		}
-		return nil
-	}
-
-	promptSlice := func(currentVal *[]string, prompt string) error {
-		defaultStr := strings.Join(*currentVal, ", ")
-		rl.SetPrompt(color.YellowString("%s (comma-separated) [%s]: ", prompt, defaultStr))
-		answer, err := rl.Readline()
-		if err != nil {
-			return err
-		}
-		answer = strings.TrimSpace(answer)
-		if answer != "" {
-			parts := strings.Split(answer, ",")
-			result := make([]string, 0, len(parts))
-			for _, p := range parts {
-				if trimmed := strings.TrimSpace(p); trimmed != "" {
-					result = append(result, trimmed)
-				}
-			}
-			*currentVal = result
-		}
-		return nil
-	}
-
-	log("\nenter repository details (press Enter to keep default):\n\n")
-
-	if err := promptString(&config.Identifier, "identifier"); err != nil {
+		return true
+	})
+	if err != nil {
 		return err
 	}
-	if err := promptString(&config.Name, "name"); err != nil {
-		return err
-	}
-	if err := promptString(&config.Description, "description"); err != nil {
-		return err
-	}
-	if err := promptString(&config.Owner, "owner (npub or hex)"); err != nil {
-		return err
-	}
-	if err := promptSlice(&config.GraspServers, "grasp servers"); err != nil {
-		return err
-	}
-	if err := promptSlice(&config.Web, "web URLs"); err != nil {
-		return err
-	}
-	if err := promptSlice(&config.Maintainers, "other maintainers"); err != nil {
-		return err
-	}
+	config.Maintainers = maintainers
 
 	log("\n")
 	return nil
@@ -1007,7 +1098,7 @@ func readNip34ConfigFile(baseDir string) (Nip34Config, error) {
 
 	// normalize grasp relay URLs
 	for i := range localConfig.GraspServers {
-		localConfig.GraspServers[i] = nostr.NormalizeURL(localConfig.GraspServers[i])
+		localConfig.GraspServers[i] = graspServerHost(localConfig.GraspServers[i])
 	}
 
 	if err := localConfig.Validate(); err != nil {
@@ -1220,3 +1311,5 @@ func figureOutBranches(c *cli.Command, refspec string, isPush bool) (
 
 	return localBranch, remoteBranch, nil
 }
+
+func graspServerHost(s string) string { return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2] }
