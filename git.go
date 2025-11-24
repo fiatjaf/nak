@@ -17,68 +17,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-type Nip34Config struct {
-	Identifier           string   `json:"identifier"`
-	Name                 string   `json:"name"`
-	Description          string   `json:"description"`
-	Web                  []string `json:"web"`
-	Owner                string   `json:"owner"`
-	GraspServers         []string `json:"grasp-servers"`
-	EarliestUniqueCommit string   `json:"earliest-unique-commit"`
-	Maintainers          []string `json:"maintainers"`
-}
-
-func (localConfig Nip34Config) Validate() error {
-	_, err := parsePubKey(localConfig.Owner)
-	if err != nil {
-		return fmt.Errorf("owner pubkey '%s' is not valid: %w", localConfig.Owner, err)
-	}
-
-	for _, maintainer := range localConfig.Maintainers {
-		_, err := parsePubKey(maintainer)
-		if err != nil {
-			return fmt.Errorf("maintainer pubkey '%s' is not valid: %w", maintainer, err)
-		}
-	}
-
-	return nil
-}
-
-func (localConfig Nip34Config) ToRepository() nip34.Repository {
-	owner, err := parsePubKey(localConfig.Owner)
-	if err != nil {
-		panic(err)
-	}
-
-	localRepo := nip34.Repository{
-		ID:                     localConfig.Identifier,
-		Name:                   localConfig.Name,
-		Description:            localConfig.Description,
-		Web:                    localConfig.Web,
-		EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
-		Maintainers:            []nostr.PubKey{},
-		Event: nostr.Event{
-			PubKey: owner,
-		},
-	}
-	for _, server := range localConfig.GraspServers {
-		graspServerURL := nostr.NormalizeURL(server)
-		url := fmt.Sprintf("http%s/%s/%s.git",
-			graspServerURL[2:], nip19.EncodeNpub(localRepo.PubKey), localConfig.Identifier)
-		localRepo.Clone = append(localRepo.Clone, url)
-		localRepo.Relays = append(localRepo.Relays, graspServerURL)
-	}
-	for _, maintainer := range localConfig.Maintainers {
-		pk, err := parsePubKey(maintainer)
-		if err != nil {
-			panic(err)
-		}
-		localRepo.Maintainers = append(localRepo.Maintainers, pk)
-	}
-
-	return localRepo
-}
-
 var git = &cli.Command{
 	Name:  "git",
 	Usage: "git-related operations",
@@ -89,188 +27,498 @@ aside from those, there is also:
   - 'nak git sync' for getting the latest metadata update from nostr relays (called automatically by other commands)
 `,
 	Commands: []*cli.Command{
-		gitInit,
-		gitSync,
-		gitClone,
-		gitPush,
-		gitPull,
-		gitFetch,
-	},
-}
+		{
+			Name:  "init",
+			Usage: "initialize a nip34 repository configuration",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:    "interactive",
+					Aliases: []string{"i"},
+					Usage:   "prompt for repository details interactively",
+				},
+				&cli.BoolFlag{
+					Name:    "force",
+					Aliases: []string{"f"},
+					Usage:   "overwrite existing nip34.json file",
+				},
+				&cli.StringFlag{
+					Name:  "identifier",
+					Usage: "unique identifier for the repository",
+				},
+				&cli.StringFlag{
+					Name:  "name",
+					Usage: "repository name",
+				},
+				&cli.StringFlag{
+					Name:  "description",
+					Usage: "repository description",
+				},
+				&cli.StringSliceFlag{
+					Name:  "web",
+					Usage: "web URLs for the repository (can be used multiple times)",
+				},
+				&cli.StringFlag{
+					Name:  "owner",
+					Usage: "owner public key",
+				},
+				&cli.StringSliceFlag{
+					Name:  "grasp-servers",
+					Usage: "grasp servers (can be used multiple times)",
+				},
+				&cli.StringSliceFlag{
+					Name:  "relays",
+					Usage: "relay URLs to publish to (can be used multiple times)",
+				},
+				&cli.StringSliceFlag{
+					Name:  "maintainers",
+					Usage: "maintainer public keys as npub or hex (can be used multiple times)",
+				},
+				&cli.StringFlag{
+					Name:  "earliest-unique-commit",
+					Usage: "earliest unique commit of the repository",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				// check if current directory is a git repository
+				cmd := exec.Command("git", "rev-parse", "--git-dir")
+				if err := cmd.Run(); err != nil {
+					// initialize a git repository
+					log("initializing git repository...\n")
+					initCmd := exec.Command("git", "init")
+					initCmd.Stderr = os.Stderr
+					initCmd.Stdout = os.Stdout
+					if err := initCmd.Run(); err != nil {
+						return fmt.Errorf("failed to initialize git repository: %w", err)
+					}
+				}
 
-var gitInit = &cli.Command{
-	Name:  "init",
-	Usage: "initialize a nip34 repository configuration",
-	Flags: []cli.Flag{
-		&cli.BoolFlag{
-			Name:    "interactive",
-			Aliases: []string{"i"},
-			Usage:   "prompt for repository details interactively",
-		},
-		&cli.BoolFlag{
-			Name:    "force",
-			Aliases: []string{"f"},
-			Usage:   "overwrite existing nip34.json file",
-		},
-		&cli.StringFlag{
-			Name:  "identifier",
-			Usage: "unique identifier for the repository",
-		},
-		&cli.StringFlag{
-			Name:  "name",
-			Usage: "repository name",
-		},
-		&cli.StringFlag{
-			Name:  "description",
-			Usage: "repository description",
-		},
-		&cli.StringSliceFlag{
-			Name:  "web",
-			Usage: "web URLs for the repository (can be used multiple times)",
-		},
-		&cli.StringFlag{
-			Name:  "owner",
-			Usage: "owner public key",
-		},
-		&cli.StringSliceFlag{
-			Name:  "grasp-servers",
-			Usage: "grasp servers (can be used multiple times)",
-		},
-		&cli.StringSliceFlag{
-			Name:  "relays",
-			Usage: "relay URLs to publish to (can be used multiple times)",
-		},
-		&cli.StringSliceFlag{
-			Name:  "maintainers",
-			Usage: "maintainer public keys as npub or hex (can be used multiple times)",
-		},
-		&cli.StringFlag{
-			Name:  "earliest-unique-commit",
-			Usage: "earliest unique commit of the repository",
-		},
-	},
-	Action: func(ctx context.Context, c *cli.Command) error {
-		// check if current directory is a git repository
-		cmd := exec.Command("git", "rev-parse", "--git-dir")
-		if err := cmd.Run(); err != nil {
-			// initialize a git repository
-			log("initializing git repository...\n")
-			initCmd := exec.Command("git", "init")
-			initCmd.Stderr = os.Stderr
-			initCmd.Stdout = os.Stdout
-			if err := initCmd.Run(); err != nil {
-				return fmt.Errorf("failed to initialize git repository: %w", err)
-			}
-		}
+				// check if nip34.json already exists
+				existingConfig, err := readNip34ConfigFile("")
+				if err == nil {
+					// file exists
+					if !c.Bool("force") && !c.Bool("interactive") {
+						return fmt.Errorf("nip34.json already exists, use --force to overwrite or --interactive to update")
+					}
+				}
 
-		// check if nip34.json already exists
-		existingConfig, err := readNip34ConfigFile("")
-		if err == nil {
-			// file exists
-			if !c.Bool("force") && !c.Bool("interactive") {
-				return fmt.Errorf("nip34.json already exists, use --force to overwrite or --interactive to update")
-			}
-		}
+				// get repository base directory name for defaults
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("failed to get current directory: %w", err)
+				}
+				baseName := filepath.Base(cwd)
 
-		// get repository base directory name for defaults
-		cwd, err := os.Getwd()
-		if err != nil {
-			return fmt.Errorf("failed to get current directory: %w", err)
-		}
-		baseName := filepath.Base(cwd)
+				// get earliest unique commit
+				var earliestCommit string
+				if output, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output(); err == nil {
+					earliest := strings.Split(strings.TrimSpace(string(output)), "\n")
+					if len(earliest) > 0 {
+						earliestCommit = earliest[0]
+					}
+				}
 
-		// get earliest unique commit
-		var earliestCommit string
-		if output, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output(); err == nil {
-			earliest := strings.Split(strings.TrimSpace(string(output)), "\n")
-			if len(earliest) > 0 {
-				earliestCommit = earliest[0]
-			}
-		}
-
-		// extract clone URLs from nostr:// git remotes
-		// (this is just for migrating from ngit)
-		var defaultCloneURLs []string
-		if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
-			remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-			for _, remote := range remotes {
-				if strings.Contains(remote, "nostr://") {
-					parts := strings.Fields(remote)
-					if len(parts) >= 2 {
-						nostrURL := parts[1]
-						// parse nostr://npub.../relay_hostname/identifier
-						if owner, identifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
-							relayURL := relays[0]
-							// convert to https://relay_hostname/npub.../identifier.git
-							cloneURL := fmt.Sprintf("http%s/%s/%s.git",
-								relayURL[2:], nip19.EncodeNpub(owner), identifier)
-							defaultCloneURLs = appendUnique(defaultCloneURLs, cloneURL)
+				// extract clone URLs from nostr:// git remotes
+				// (this is just for migrating from ngit)
+				var defaultCloneURLs []string
+				if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
+					remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
+					for _, remote := range remotes {
+						if strings.Contains(remote, "nostr://") {
+							parts := strings.Fields(remote)
+							if len(parts) >= 2 {
+								nostrURL := parts[1]
+								// parse nostr://npub.../relay_hostname/identifier
+								if owner, identifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
+									relayURL := relays[0]
+									// convert to https://relay_hostname/npub.../identifier.git
+									cloneURL := fmt.Sprintf("http%s/%s/%s.git",
+										relayURL[2:], nip19.EncodeNpub(owner), identifier)
+									defaultCloneURLs = appendUnique(defaultCloneURLs, cloneURL)
+								}
+							}
 						}
 					}
 				}
-			}
-		}
 
-		// helper to get value from flags, existing config, or default
-		getValue := func(existingVal, flagVal, defaultVal string) string {
-			if flagVal != "" {
-				return flagVal
-			}
-			if existingVal != "" {
-				return existingVal
-			}
-			return defaultVal
-		}
+				// helper to get value from flags, existing config, or default
+				getValue := func(existingVal, flagVal, defaultVal string) string {
+					if flagVal != "" {
+						return flagVal
+					}
+					if existingVal != "" {
+						return existingVal
+					}
+					return defaultVal
+				}
 
-		getSliceValue := func(existingVals, flagVals, defaultVals []string) []string {
-			if len(flagVals) > 0 {
-				return flagVals
-			}
-			if len(existingVals) > 0 {
-				return existingVals
-			}
-			return defaultVals
-		}
+				getSliceValue := func(existingVals, flagVals, defaultVals []string) []string {
+					if len(flagVals) > 0 {
+						return flagVals
+					}
+					if len(existingVals) > 0 {
+						return existingVals
+					}
+					return defaultVals
+				}
 
-		config := Nip34Config{
-			Identifier:           getValue(existingConfig.Identifier, c.String("identifier"), baseName),
-			Name:                 getValue(existingConfig.Name, c.String("name"), baseName),
-			Description:          getValue(existingConfig.Description, c.String("description"), ""),
-			Web:                  getSliceValue(existingConfig.Web, c.StringSlice("web"), []string{}),
-			Owner:                getValue(existingConfig.Owner, c.String("owner"), ""),
-			GraspServers:         getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), []string{"gitnostr.com", "relay.ngit.dev"}),
-			EarliestUniqueCommit: getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), earliestCommit),
-			Maintainers:          getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), []string{}),
-		}
+				config := Nip34Config{
+					Identifier:           getValue(existingConfig.Identifier, c.String("identifier"), baseName),
+					Name:                 getValue(existingConfig.Name, c.String("name"), baseName),
+					Description:          getValue(existingConfig.Description, c.String("description"), ""),
+					Web:                  getSliceValue(existingConfig.Web, c.StringSlice("web"), []string{}),
+					Owner:                getValue(existingConfig.Owner, c.String("owner"), ""),
+					GraspServers:         getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), []string{"gitnostr.com", "relay.ngit.dev"}),
+					EarliestUniqueCommit: getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), earliestCommit),
+					Maintainers:          getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), []string{}),
+				}
 
-		if c.Bool("interactive") {
-			if err := promptForConfig(&config); err != nil {
+				if c.Bool("interactive") {
+					if err := promptForConfig(&config); err != nil {
+						return err
+					}
+				}
+
+				if err := config.Validate(); err != nil {
+					return fmt.Errorf("invalid config: %w", err)
+				}
+
+				// write config file
+				if err := writeNip34ConfigFile("", config); err != nil {
+					return err
+				}
+
+				log("created %s\n", color.GreenString("nip34.json"))
+
+				// setup git remotes
+				gitSetupRemotes(ctx, "", config.ToRepository())
+
+				// gitignore it
+				excludeNip34ConfigFile("")
+
+				log("edit %s if needed, then run %s to publish.\n",
+					color.CyanString("nip34.json"),
+					color.CyanString("nak git announce"))
+
+				return nil
+			},
+		},
+		{
+			Name:  "sync",
+			Usage: "sync repository with relays",
+			Flags: defaultKeyFlags,
+			Action: func(ctx context.Context, c *cli.Command) error {
+				kr, _, _ := gatherKeyerFromArguments(ctx, c)
+				_, _, err := gitSync(ctx, kr)
 				return err
-			}
-		}
+			},
+		},
+		{
+			Name:        "clone",
+			Usage:       "clone a NIP-34 repository from a nostr:// URI",
+			Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or an "naddr1..." code.`,
+			ArgsUsage:   "<repository> [directory]",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() == 0 {
+					return fmt.Errorf("missing repository address")
+				}
 
-		if err := config.Validate(); err != nil {
-			return fmt.Errorf("invalid config: %w", err)
-		}
+				owner, identifier, relayHints, err := parseRepositoryAddress(ctx, args.Get(0))
+				if err != nil {
+					return fmt.Errorf("failed to parse remote url '%s': %s", args.Get(0), err)
+				}
 
-		// write config file
-		if err := writeNip34ConfigFile("", config); err != nil {
-			return err
-		}
+				// fetch repository metadata and state
+				repo, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+				if err != nil {
+					return err
+				}
 
-		log("created %s\n", color.GreenString("nip34.json"))
+				// determine target directory
+				targetDir := ""
+				if args.Len() >= 2 {
+					targetDir = args.Get(1)
+				} else {
+					targetDir = repo.ID
+				}
+				if targetDir == "" {
+					targetDir = repo.ID
+				}
 
-		// setup git remotes
-		gitSetupRemotes(ctx, "", config.ToRepository())
+				// if targetDir exists and is non-empty, bail
+				if fi, err := os.Stat(targetDir); err == nil && fi.IsDir() {
+					entries, err := os.ReadDir(targetDir)
+					if err == nil && len(entries) > 0 {
+						return fmt.Errorf("target directory '%s' already exists and is not empty", targetDir)
+					}
+				}
 
-		// gitignore it
-		excludeNip34ConfigFile("")
+				// create directory
+				if err := os.MkdirAll(targetDir, 0755); err != nil {
+					return fmt.Errorf("failed to create directory '%s': %w", targetDir, err)
+				}
 
-		log("edit %s if needed, then run %s to publish.\n",
-			color.CyanString("nip34.json"),
-			color.CyanString("nak git announce"))
+				// initialize git inside the directory
+				initCmd := exec.Command("git", "init")
+				initCmd.Dir = targetDir
+				if err := initCmd.Run(); err != nil {
+					return fmt.Errorf("failed to initialize git repository: %w", err)
+				}
 
-		return nil
+				// write nip34.json inside cloned directory
+				localConfig := Nip34Config{
+					Identifier:           repo.ID,
+					Name:                 repo.Name,
+					Description:          repo.Description,
+					Web:                  repo.Web,
+					Owner:                nip19.EncodeNpub(repo.Event.PubKey),
+					GraspServers:         make([]string, 0, len(repo.Relays)),
+					EarliestUniqueCommit: repo.EarliestUniqueCommitID,
+					Maintainers:          make([]string, 0, len(repo.Maintainers)),
+				}
+				for _, r := range repo.Relays {
+					localConfig.GraspServers = append(localConfig.GraspServers, nostr.NormalizeURL(r))
+				}
+				for _, m := range repo.Maintainers {
+					localConfig.Maintainers = append(localConfig.Maintainers, nip19.EncodeNpub(m))
+				}
+
+				if err := localConfig.Validate(); err != nil {
+					return fmt.Errorf("invalid config: %w", err)
+				}
+
+				// write nip34.json
+				if err := writeNip34ConfigFile(targetDir, localConfig); err != nil {
+					return err
+				}
+
+				// add nip34.json to .git/info/exclude in cloned repo
+				excludeNip34ConfigFile(targetDir)
+
+				// setup git remotes
+				gitSetupRemotes(ctx, targetDir, repo)
+
+				// fetch from each grasp remote
+				fetchFromRemotes(ctx, targetDir, repo)
+
+				// if we have a state with a HEAD, try to reset to it
+				if state.Event.ID != nostr.ZeroID && state.HEAD != "" {
+					if headCommit, ok := state.Branches[state.HEAD]; ok {
+						// check if we have that commit
+						checkCmd := exec.Command("git", "cat-file", "-e", headCommit)
+						checkCmd.Dir = targetDir
+						if err := checkCmd.Run(); err == nil {
+							// commit exists, reset to it
+							log("resetting to commit %s...\n", color.CyanString(headCommit))
+							resetCmd := exec.Command("git", "reset", "--hard", headCommit)
+							resetCmd.Dir = targetDir
+							resetCmd.Stderr = os.Stderr
+							if err := resetCmd.Run(); err != nil {
+								log("! failed to reset: %v\n", color.YellowString("%v", err))
+							}
+						}
+					}
+				}
+
+				// update refs from state
+				if state != nil {
+					gitUpdateRefs(ctx, targetDir, *state)
+				}
+
+				log("cloned into %s\n", color.GreenString(targetDir))
+				return nil
+			},
+		},
+		{
+			Name:  "push",
+			Usage: "push git changes",
+			Flags: append(defaultKeyFlags, &cli.BoolFlag{
+				Name:    "force",
+				Aliases: []string{"f"},
+				Usage:   "force push to git remotes",
+			}),
+			Action: func(ctx context.Context, c *cli.Command) error {
+				// setup signer
+				kr, _, err := gatherKeyerFromArguments(ctx, c)
+				if err != nil {
+					return fmt.Errorf("failed to gather keyer: %w", err)
+				}
+
+				// log publishing as npub
+				currentPk, _ := kr.GetPublicKey(ctx)
+				currentNpub := nip19.EncodeNpub(currentPk)
+				log("publishing as %s\n", color.CyanString(currentNpub))
+
+				// sync to ensure everything is up to date
+				repo, state, err := gitSync(ctx, kr)
+				if err != nil {
+					return fmt.Errorf("failed to sync: %w", err)
+				}
+
+				// figure out which branches to push
+				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+				if err != nil {
+					return err
+				}
+
+				// check if signer matches owner or is in maintainers
+				if currentPk != repo.Event.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
+					return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
+				}
+
+				// get commit for the local branch
+				res, err := exec.Command("git", "rev-parse", localBranch).Output()
+				if err != nil {
+					return fmt.Errorf("failed to get commit for branch %s: %w", localBranch, err)
+				}
+				currentCommit := strings.TrimSpace(string(res))
+
+				logverbose("pushing branch %s to remote branch %s, commit: %s\n", localBranch, remoteBranch, currentCommit)
+
+				// create a new state if we didn't find any
+				if state == nil {
+					state = &nip34.RepositoryState{
+						ID:       repo.ID,
+						Branches: make(map[string]string),
+						Tags:     make(map[string]string),
+					}
+				}
+
+				// update the branch
+				if !c.Bool("force") {
+					if prevCommit, exists := state.Branches[remoteBranch]; exists {
+						// check if prevCommit is an ancestor of currentCommit (fast-forward check)
+						cmd := exec.Command("git", "merge-base", "--is-ancestor", prevCommit, currentCommit)
+						if err := cmd.Run(); err != nil {
+							return fmt.Errorf("non-fast-forward push not allowed, use --force to override")
+						}
+					}
+				}
+				state.Branches[remoteBranch] = currentCommit
+				log("- setting branch %s to commit %s\n", color.CyanString(remoteBranch), color.CyanString(currentCommit))
+
+				// set the HEAD to the local branch if none is set
+				if state.HEAD == "" {
+					state.HEAD = remoteBranch
+					log("- setting HEAD to branch %s\n", color.CyanString(remoteBranch))
+				}
+
+				// create and sign the new state event
+				newStateEvent := state.ToEvent()
+				err = kr.SignEvent(ctx, &newStateEvent)
+				if err != nil {
+					return fmt.Errorf("error signing state event: %w", err)
+				}
+
+				log("- publishing updated repository state to " + color.CyanString("%v", repo.Relays) + "\n")
+				for res := range sys.Pool.PublishMany(ctx, repo.Relays, newStateEvent) {
+					if res.Error != nil {
+						log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+					} else {
+						log("> published to %s\n", color.GreenString(res.RelayURL))
+					}
+				}
+
+				// push to each grasp remote
+				pushSuccesses := 0
+				for _, relay := range repo.Relays {
+					relayURL := nostr.NormalizeURL(relay)
+					remoteName := "nip34/grasp/" + strings.TrimPrefix(relayURL, "wss://")
+					remoteName = strings.TrimPrefix(remoteName, "ws://")
+
+					log("pushing to %s...\n", color.CyanString(remoteName))
+					pushArgs := []string{"push", remoteName, fmt.Sprintf("%s:refs/heads/%s", localBranch, remoteBranch)}
+					if c.Bool("force") {
+						pushArgs = append(pushArgs, "--force")
+					}
+					pushCmd := exec.Command("git", pushArgs...)
+					pushCmd.Stderr = os.Stderr
+					if err := pushCmd.Run(); err != nil {
+						log("! failed to push to %s: %v\n", color.YellowString(remoteName), err)
+					} else {
+						log("> pushed to %s\n", color.GreenString(remoteName))
+						pushSuccesses++
+					}
+				}
+
+				if pushSuccesses == 0 {
+					return fmt.Errorf("failed to push to any remote")
+				}
+
+				gitUpdateRefs(ctx, "", *state)
+
+				return nil
+			},
+		},
+		{
+			Name:  "pull",
+			Usage: "pull git changes",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "rebase",
+					Usage: "rebase instead of merge",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				// sync to fetch latest state and metadata
+				_, state, err := gitSync(ctx, nil)
+				if err != nil {
+					return fmt.Errorf("failed to sync: %w", err)
+				}
+
+				// figure out which branches to pull
+				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), false)
+				if err != nil {
+					return err
+				}
+
+				// get the commit from state for the remote branch
+				if state.Event.ID == nostr.ZeroID {
+					return fmt.Errorf("no repository state found")
+				}
+
+				targetCommit, ok := state.Branches[remoteBranch]
+				if !ok {
+					return fmt.Errorf("branch '%s' not found in repository state", remoteBranch)
+				}
+
+				// check if the commit exists locally
+				checkCmd := exec.Command("git", "cat-file", "-e", targetCommit)
+				if err := checkCmd.Run(); err != nil {
+					return fmt.Errorf("commit %s not found locally, try 'nak git fetch' first", targetCommit)
+				}
+
+				// merge or rebase
+				if c.Bool("rebase") {
+					log("rebasing %s onto %s...\n", color.CyanString(localBranch), color.CyanString(targetCommit))
+					rebaseCmd := exec.Command("git", "rebase", targetCommit)
+					rebaseCmd.Stderr = os.Stderr
+					rebaseCmd.Stdout = os.Stdout
+					if err := rebaseCmd.Run(); err != nil {
+						return fmt.Errorf("rebase failed: %w", err)
+					}
+				} else {
+					log("merging %s into %s...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
+					mergeCmd := exec.Command("git", "merge", targetCommit)
+					mergeCmd.Stderr = os.Stderr
+					mergeCmd.Stdout = os.Stdout
+					if err := mergeCmd.Run(); err != nil {
+						return fmt.Errorf("merge failed: %w", err)
+					}
+				}
+
+				log("pull complete\n")
+				return nil
+			},
+		},
+		{
+			Name:  "fetch",
+			Usage: "fetch git data",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				_, _, err := gitSync(ctx, nil)
+				return err
+			},
+		},
 	},
 }
 
@@ -440,351 +688,52 @@ func promptForConfig(config *Nip34Config) error {
 	return nil
 }
 
-var gitClone = &cli.Command{
-	Name:        "clone",
-	Usage:       "clone a NIP-34 repository from a nostr:// URI",
-	Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or an "naddr1..." code.`,
-	ArgsUsage:   "<repository> [directory]",
-	Action: func(ctx context.Context, c *cli.Command) error {
-		args := c.Args()
-		if args.Len() == 0 {
-			return fmt.Errorf("missing repository address")
-		}
-
-		owner, identifier, relayHints, err := parseRepositoryAddress(ctx, args.Get(0))
-		if err != nil {
-			return fmt.Errorf("failed to parse remote url '%s': %s", args.Get(0), err)
-		}
-
-		// fetch repository metadata and state
-		repo, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
-		if err != nil {
-			return err
-		}
-
-		// determine target directory
-		targetDir := ""
-		if args.Len() >= 2 {
-			targetDir = args.Get(1)
-		} else {
-			targetDir = repo.ID
-		}
-		if targetDir == "" {
-			targetDir = repo.ID
-		}
-
-		// if targetDir exists and is non-empty, bail
-		if fi, err := os.Stat(targetDir); err == nil && fi.IsDir() {
-			entries, err := os.ReadDir(targetDir)
-			if err == nil && len(entries) > 0 {
-				return fmt.Errorf("target directory '%s' already exists and is not empty", targetDir)
-			}
-		}
-
-		// create directory
-		if err := os.MkdirAll(targetDir, 0755); err != nil {
-			return fmt.Errorf("failed to create directory '%s': %w", targetDir, err)
-		}
-
-		// initialize git inside the directory
-		initCmd := exec.Command("git", "init")
-		initCmd.Dir = targetDir
-		if err := initCmd.Run(); err != nil {
-			return fmt.Errorf("failed to initialize git repository: %w", err)
-		}
-
-		// write nip34.json inside cloned directory
-		localConfig := Nip34Config{
-			Identifier:           repo.ID,
-			Name:                 repo.Name,
-			Description:          repo.Description,
-			Web:                  repo.Web,
-			Owner:                nip19.EncodeNpub(repo.Event.PubKey),
-			GraspServers:         make([]string, 0, len(repo.Relays)),
-			EarliestUniqueCommit: repo.EarliestUniqueCommitID,
-			Maintainers:          make([]string, 0, len(repo.Maintainers)),
-		}
-		for _, r := range repo.Relays {
-			localConfig.GraspServers = append(localConfig.GraspServers, nostr.NormalizeURL(r))
-		}
-		for _, m := range repo.Maintainers {
-			localConfig.Maintainers = append(localConfig.Maintainers, nip19.EncodeNpub(m))
-		}
-
-		if err := localConfig.Validate(); err != nil {
-			return fmt.Errorf("invalid config: %w", err)
-		}
-
-		// write nip34.json
-		if err := writeNip34ConfigFile(targetDir, localConfig); err != nil {
-			return err
-		}
-
-		// add nip34.json to .git/info/exclude in cloned repo
-		excludeNip34ConfigFile(targetDir)
-
-		// setup git remotes
-		gitSetupRemotes(ctx, targetDir, repo)
-
-		// fetch from each grasp remote
-		fetchFromRemotes(ctx, targetDir, repo)
-
-		// if we have a state with a HEAD, try to reset to it
-		if state.Event.ID != nostr.ZeroID && state.HEAD != "" {
-			if headCommit, ok := state.Branches[state.HEAD]; ok {
-				// check if we have that commit
-				checkCmd := exec.Command("git", "cat-file", "-e", headCommit)
-				checkCmd.Dir = targetDir
-				if err := checkCmd.Run(); err == nil {
-					// commit exists, reset to it
-					log("resetting to commit %s...\n", color.CyanString(headCommit))
-					resetCmd := exec.Command("git", "reset", "--hard", headCommit)
-					resetCmd.Dir = targetDir
-					resetCmd.Stderr = os.Stderr
-					if err := resetCmd.Run(); err != nil {
-						log("! failed to reset: %v\n", color.YellowString("%v", err))
-					}
-				}
-			}
-		}
-
-		// update refs from state
-		if state.Event.ID != nostr.ZeroID {
-			gitUpdateRefs(ctx, targetDir, state)
-		}
-
-		log("cloned into %s\n", color.GreenString(targetDir))
-		return nil
-	},
-}
-
-var gitPush = &cli.Command{
-	Name:  "push",
-	Usage: "push git changes",
-	Flags: append(defaultKeyFlags, &cli.BoolFlag{
-		Name:    "force",
-		Aliases: []string{"f"},
-		Usage:   "force push to git remotes",
-	}),
-	Action: func(ctx context.Context, c *cli.Command) error {
-		// setup signer
-		kr, _, err := gatherKeyerFromArguments(ctx, c)
-		if err != nil {
-			return fmt.Errorf("failed to gather keyer: %w", err)
-		}
-
-		// log publishing as npub
-		currentPk, _ := kr.GetPublicKey(ctx)
-		currentNpub := nip19.EncodeNpub(currentPk)
-		log("publishing as %s\n", color.CyanString(currentNpub))
-
-		// sync to ensure everything is up to date
-		repo, state, err := syncRepository(ctx, kr)
-		if err != nil {
-			return fmt.Errorf("failed to sync: %w", err)
-		}
-
-		// figure out which branches to push
-		localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
-		if err != nil {
-			return err
-		}
-
-		// check if signer matches owner or is in maintainers
-		if currentPk != repo.Event.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
-			return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
-		}
-
-		if state.Event.ID != nostr.ZeroID {
-			logverbose("found state event: %s\n", state.Event.ID)
-		}
-
-		// get commit for the local branch
-		res, err := exec.Command("git", "rev-parse", localBranch).Output()
-		if err != nil {
-			return fmt.Errorf("failed to get commit for branch %s: %w", localBranch, err)
-		}
-		currentCommit := strings.TrimSpace(string(res))
-
-		logverbose("pushing branch %s to remote branch %s, commit: %s\n", localBranch, remoteBranch, currentCommit)
-
-		// create a new state if we didn't find any
-		if state.Event.ID == nostr.ZeroID {
-			state = nip34.RepositoryState{
-				ID:       repo.ID,
-				Branches: make(map[string]string),
-				Tags:     make(map[string]string),
-			}
-		}
-
-		// update the branch
-		if !c.Bool("force") {
-			if prevCommit, exists := state.Branches[remoteBranch]; exists {
-				// check if prevCommit is an ancestor of currentCommit (fast-forward check)
-				cmd := exec.Command("git", "merge-base", "--is-ancestor", prevCommit, currentCommit)
-				if err := cmd.Run(); err != nil {
-					return fmt.Errorf("non-fast-forward push not allowed, use --force to override")
-				}
-			}
-		}
-		state.Branches[remoteBranch] = currentCommit
-		log("- setting branch %s to commit %s\n", color.CyanString(remoteBranch), color.CyanString(currentCommit))
-
-		// set the HEAD to the local branch if none is set
-		if state.HEAD == "" {
-			state.HEAD = remoteBranch
-			log("- setting HEAD to branch %s\n", color.CyanString(remoteBranch))
-		}
-
-		// create and sign the new state event
-		newStateEvent := state.ToEvent()
-		err = kr.SignEvent(ctx, &newStateEvent)
-		if err != nil {
-			return fmt.Errorf("error signing state event: %w", err)
-		}
-
-		log("- publishing updated repository state to " + color.CyanString("%v", repo.Relays) + "\n")
-		for res := range sys.Pool.PublishMany(ctx, repo.Relays, newStateEvent) {
-			if res.Error != nil {
-				log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-			} else {
-				log("> published to %s\n", color.GreenString(res.RelayURL))
-			}
-		}
-
-		// push to each grasp remote
-		pushSuccesses := 0
-		for _, relay := range repo.Relays {
-			relayURL := nostr.NormalizeURL(relay)
-			remoteName := "nip34/grasp/" + strings.TrimPrefix(relayURL, "wss://")
-			remoteName = strings.TrimPrefix(remoteName, "ws://")
-
-			log("pushing to %s...\n", color.CyanString(remoteName))
-			pushArgs := []string{"push", remoteName, fmt.Sprintf("%s:refs/heads/%s", localBranch, remoteBranch)}
-			if c.Bool("force") {
-				pushArgs = append(pushArgs, "--force")
-			}
-			pushCmd := exec.Command("git", pushArgs...)
-			pushCmd.Stderr = os.Stderr
-			if err := pushCmd.Run(); err != nil {
-				log("! failed to push to %s: %v\n", color.YellowString(remoteName), err)
-			} else {
-				log("> pushed to %s\n", color.GreenString(remoteName))
-				pushSuccesses++
-			}
-		}
-
-		if pushSuccesses == 0 {
-			return fmt.Errorf("failed to push to any remote")
-		}
-
-		gitUpdateRefs(ctx, "", state)
-
-		return nil
-	},
-}
-
-var gitPull = &cli.Command{
-	Name:  "pull",
-	Usage: "pull git changes",
-	Flags: []cli.Flag{
-		&cli.BoolFlag{
-			Name:  "rebase",
-			Usage: "rebase instead of merge",
-		},
-	},
-	Action: func(ctx context.Context, c *cli.Command) error {
-		// sync to fetch latest state and metadata
-		_, state, err := syncRepository(ctx, nil)
-		if err != nil {
-			return fmt.Errorf("failed to sync: %w", err)
-		}
-
-		// figure out which branches to pull
-		localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), false)
-		if err != nil {
-			return err
-		}
-
-		// get the commit from state for the remote branch
-		if state.Event.ID == nostr.ZeroID {
-			return fmt.Errorf("no repository state found")
-		}
-
-		targetCommit, ok := state.Branches[remoteBranch]
-		if !ok {
-			return fmt.Errorf("branch '%s' not found in repository state", remoteBranch)
-		}
-
-		// check if the commit exists locally
-		checkCmd := exec.Command("git", "cat-file", "-e", targetCommit)
-		if err := checkCmd.Run(); err != nil {
-			return fmt.Errorf("commit %s not found locally, try 'nak git fetch' first", targetCommit)
-		}
-
-		// merge or rebase
-		if c.Bool("rebase") {
-			log("rebasing %s onto %s...\n", color.CyanString(localBranch), color.CyanString(targetCommit))
-			rebaseCmd := exec.Command("git", "rebase", targetCommit)
-			rebaseCmd.Stderr = os.Stderr
-			rebaseCmd.Stdout = os.Stdout
-			if err := rebaseCmd.Run(); err != nil {
-				return fmt.Errorf("rebase failed: %w", err)
-			}
-		} else {
-			log("merging %s into %s...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
-			mergeCmd := exec.Command("git", "merge", targetCommit)
-			mergeCmd.Stderr = os.Stderr
-			mergeCmd.Stdout = os.Stdout
-			if err := mergeCmd.Run(); err != nil {
-				return fmt.Errorf("merge failed: %w", err)
-			}
-		}
-
-		log("pull complete\n")
-		return nil
-	},
-}
-
-var gitFetch = &cli.Command{
-	Name:  "fetch",
-	Usage: "fetch git data",
-	Action: func(ctx context.Context, c *cli.Command) error {
-		_, _, err := syncRepository(ctx, nil)
-		return err
-	},
-}
-
-var gitSync = &cli.Command{
-	Name:  "sync",
-	Usage: "sync repository with relays",
-	Flags: defaultKeyFlags,
-	Action: func(ctx context.Context, c *cli.Command) error {
-		kr, _, _ := gatherKeyerFromArguments(ctx, c)
-		_, _, err := syncRepository(ctx, kr)
-		return err
-	},
-}
-
-func syncRepository(ctx context.Context, signer nostr.Keyer) (nip34.Repository, nip34.RepositoryState, error) {
+func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.RepositoryState, error) {
 	// read current nip34.json
 	localConfig, err := readNip34ConfigFile("")
 	if err != nil {
-		return nip34.Repository{}, nip34.RepositoryState{}, err
+		return nip34.Repository{}, nil, err
 	}
 
 	// parse owner
 	owner, err := parsePubKey(localConfig.Owner)
 	if err != nil {
-		return nip34.Repository{}, nip34.RepositoryState{}, fmt.Errorf("invalid owner public key: %w", err)
+		return nip34.Repository{}, nil, fmt.Errorf("invalid owner public key: %w", err)
 	}
 
 	// fetch repository announcement and state from relays
 	repo, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
 	if err != nil {
-		logverbose("failed to fetch repository metadata: %v\n", err)
-		// create a local repository object from config
-		repo = localConfig.ToRepository()
+		log("couldn't fetch repository metadata (%s), will publish now\n", err)
+		// create a local repository object from config and publish it
+		localRepo := localConfig.ToRepository()
+
+		if signer != nil {
+			signerPk, err := signer.GetPublicKey(ctx)
+			if err != nil {
+				return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
+			}
+			if signerPk != owner {
+				return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
+			} else {
+				event := localRepo.ToEvent()
+				if err := signer.SignEvent(ctx, &event); err != nil {
+					return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+				}
+
+				relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
+				for res := range sys.Pool.PublishMany(ctx, relays, event) {
+					if res.Error != nil {
+						log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+					} else {
+						log("> published to %s\n", color.GreenString(res.RelayURL))
+					}
+				}
+				repo = localRepo
+			}
+		} else {
+			return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
+		}
 	} else {
 		// check if local config differs from remote announcement
 		// construct local repo from config for comparison
@@ -853,8 +802,8 @@ func syncRepository(ctx context.Context, signer nostr.Keyer) (nip34.Repository, 
 	fetchFromRemotes(ctx, "", repo)
 
 	// update refs from state
-	if state.Event.ID != nostr.ZeroID {
-		gitUpdateRefs(ctx, "", state)
+	if state != nil {
+		gitUpdateRefs(ctx, "", *state)
 	}
 
 	return repo, state, nil
@@ -986,7 +935,7 @@ func fetchRepositoryAndState(
 	pubkey nostr.PubKey,
 	identifier string,
 	relayHints []string,
-) (repo nip34.Repository, state nip34.RepositoryState, err error) {
+) (repo nip34.Repository, state *nip34.RepositoryState, err error) {
 	// fetch repository announcement (30617)
 	relays := appendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
@@ -996,7 +945,7 @@ func fetchRepositoryAndState(
 			"d": []string{identifier},
 		},
 		Limit: 2,
-	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
 		if ie.Event.CreatedAt > repo.CreatedAt {
 			repo = nip34.ParseRepository(ie.Event)
 		}
@@ -1006,7 +955,6 @@ func fetchRepositoryAndState(
 	}
 
 	// fetch repository state (30618)
-	var stateFound bool
 	var stateErr error
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30618},
@@ -1015,10 +963,10 @@ func fetchRepositoryAndState(
 			"d": []string{identifier},
 		},
 		Limit: 2,
-	}, nostr.SubscriptionOptions{Label: "nak-git-clone-meta"}) {
-		if ie.Event.CreatedAt > state.CreatedAt {
-			state = nip34.ParseRepositoryState(ie.Event)
-			stateFound = true
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		if state == nil || ie.Event.CreatedAt > state.CreatedAt {
+			state_ := nip34.ParseRepositoryState(ie.Event)
+			state = &state_
 
 			if state.HEAD == "" {
 				stateErr = fmt.Errorf("state is missing HEAD")
@@ -1031,9 +979,6 @@ func fetchRepositoryAndState(
 
 			stateErr = nil
 		}
-	}
-	if !stateFound {
-		return repo, state, fmt.Errorf("no repository state (kind 30618) found")
 	}
 	if stateErr != nil {
 		return repo, state, stateErr
@@ -1313,3 +1258,65 @@ func figureOutBranches(c *cli.Command, refspec string, isPush bool) (
 }
 
 func graspServerHost(s string) string { return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2] }
+
+type Nip34Config struct {
+	Identifier           string   `json:"identifier"`
+	Name                 string   `json:"name"`
+	Description          string   `json:"description"`
+	Web                  []string `json:"web"`
+	Owner                string   `json:"owner"`
+	GraspServers         []string `json:"grasp-servers"`
+	EarliestUniqueCommit string   `json:"earliest-unique-commit"`
+	Maintainers          []string `json:"maintainers"`
+}
+
+func (localConfig Nip34Config) Validate() error {
+	_, err := parsePubKey(localConfig.Owner)
+	if err != nil {
+		return fmt.Errorf("owner pubkey '%s' is not valid: %w", localConfig.Owner, err)
+	}
+
+	for _, maintainer := range localConfig.Maintainers {
+		_, err := parsePubKey(maintainer)
+		if err != nil {
+			return fmt.Errorf("maintainer pubkey '%s' is not valid: %w", maintainer, err)
+		}
+	}
+
+	return nil
+}
+
+func (localConfig Nip34Config) ToRepository() nip34.Repository {
+	owner, err := parsePubKey(localConfig.Owner)
+	if err != nil {
+		panic(err)
+	}
+
+	localRepo := nip34.Repository{
+		ID:                     localConfig.Identifier,
+		Name:                   localConfig.Name,
+		Description:            localConfig.Description,
+		Web:                    localConfig.Web,
+		EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
+		Maintainers:            []nostr.PubKey{},
+		Event: nostr.Event{
+			PubKey: owner,
+		},
+	}
+	for _, server := range localConfig.GraspServers {
+		graspServerURL := nostr.NormalizeURL(server)
+		url := fmt.Sprintf("http%s/%s/%s.git",
+			graspServerURL[2:], nip19.EncodeNpub(localRepo.PubKey), localConfig.Identifier)
+		localRepo.Clone = append(localRepo.Clone, url)
+		localRepo.Relays = append(localRepo.Relays, graspServerURL)
+	}
+	for _, maintainer := range localConfig.Maintainers {
+		pk, err := parsePubKey(maintainer)
+		if err != nil {
+			panic(err)
+		}
+		localRepo.Maintainers = append(localRepo.Maintainers, pk)
+	}
+
+	return localRepo
+}
