@@ -588,6 +588,8 @@ var gitPush = &cli.Command{
 			return fmt.Errorf("failed to push to any remote")
 		}
 
+		gitUpdateRefs(ctx, "", state)
+
 		return nil
 	},
 }
