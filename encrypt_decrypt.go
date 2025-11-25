@@ -111,7 +111,7 @@ var decrypt = &cli.Command{
 				}
 				plaintext, err := nip04.Decrypt(ciphertext, ss)
 				if err != nil {
-					return fmt.Errorf("failed to encrypt as nip04: %w", err)
+					return fmt.Errorf("failed to decrypt as nip04: %w", err)
 				}
 				stdout(plaintext)
 			}
