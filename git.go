@@ -458,6 +458,18 @@ aside from those, there is also:
 					Name:  "rebase",
 					Usage: "rebase instead of merge",
 				},
+				&cli.BoolFlag{
+					Name:  "ff-only",
+					Usage: "only allow fast-forward merges",
+				},
+				&cli.BoolFlag{
+					Name:  "ff",
+					Usage: "allow fast-forward merges",
+				},
+				&cli.BoolFlag{
+					Name:  "no-ff",
+					Usage: "always perform a merge instead of fast-forwarding",
+				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				// sync to fetch latest state and metadata
@@ -488,8 +500,51 @@ aside from those, there is also:
 					return fmt.Errorf("commit %s not found locally, try 'nak git fetch' first", targetCommit)
 				}
 
-				// merge or rebase
+				// determine merge strategy
+				var strategy string
+				strategiesSpecified := 0
 				if c.Bool("rebase") {
+					strategy = "rebase"
+					strategiesSpecified++
+				}
+				if c.Bool("ff-only") {
+					strategy = "ff-only"
+					strategiesSpecified++
+				}
+				if c.Bool("no-ff") {
+					strategy = "no-ff"
+					strategiesSpecified++
+				}
+				if c.Bool("ff") {
+					strategy = "ff"
+					strategiesSpecified++
+				}
+
+				if strategiesSpecified > 1 {
+					return fmt.Errorf("flags --rebase, --ff-only, --ff, --no-ff are mutually exclusive")
+				}
+
+				if strategy == "" {
+					// check git config for pull.rebase
+					cmd := exec.Command("git", "config", "--get", "pull.rebase")
+					output, err := cmd.Output()
+					if err == nil && strings.TrimSpace(string(output)) == "true" {
+						strategy = "rebase"
+					} else if err == nil && strings.TrimSpace(string(output)) == "false" {
+						strategy = "ff"
+					} else {
+						// check git config for pull.ff
+						cmd := exec.Command("git", "config", "--get", "pull.ff")
+						output, err := cmd.Output()
+						if err == nil && strings.TrimSpace(string(output)) == "only" {
+							strategy = "ff-only"
+						}
+					}
+				}
+
+				// execute the merge or rebase
+				switch strategy {
+				case "rebase":
 					log("rebasing %s onto %s...\n", color.CyanString(localBranch), color.CyanString(targetCommit))
 					rebaseCmd := exec.Command("git", "rebase", targetCommit)
 					rebaseCmd.Stderr = os.Stderr
@@ -497,13 +552,51 @@ aside from those, there is also:
 					if err := rebaseCmd.Run(); err != nil {
 						return fmt.Errorf("rebase failed: %w", err)
 					}
-				} else {
-					log("merging %s into %s...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
-					mergeCmd := exec.Command("git", "merge", targetCommit)
+				case "ff-only":
+					log("pulling %s into %s (fast-forward only)...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
+					mergeCmd := exec.Command("git", "merge", "--ff-only", targetCommit)
 					mergeCmd.Stderr = os.Stderr
 					mergeCmd.Stdout = os.Stdout
 					if err := mergeCmd.Run(); err != nil {
 						return fmt.Errorf("merge failed: %w", err)
+					}
+				case "no-ff":
+					log("pulling %s into %s (no fast-forward)...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
+					mergeCmd := exec.Command("git", "merge", "--no-ff", targetCommit)
+					mergeCmd.Stderr = os.Stderr
+					mergeCmd.Stdout = os.Stdout
+					if err := mergeCmd.Run(); err != nil {
+						return fmt.Errorf("merge failed: %w", err)
+					}
+				case "ff":
+					log("pulling %s into %s...\n", color.CyanString(targetCommit), color.CyanString(localBranch))
+					mergeCmd := exec.Command("git", "merge", "--ff", targetCommit)
+					mergeCmd.Stderr = os.Stderr
+					mergeCmd.Stdout = os.Stdout
+					if err := mergeCmd.Run(); err != nil {
+						return fmt.Errorf("merge failed: %w", err)
+					}
+				default:
+					// get current commit
+					res, err := exec.Command("git", "rev-parse", localBranch).Output()
+					if err != nil {
+						return fmt.Errorf("failed to get current commit for branch %s: %w", localBranch, err)
+					}
+					currentCommit := strings.TrimSpace(string(res))
+
+					// check if fast-forward possible
+					cmd := exec.Command("git", "merge-base", "--is-ancestor", currentCommit, targetCommit)
+					if err := cmd.Run(); err != nil {
+						return fmt.Errorf("fast-forward merge not possible, specify --rebase, --ff-only, --ff, or --no-ff; or use git config")
+					}
+
+					// do fast-forward
+					log("fast-forwarding to %s...\n", color.CyanString(targetCommit))
+					mergeCmd := exec.Command("git", "merge", "--ff-only", targetCommit)
+					mergeCmd.Stderr = os.Stderr
+					mergeCmd.Stdout = os.Stdout
+					if err := mergeCmd.Run(); err != nil {
+						return fmt.Errorf("fast-forward failed: %w", err)
 					}
 				}
 
@@ -849,39 +942,43 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 
 	// delete all nip34/grasp/ remotes
 	remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for _, remote := range remotes {
+	for i, remote := range remotes {
 		remote = strings.TrimSpace(remote)
+		remotes[i] = remote
+
 		if strings.HasPrefix(remote, "nip34/grasp/") {
-			delCmd := exec.Command("git", "remote", "remove", remote)
-			if dir != "" {
-				delCmd.Dir = dir
-			}
-			if err := delCmd.Run(); err != nil {
-				logverbose("failed to remove remote %s: %v\n", remote, err)
+			if !slices.Contains(repo.Relays, nostr.NormalizeURL(remote[12:])) {
+				delCmd := exec.Command("git", "remote", "remove", remote)
+				if dir != "" {
+					delCmd.Dir = dir
+				}
+				if err := delCmd.Run(); err != nil {
+					logverbose("failed to remove remote %s: %v\n", remote, err)
+				}
 			}
 		}
 	}
 
 	// create new remotes for each grasp server
 	for _, relay := range repo.Relays {
-		relayURL := nostr.NormalizeURL(relay)
-		remoteName := "nip34/grasp/" + strings.TrimPrefix(relayURL, "wss://")
-		remoteName = strings.TrimPrefix(remoteName, "ws://")
+		remote := "nip34/grasp/" + strings.TrimPrefix(relay, "wss://")
 
-		// construct the git URL
-		gitURL := fmt.Sprintf("http%s/%s/%s.git",
-			relayURL[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
+		if !slices.Contains(remotes, remote) {
+			// construct the git URL
+			gitURL := fmt.Sprintf("http%s/%s/%s.git",
+				relay[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
 
-		addCmd := exec.Command("git", "remote", "add", remoteName, gitURL)
-		if dir != "" {
-			addCmd.Dir = dir
-		}
-		if out, err := addCmd.Output(); err != nil {
-			var stderr string
-			if exiterr, ok := err.(*exec.ExitError); ok {
-				stderr = string(exiterr.Stderr)
+			addCmd := exec.Command("git", "remote", "add", remote, gitURL)
+			if dir != "" {
+				addCmd.Dir = dir
 			}
-			logverbose("failed to add remote %s: %s %s\n", remoteName, stderr, string(out))
+			if out, err := addCmd.Output(); err != nil {
+				var stderr string
+				if exiterr, ok := err.(*exec.ExitError); ok {
+					stderr = string(exiterr.Stderr)
+				}
+				logverbose("failed to add remote %s: %s %s\n", remote, stderr, string(out))
+			}
 		}
 	}
 }
