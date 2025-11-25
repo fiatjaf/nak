@@ -302,7 +302,7 @@ aside from those, there is also:
 				fetchFromRemotes(ctx, targetDir, repo)
 
 				// if we have a state with a HEAD, try to reset to it
-				if state.Event.ID != nostr.ZeroID && state.HEAD != "" {
+				if state != nil && state.HEAD != "" {
 					if headCommit, ok := state.Branches[state.HEAD]; ok {
 						// check if we have that commit
 						checkCmd := exec.Command("git", "cat-file", "-e", headCommit)
@@ -703,7 +703,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 
 	// fetch repository announcement and state from relays
 	repo, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
-	if err != nil {
+	if err != nil && repo.Event.ID == nostr.ZeroID {
 		log("couldn't fetch repository metadata (%s), will publish now\n", err)
 		// create a local repository object from config and publish it
 		localRepo := localConfig.ToRepository()
@@ -735,6 +735,15 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
 		}
 	} else {
+		if err != nil {
+			if _, ok := err.(StateErr); ok {
+				// some error with the state, just do nothing and proceed
+			} else {
+				// actually fail with this error we don't know about
+				return repo, nil, err
+			}
+		}
+
 		// check if local config differs from remote announcement
 		// construct local repo from config for comparison
 		localRepo := localConfig.ToRepository()
@@ -955,7 +964,7 @@ func fetchRepositoryAndState(
 	}
 
 	// fetch repository state (30618)
-	var stateErr error
+	var stateErr *StateErr
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30618},
 		Authors: []nostr.PubKey{pubkey},
@@ -966,18 +975,18 @@ func fetchRepositoryAndState(
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
 		if state == nil || ie.Event.CreatedAt > state.CreatedAt {
 			state_ := nip34.ParseRepositoryState(ie.Event)
-			state = &state_
 
-			if state.HEAD == "" {
-				stateErr = fmt.Errorf("state is missing HEAD")
+			if state_.HEAD == "" {
+				stateErr = &StateErr{"state is missing HEAD"}
 				continue
 			}
-			if _, ok := state.Branches[state.HEAD]; !ok {
-				stateErr = fmt.Errorf("state is missing commit for HEAD branch '%s'", state.HEAD)
+			if _, ok := state_.Branches[state_.HEAD]; !ok {
+				stateErr = &StateErr{fmt.Sprintf("state is missing commit for HEAD branch '%s'", state_.HEAD)}
 				continue
 			}
 
 			stateErr = nil
+			state = &state_
 		}
 	}
 	if stateErr != nil {
@@ -986,6 +995,10 @@ func fetchRepositoryAndState(
 
 	return repo, state, nil
 }
+
+type StateErr struct{ string }
+
+func (s StateErr) Error() string { return string(s.string) }
 
 func findGitRoot(startDir string) string {
 	if startDir == "" {
