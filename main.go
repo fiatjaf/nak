@@ -49,6 +49,7 @@ var app = &cli.Command{
 		fsCmd,
 		publish,
 		git,
+		nip,
 	},
 	Version: version,
 	Flags: []cli.Flag{
