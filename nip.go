@@ -27,8 +27,9 @@ example:
 			Name:  "list",
 			Usage: "list all NIPs",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return iterateNips(func(nip, desc, link string) {
+				return iterateNips(func(nip, desc, link string) bool {
 					stdout(nip + ": " + desc)
+					return true
 				})
 			},
 		},
@@ -54,11 +55,13 @@ example:
 				reqNum = normalize(reqNum)
 
 				foundLink := ""
-				err := iterateNips(func(nip, desc, link string) {
+				err := iterateNips(func(nip, desc, link string) bool {
 					nipNum := normalize(nip)
 					if nipNum == reqNum {
 						foundLink = link
+						return false
 					}
+					return true
 				})
 
 				if err != nil {
@@ -105,13 +108,15 @@ example:
 		reqNum = normalize(reqNum)
 
 		found := false
-		err := iterateNips(func(nip, desc, link string) {
+		err := iterateNips(func(nip, desc, link string) bool {
 			nipNum := normalize(nip)
 
 			if nipNum == reqNum {
 				stdout(strings.TrimSpace(desc))
 				found = true
+				return false
 			}
+			return true
 		})
 
 		if err != nil {
@@ -125,7 +130,7 @@ example:
 	},
 }
 
-func iterateNips(cb func(nip, desc, link string)) error {
+func iterateNips(yield func(nip, desc, link string) bool) error {
 	resp, err := http.Get("https://raw.githubusercontent.com/nostr-protocol/nips/master/README.md")
 	if err != nil {
 		return fmt.Errorf("failed to fetch NIPs README: %w", err)
@@ -136,10 +141,15 @@ func iterateNips(cb func(nip, desc, link string)) error {
 	if err != nil {
 		return fmt.Errorf("failed to read NIPs README: %w", err)
 	}
+	bodyStr := string(body)
+	epoch := strings.Index(bodyStr, "## List")
 
-	lines := strings.SplitSeq(string(body), "\n")
+	lines := strings.SplitSeq(bodyStr[epoch+8:], "\n")
 	for line := range lines {
 		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "##") {
+			break
+		}
 		if !strings.HasPrefix(line, "- [NIP-") {
 			continue
 		}
@@ -168,7 +178,9 @@ func iterateNips(cb func(nip, desc, link string)) error {
 			link = rest[linkStart+1 : linkEnd]
 		}
 
-		cb(nipPart, strings.TrimSpace(descPart), link)
+		if !yield(nipPart, strings.TrimSpace(descPart), link) {
+			break
+		}
 	}
 	return nil
 }
