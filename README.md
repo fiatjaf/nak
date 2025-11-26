@@ -188,7 +188,6 @@ you can also display a QR code for the bunker URI by adding the `--qrcode` flag:
 ~> nak bunker --persist --sec ncryptsec1... relay.nsec.app nos.lol
 ```
 
-```shell
 then later just
 
 ```shell
