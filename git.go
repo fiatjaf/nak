@@ -93,6 +93,9 @@ aside from those, there is also:
 					}
 				}
 
+				var defaultOwner string
+				var defaultIdentifier string
+
 				// check if nip34.json already exists
 				existingConfig, err := readNip34ConfigFile("")
 				if err == nil {
@@ -100,22 +103,36 @@ aside from those, there is also:
 					if !c.Bool("force") && !c.Bool("interactive") {
 						return fmt.Errorf("nip34.json already exists, use --force to overwrite or --interactive to update")
 					}
+
+					defaultIdentifier = existingConfig.Identifier
+					defaultOwner = existingConfig.Owner
+				} else {
+					// extract info from nostr:// git remotes (this is just for migrating from ngit)
+					if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
+						remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
+						for _, remote := range remotes {
+							if strings.Contains(remote, "nostr://") {
+								parts := strings.Fields(remote)
+								if len(parts) >= 2 {
+									nostrURL := parts[1]
+									// parse nostr://npub.../relay_hostname/identifier
+									if remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
+										defaultIdentifier = remoteIdentifier
+										defaultOwner = nip19.EncodeNpub(remoteOwner)
+									}
+								}
+							}
+						}
+					}
 				}
 
 				// get repository base directory name for defaults
-				cwd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("failed to get current directory: %w", err)
-				}
-				baseName := filepath.Base(cwd)
-
-				// get earliest unique commit
-				var earliestCommit string
-				if output, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output(); err == nil {
-					earliest := strings.Split(strings.TrimSpace(string(output)), "\n")
-					if len(earliest) > 0 {
-						earliestCommit = earliest[0]
+				if defaultIdentifier == "" {
+					cwd, err := os.Getwd()
+					if err != nil {
+						return fmt.Errorf("failed to get current directory: %w", err)
 					}
+					defaultIdentifier = filepath.Base(cwd)
 				}
 
 				// prompt for identifier first
@@ -123,15 +140,14 @@ aside from those, there is also:
 				if c.String("identifier") != "" {
 					identifier = c.String("identifier")
 				} else if c.Bool("interactive") {
-					identifierPrompt := &survey.Input{
+					if err := survey.AskOne(&survey.Input{
 						Message: "identifier",
-						Default: baseName,
-					}
-					if err := survey.AskOne(identifierPrompt, &identifier); err != nil {
+						Default: defaultIdentifier,
+					}, &identifier); err != nil {
 						return err
 					}
 				} else {
-					identifier = baseName
+					identifier = defaultIdentifier
 				}
 
 				// prompt for owner pubkey
@@ -145,10 +161,10 @@ aside from those, there is also:
 					ownerStr = nip19.EncodeNpub(owner)
 				} else if c.Bool("interactive") {
 					for {
-						ownerPrompt := &survey.Input{
+						if err := survey.AskOne(&survey.Input{
 							Message: "owner (npub or hex)",
-						}
-						if err := survey.AskOne(ownerPrompt, &ownerStr); err != nil {
+							Default: defaultOwner,
+						}, &ownerStr); err != nil {
 							return err
 						}
 						owner, err = parsePubKey(ownerStr)
@@ -162,36 +178,40 @@ aside from those, there is also:
 				}
 
 				// try to fetch existing repository announcement (kind 30617)
-				log("  searching for existing events... ")
-				repo, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
 				var fetchedRepo *nip34.Repository
-				if err == nil && repo.Event.ID != nostr.ZeroID {
-					fetchedRepo = &repo
-					log("found one from %s.\n", repo.Event.CreatedAt.Time().Format(time.DateOnly))
-				} else {
-					log("none found.\n")
+				if existingConfig.Identifier == "" {
+					log("  searching for existing events... ")
+					repo, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
+					if err == nil && repo.Event.ID != nostr.ZeroID {
+						fetchedRepo = &repo
+						log("found one from %s.\n", repo.Event.CreatedAt.Time().Format(time.DateOnly))
+					} else {
+						log("none found.\n")
+					}
 				}
 
-				// extract clone URLs from nostr:// git remotes
-				// (this is just for migrating from ngit)
-				var defaultCloneURLs []string
-				if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
-					remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-					for _, remote := range remotes {
-						if strings.Contains(remote, "nostr://") {
-							parts := strings.Fields(remote)
-							if len(parts) >= 2 {
-								nostrURL := parts[1]
-								// parse nostr://npub.../relay_hostname/identifier
-								if remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
-									relayURL := relays[0]
-									// convert to https://relay_hostname/npub.../identifier.git
-									cloneURL := fmt.Sprintf("http%s/%s/%s.git",
-										relayURL[2:], nip19.EncodeNpub(remoteOwner), remoteIdentifier)
-									defaultCloneURLs = appendUnique(defaultCloneURLs, cloneURL)
-								}
-							}
-						}
+				// set config with fetched values or defaults
+				var config Nip34Config
+				if fetchedRepo != nil {
+					config = RepositoryToConfig(*fetchedRepo)
+				} else if existingConfig.Identifier != "" {
+					config = existingConfig
+				} else {
+					// get earliest unique commit
+					var earliestCommit string
+					if output, err := exec.Command("git", "rev-list", "--max-parents=0", "HEAD").Output(); err == nil {
+						earliestCommit = strings.TrimSpace(string(output))
+					}
+
+					config = Nip34Config{
+						Identifier:           identifier,
+						Owner:                ownerStr,
+						Name:                 identifier,
+						Description:          "",
+						Web:                  []string{},
+						GraspServers:         []string{"gitnostr.com", "relay.ngit.dev"},
+						EarliestUniqueCommit: earliestCommit,
+						Maintainers:          []string{},
 					}
 				}
 
@@ -216,23 +236,6 @@ aside from those, there is also:
 					return defaultVals
 				}
 
-				// set config with fetched values or defaults
-				var config Nip34Config
-				if fetchedRepo != nil {
-					config = RepositoryToConfig(*fetchedRepo)
-				} else {
-					config = Nip34Config{
-						Identifier:           identifier,
-						Owner:                ownerStr,
-						Name:                 baseName,
-						Description:          "",
-						Web:                  []string{},
-						GraspServers:         []string{"gitnostr.com", "relay.ngit.dev"},
-						EarliestUniqueCommit: earliestCommit,
-						Maintainers:          []string{},
-					}
-				}
-
 				// override with flags and existing config
 				config.Identifier = getValue(existingConfig.Identifier, c.String("identifier"), config.Identifier)
 				config.Name = getValue(existingConfig.Name, c.String("name"), config.Name)
@@ -245,20 +248,18 @@ aside from those, there is also:
 
 				if c.Bool("interactive") {
 					// prompt for name
-					namePrompt := &survey.Input{
+					if err := survey.AskOne(&survey.Input{
 						Message: "name",
 						Default: config.Name,
-					}
-					if err := survey.AskOne(namePrompt, &config.Name); err != nil {
+					}, &config.Name); err != nil {
 						return err
 					}
 
 					// prompt for description
-					descPrompt := &survey.Input{
+					if err := survey.AskOne(&survey.Input{
 						Message: "description",
 						Default: config.Description,
-					}
-					if err := survey.AskOne(descPrompt, &config.Description); err != nil {
+					}, &config.Description); err != nil {
 						return err
 					}
 
@@ -287,6 +288,14 @@ aside from those, there is also:
 						return err
 					}
 					config.Web = webURLs
+
+					// prompt for earliest unique commit
+					if err := survey.AskOne(&survey.Input{
+						Message: "earliest unique commit",
+						Default: config.EarliestUniqueCommit,
+					}, &config.EarliestUniqueCommit); err != nil {
+						return err
+					}
 
 					// Prompt for maintainers
 					maintainers, err := promptForStringList("maintainers", config.Maintainers, []string{}, nil, func(s string) bool {
@@ -537,8 +546,7 @@ aside from those, there is also:
 				pushSuccesses := 0
 				for _, relay := range repo.Relays {
 					relayURL := nostr.NormalizeURL(relay)
-					remoteName := "nip34/grasp/" + graspServerHost(relayURL)
-					remoteName = strings.TrimPrefix(remoteName, "ws://")
+					remoteName := gitRemoteName(relayURL)
 
 					log("pushing to %s...\n", color.CyanString(remoteName))
 					pushArgs := []string{"push", remoteName, fmt.Sprintf("%s:refs/heads/%s", localBranch, remoteBranch)}
@@ -731,16 +739,16 @@ aside from those, there is also:
 
 func promptForStringList(
 	name string,
-	existing []string,
 	defaults []string,
+	alternatives []string,
 	normalize func(string) string,
 	validate func(string) bool,
 ) ([]string, error) {
-	options := make([]string, 0, len(defaults)+len(existing)+1)
+	options := make([]string, 0, len(defaults)+len(alternatives)+1)
 	options = append(options, defaults...)
 
 	// add existing not in options
-	for _, item := range existing {
+	for _, item := range alternatives {
 		if !slices.Contains(options, item) {
 			options = append(options, item)
 		}
@@ -748,34 +756,28 @@ func promptForStringList(
 
 	options = append(options, "add another")
 
-	selected := make([]string, len(existing))
-	copy(selected, existing)
+	selected := make([]string, len(defaults))
+	copy(selected, defaults)
 
 	for {
-		prompt := &survey.MultiSelect{
+		newSelected := []string{}
+		if err := survey.AskOne(&survey.MultiSelect{
 			Message:  name,
 			Options:  options,
 			Default:  selected,
 			PageSize: 20,
-		}
-
-		if err := survey.AskOne(prompt, &selected); err != nil {
+		}, &newSelected); err != nil {
 			return nil, err
 		}
+		selected = newSelected
 
 		if slices.Contains(selected, "add another") {
 			selected = slices.DeleteFunc(selected, func(s string) bool { return s == "add another" })
 
-			singular := name
-			if strings.HasSuffix(singular, "s") {
-				singular = singular[:len(singular)-1]
-			}
-
-			newPrompt := &survey.Input{
-				Message: fmt.Sprintf("enter new %s", singular),
-			}
 			var newItem string
-			if err := survey.AskOne(newPrompt, &newItem); err != nil {
+			if err := survey.AskOne(&survey.Input{
+				Message: fmt.Sprintf("enter new %s", strings.TrimSuffix(name, "s")),
+			}, &newItem); err != nil {
 				return nil, err
 			}
 
@@ -938,7 +940,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 func fetchFromRemotes(ctx context.Context, targetDir string, repo nip34.Repository) {
 	// fetch from each grasp remote
 	for _, grasp := range repo.Relays {
-		remoteName := "nip34/grasp/" + strings.Split(grasp, "/")[2]
+		remoteName := gitRemoteName(grasp)
 
 		logverbose("fetching from %s...\n", remoteName)
 		fetchCmd := exec.Command("git", "fetch", remoteName)
@@ -964,14 +966,16 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 		return
 	}
 
-	// delete all nip34/grasp/ remotes
+	// delete all nip34/grasp/ remotes that we don't have anymore in repo
 	remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
 	for i, remote := range remotes {
 		remote = strings.TrimSpace(remote)
 		remotes[i] = remote
 
 		if strings.HasPrefix(remote, "nip34/grasp/") {
-			if !slices.Contains(repo.Relays, nostr.NormalizeURL(remote[12:])) {
+			graspURL := rebuildGraspURLFromRemote(remote)
+
+			if !slices.Contains(repo.Relays, nostr.NormalizeURL(graspURL)) {
 				delCmd := exec.Command("git", "remote", "remove", remote)
 				if dir != "" {
 					delCmd.Dir = dir
@@ -985,7 +989,7 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 
 	// create new remotes for each grasp server
 	for _, relay := range repo.Relays {
-		remote := "nip34/grasp/" + strings.TrimPrefix(relay, "wss://")
+		remote := gitRemoteName(relay)
 
 		if !slices.Contains(remotes, remote) {
 			// construct the git URL
@@ -1391,8 +1395,6 @@ func figureOutBranches(c *cli.Command, refspec string, isPush bool) (
 	return localBranch, remoteBranch, nil
 }
 
-func graspServerHost(s string) string { return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2] }
-
 type Nip34Config struct {
 	Identifier           string   `json:"identifier"`
 	Name                 string   `json:"name"`
@@ -1473,4 +1475,19 @@ func (localConfig Nip34Config) ToRepository() nip34.Repository {
 	}
 
 	return localRepo
+}
+
+func gitRemoteName(graspURL string) string {
+	host := graspServerHost(graspURL)
+	host = strings.Replace(host, ":", "__", 1)
+	return "nip34/grasp/" + host
+}
+
+func rebuildGraspURLFromRemote(remoteName string) string {
+	host := strings.TrimPrefix(remoteName, "nip34/grasp/")
+	return strings.Replace(host, "__", ":", 1)
+}
+
+func graspServerHost(s string) string {
+	return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2]
 }
