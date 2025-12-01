@@ -181,7 +181,7 @@ aside from those, there is also:
 				var fetchedRepo *nip34.Repository
 				if existingConfig.Identifier == "" {
 					log("  searching for existing events... ")
-					repo, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
+					repo, _, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
 					if err == nil && repo.Event.ID != nostr.ZeroID {
 						fetchedRepo = &repo
 						log("found one from %s.\n", repo.Event.CreatedAt.Time().Format(time.DateOnly))
@@ -367,7 +367,7 @@ aside from those, there is also:
 				}
 
 				// fetch repository metadata and state
-				repo, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+				repo, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
 				if err != nil {
 					return err
 				}
@@ -555,6 +555,7 @@ aside from those, there is also:
 					}
 					pushCmd := exec.Command("git", pushArgs...)
 					pushCmd.Stderr = os.Stderr
+					pushCmd.Stdout = os.Stdout
 					if err := pushCmd.Run(); err != nil {
 						log("! failed to push to %s: %v\n", color.YellowString(remoteName), err)
 					} else {
@@ -821,9 +822,26 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 	}
 
 	// fetch repository announcement and state from relays
-	repo, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
-	if err != nil && repo.Event.ID == nostr.ZeroID {
-		log("couldn't fetch repository metadata (%s), will publish now\n", err)
+	repo, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+	notUpToDate := func(graspServer string) bool {
+		return !slices.Contains(upToDateRelays, nostr.NormalizeURL(graspServer))
+	}
+	if upToDateRelays == nil || slices.ContainsFunc(localConfig.GraspServers, notUpToDate) {
+		var relays []string
+		if upToDateRelays == nil {
+			// condition 1
+			relays = append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
+			log("couldn't fetch repository metadata (%s), will publish now\n", err)
+		} else {
+			// condition 2
+			relays = make([]string, 0, len(localConfig.GraspServers)-1)
+			for _, gs := range localConfig.GraspServers {
+				if notUpToDate(gs) {
+					relays = append(relays, graspServerHost(gs))
+				}
+			}
+			log("some grasp servers (%v) are not up-to-date, will publish to them\n", relays)
+		}
 		// create a local repository object from config and publish it
 		localRepo := localConfig.ToRepository()
 
@@ -840,7 +858,6 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 					return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 				}
 
-				relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
 				for res := range sys.Pool.PublishMany(ctx, relays, event) {
 					if res.Error != nil {
 						log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
@@ -975,38 +992,60 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 		if strings.HasPrefix(remote, "nip34/grasp/") {
 			graspURL := rebuildGraspURLFromRemote(remote)
 
+			getUrlCmd := exec.Command("git", "remote", "get-url", remote)
+			if dir != "" {
+				getUrlCmd.Dir = dir
+			}
+			if output, err := getUrlCmd.Output(); err != nil {
+				panic(fmt.Errorf("failed to read remote (%s) url from git: %s", remote, err))
+			} else {
+				// check if the remote url is correct so we can update it if not
+				gitURL := fmt.Sprintf("http%s/%s/%s.git", nostr.NormalizeURL(graspURL)[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
+				if strings.TrimSpace(string(output)) != gitURL {
+					goto delete
+				}
+			}
+
+			// check if this remote is not present in our grasp list anymore
 			if !slices.Contains(repo.Relays, nostr.NormalizeURL(graspURL)) {
-				delCmd := exec.Command("git", "remote", "remove", remote)
-				if dir != "" {
-					delCmd.Dir = dir
-				}
-				if err := delCmd.Run(); err != nil {
-					logverbose("failed to remove remote %s: %v\n", remote, err)
-				}
+				goto delete
+			}
+
+			continue
+
+		delete:
+			logverbose("deleting remote %s\n", remote)
+			delCmd := exec.Command("git", "remote", "remove", remote)
+			if dir != "" {
+				delCmd.Dir = dir
+			}
+			if err := delCmd.Run(); err != nil {
+				logverbose("failed to remove remote %s: %v\n", remote, err)
 			}
 		}
 	}
 
 	// create new remotes for each grasp server
+	remotes = strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, relay := range repo.Relays {
 		remote := gitRemoteName(relay)
+		gitURL := fmt.Sprintf("http%s/%s/%s.git", nostr.NormalizeURL(relay)[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
 
-		if !slices.Contains(remotes, remote) {
-			// construct the git URL
-			gitURL := fmt.Sprintf("http%s/%s/%s.git",
-				relay[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
+		if slices.Contains(remotes, remote) {
+			continue
+		}
 
-			addCmd := exec.Command("git", "remote", "add", remote, gitURL)
-			if dir != "" {
-				addCmd.Dir = dir
+		logverbose("adding new remote for '%s'\n", relay)
+		addCmd := exec.Command("git", "remote", "add", remote, gitURL)
+		if dir != "" {
+			addCmd.Dir = dir
+		}
+		if out, err := addCmd.Output(); err != nil {
+			var stderr string
+			if exiterr, ok := err.(*exec.ExitError); ok {
+				stderr = string(exiterr.Stderr)
 			}
-			if out, err := addCmd.Output(); err != nil {
-				var stderr string
-				if exiterr, ok := err.(*exec.ExitError); ok {
-					stderr = string(exiterr.Stderr)
-				}
-				logverbose("failed to add remote %s: %s %s\n", remote, stderr, string(out))
-			}
+			logverbose("failed to add remote %s: %s %s\n", remote, stderr, string(out))
 		}
 	}
 }
@@ -1069,7 +1108,7 @@ func fetchRepositoryAndState(
 	pubkey nostr.PubKey,
 	identifier string,
 	relayHints []string,
-) (repo nip34.Repository, state *nip34.RepositoryState, err error) {
+) (repo nip34.Repository, upToDateRelays []string, state *nip34.RepositoryState, err error) {
 	// fetch repository announcement (30617)
 	relays := appendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
@@ -1079,13 +1118,24 @@ func fetchRepositoryAndState(
 			"d": []string{identifier},
 		},
 		Limit: 2,
-	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+	}, nostr.SubscriptionOptions{
+		Label: "nak-git",
+		CheckDuplicate: func(id nostr.ID, relay string) bool {
+			return false
+		},
+	}) {
 		if ie.Event.CreatedAt > repo.CreatedAt {
 			repo = nip34.ParseRepository(ie.Event)
+
+			// reset this list as the previous was for relays with the older version
+			upToDateRelays = []string{ie.Relay.URL}
+		} else if ie.Event.CreatedAt == repo.CreatedAt {
+			// we discard this because it's the same, but this relay is up-to-date
+			upToDateRelays = append(upToDateRelays, ie.Relay.URL)
 		}
 	}
 	if repo.Event.ID == nostr.ZeroID {
-		return repo, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+		return repo, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
 	}
 
 	// fetch repository state (30618)
@@ -1115,10 +1165,10 @@ func fetchRepositoryAndState(
 		}
 	}
 	if stateErr != nil {
-		return repo, state, stateErr
+		return repo, upToDateRelays, state, stateErr
 	}
 
-	return repo, state, nil
+	return repo, upToDateRelays, state, nil
 }
 
 type StateErr struct{ string }
