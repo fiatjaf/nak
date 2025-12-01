@@ -50,6 +50,7 @@ var app = &cli.Command{
 		publish,
 		git,
 		nip,
+		syncCmd,
 	},
 	Version: version,
 	Flags: []cli.Flag{
