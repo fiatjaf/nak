@@ -42,6 +42,7 @@ var app = &cli.Command{
 		blossomCmd,
 		encrypt,
 		decrypt,
+		gift,
 		outbox,
 		wallet,
 		mcpServer,

@@ -17,7 +17,7 @@ var encrypt = &cli.Command{
 		defaultKeyFlags,
 		&PubKeyFlag{
 			Name:     "recipient-pubkey",
-			Aliases:  []string{"p", "tgt", "target", "pubkey"},
+			Aliases:  []string{"p", "tgt", "target", "pubkey", "to"},
 			Required: true,
 		},
 		&cli.BoolFlag{
@@ -79,7 +79,7 @@ var decrypt = &cli.Command{
 		defaultKeyFlags,
 		&PubKeyFlag{
 			Name:     "sender-pubkey",
-			Aliases:  []string{"p", "src", "source", "pubkey"},
+			Aliases:  []string{"p", "src", "source", "pubkey", "from"},
 			Required: true,
 		},
 		&cli.BoolFlag{
