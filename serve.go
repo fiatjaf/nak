@@ -51,6 +51,12 @@ var serve = &cli.Command{
 			Name:  "grasp",
 			Usage: "enable grasp server",
 		},
+		&cli.StringFlag{
+			Name:      "grasp-path",
+			Usage:     "where to store the repositories",
+			TakesFile: true,
+			Hidden:    true,
+		},
 		&cli.BoolFlag{
 			Name:  "blossom",
 			Usage: "enable blossom server",
@@ -135,10 +141,13 @@ var serve = &cli.Command{
 		}
 
 		if c.Bool("grasp") {
-			var err error
-			repoDir, err = os.MkdirTemp("", "nak-serve-grasp-repos-")
-			if err != nil {
-				return fmt.Errorf("failed to create grasp repos directory: %w", err)
+			repoDir = c.String("grasp-path")
+			if repoDir == "" {
+				var err error
+				repoDir, err = os.MkdirTemp("", "nak-serve-grasp-repos-")
+				if err != nil {
+					return fmt.Errorf("failed to create grasp repos directory: %w", err)
+				}
 			}
 			g := grasp.New(rl, repoDir)
 			g.OnRead = func(ctx context.Context, pubkey nostr.PubKey, repo string) (reject bool, reason string) {
