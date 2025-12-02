@@ -324,6 +324,21 @@ echo "#surely you're joking, mr npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn6
 ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blossom.primal.net upload | jq -rc '{content: .url}' | nak event -k 1222 --sec 'bunker://urlgoeshere' pyramid.fiatjaf.com nostr.wine
 ```
 
+### gift-wrap an event to a recipient and publish it somewhere
+```shell
+~> nak event -c 'secret message' | nak gift wrap --sec <my-secret-key> -p <recipient-public-key> | nak event wss://dmrelay.com
+```
+
+### download a gift-wrap event and unwrap it
+```shell
+~> nak req -p <my-public-key> -k 1059 relay.com | nak gift unwrap --sec <my-secret-key> --from <sender-public-key>
+```
+
+### sync events between two relays using negentropy
+```shell
+~> nak sync relay1.com relay2.com
+```
+
 ### from a file with events get only those that have kind 1111 and were created by a given pubkey
 ```shell
 ~> cat all.jsonl | nak filter -k 1111 -a 117673e191b10fe1aedf1736ee74de4cffd4c132ca701960b70a5abad5870faa > filtered.jsonl
