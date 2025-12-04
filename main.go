@@ -40,6 +40,7 @@ var app = &cli.Command{
 		bunker,
 		serve,
 		blossomCmd,
+		dekey,
 		encrypt,
 		decrypt,
 		gift,
