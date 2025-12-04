@@ -348,3 +348,10 @@ ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blos
 ```shell
 ~> nak req --ids-only -k 1111 -a npub1vyrx2prp0mne8pczrcvv38ahn5wahsl8hlceeu3f3aqyvmu8zh5s7kfy55 relay.damus.io
 ```
+
+### generate a new random key and print its associated public key at the same time
+```shell
+~> nak key generate | pee 'cat' 'nak key public'
+1a851afaa70a26faa82c5b4422ce967c07e278efc56a1413b9719b662f86551a
+8031621a54b2502f5bd4dbb87c971c0a69675d252a64d69e22224f3aee6dd2b2
+```
