@@ -308,9 +308,13 @@ example:
 						}
 					}
 
+				readevents:
 					for {
 						select {
-						case ie := <-results:
+						case ie, ok := <-results:
+							if !ok {
+								break readevents
+							}
 							stdout(ie.Event)
 						case closed := <-closeds:
 							if closed.HandledAuth {
@@ -318,6 +322,8 @@ example:
 							} else {
 								log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
 							}
+						case <-ctx.Done():
+							break readevents
 						}
 					}
 				}
