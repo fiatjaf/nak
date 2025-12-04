@@ -4,7 +4,7 @@ go 1.25
 
 require (
 	fiatjaf.com/lib v0.3.1
-	fiatjaf.com/nostr v0.0.0-20251201232830-91548fa0a157
+	fiatjaf.com/nostr v0.0.0-20251204122254-07061404918d
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6

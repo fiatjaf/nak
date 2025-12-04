@@ -227,6 +227,8 @@ example:
 					}
 				} else {
 					var results chan nostr.RelayEvent
+					var closeds chan nostr.RelayClosed
+
 					opts := nostr.SubscriptionOptions{
 						Label: "nak-req",
 					}
@@ -294,20 +296,29 @@ example:
 						errg.Wait()
 
 						if c.Bool("stream") {
-							results = sys.Pool.BatchedSubscribeMany(ctx, defs, opts)
+							results, closeds = sys.Pool.BatchedSubscribeManyNotifyClosed(ctx, defs, opts)
 						} else {
-							results = sys.Pool.BatchedQueryMany(ctx, defs, opts)
+							results, closeds = sys.Pool.BatchedQueryManyNotifyClosed(ctx, defs, opts)
 						}
 					} else {
 						if c.Bool("stream") {
-							results = sys.Pool.SubscribeMany(ctx, relayUrls, filter, opts)
+							results, closeds = sys.Pool.SubscribeManyNotifyClosed(ctx, relayUrls, filter, opts)
 						} else {
-							results = sys.Pool.FetchMany(ctx, relayUrls, filter, opts)
+							results, closeds = sys.Pool.FetchManyNotifyClosed(ctx, relayUrls, filter, opts)
 						}
 					}
 
-					for ie := range results {
-						stdout(ie.Event)
+					for {
+						select {
+						case ie := <-results:
+							stdout(ie.Event)
+						case closed := <-closeds:
+							if closed.HandledAuth {
+								logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+							} else {
+								log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+							}
+						}
 					}
 				}
 			} else {
