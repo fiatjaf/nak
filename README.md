@@ -92,7 +92,7 @@ ok.
 {"kind":1,"id":"0000000a5109c9747e3847282fcaef3d221d1be5e864ced7b2099d416a18d15a","pubkey":"7bdef7be22dd8e59f4600e044aa53a1cf975a9dc7d27df5833bc77db784a5805","created_at":1703869609,"tags":[["nonce","12912720851599460299","25"]],"content":"https://image.nostr.build/5eb40d3cae799bc572763b8f8bee95643344fa392d280efcb0fd28a935879e2a.png\n\nNostr is not dying.\nIt is just a physiological and healthy slowdown on the part of all those who have made this possible in such a short time, sharing extraordinary enthusiasm. This is necessary to regain a little energy, it will allow some things to be cleaned up and more focused goals to be set.\n\nIt is like the caterpillar that is about to become a butterfly, it has to stop moving, acting, doing all the time; it has to do one last silent work and rest, letting time go by. And then a new phase of life can begin.\n\nWe have an amazing 2024 ahead.\nThank you all, who have given so much and believe in Nostr.\n\nPS: an interesting cue suggested by this image, you cannot have both silk and butterfly, you have to choose: a precious and sophisticated ornament, or the living, colorful beauty of freedom.","sig":"16fe157fb13dba2474d510db5253edc409b465515371015a91b26b8f39e5aa873453bc366947c37463c49466f5fceb7dea0485432f979a03471c8f76b73e553c"}
 {"kind":1,"id":"ac0cc72dfee39f41d94568f574e7b613d3979facbd7b477a16b52eb763db4b6e","pubkey":"2250f69694c2a43929e77e5de0f6a61ae5e37a1ee6d6a3baef1706ed9901248b","created_at":1703873865,"tags":[["r","https://zine.wavlake.com/2023-year-in-review/"]],"content":"It's been an incredible year for us here at Wavlake and we wanted to take a moment to look back and see how far we've come since launch. Read more.. https://zine.wavlake.com/2023-year-in-review/","sig":"189e354f67f48f3046fd762c83f9bf3a776d502d514e2839a1b459c30107a02453304ef695cdc7d254724041feec3800806b21eb76259df87144aaef821ace5b"}
 {"kind":1,"id":"6215766c5aadfaf51488134682f7d28f237218b5405da2fc11d1fefe1ebf8154","pubkey":"4ce6abbd68dab6e9fdf6e8e9912a8e12f9b539e078c634c55a9bff2994a514dd","created_at":1703879775,"tags":[["imeta","url https://video.nostr.build/7b4e7c326fa4fcba58a40914ce9db4f060bd917878f2194f6d139948b085ebb9.mp4","blurhash eHD,QG_4ogMu_3to%O-:MwM_IWRjx^-pIUoe-;t7%Nt7%gV?M{WBxu","dim 480x268"],["t","zaps"],["t","powakili23"],["p","4f82bced42584a6acfced2a657b5acabc4f90d75a95ed3ff888f3b04b8928630"],["p","ce75bae2349804caa5f4de8ae8f775bb558135f412441d9e32f88e4226c5d165"],["p","94bd495b78f8f6e5aff8ebc90e052d3a409d1f9d82e43ab56ca2cafb81b18ddf"],["p","50ff5b7ebeac1cc0d03dc878be8a59f1b63d45a7d5e60ade4b6f6f31eca25954"],["p","f300cf2bdf9808ed229dfa468260753a0b179935bdb87612b6d4f5b9fe3fc7cf"],["r","https://geyser.fund/entry/2636"],["r","https://video.nostr.build/7b4e7c326fa4fcba58a40914ce9db4f060bd917878f2194f6d139948b085ebb9.mp4"]],"content":"POWA - HQ UPDATE - DEC 2023\nTLDR: plan to open January 2024, 1 million Sats to go to reach milestone. #zaps go to fund this project. ⚡️powa@geyser.fund\n\nHello,\n\nFirst and foremost, I’d like to thank you for the incredible support shown for this project. It’s been an absolute honor to oversee this Proof of Work initiative.\n\nI am thrilled to announce that we are right on track for the grand opening in January 2024.\n\nCurrently, we're just over 1 million Sats away from reaching our target for this phase.\n\nPlease take a moment to enjoy the video and stay tuned for further updates about POWA. \n\nMan Like Who?\nMan Like Kweks!\n🇹🇿⚡️💜🏔️\n#powakili23\nnostr:npub1f7ptem2ztp9x4n7w62n90ddv40z0jrt4490d8lug3uasfwyjsccqkknerm nostr:npub1ee6m4c35nqzv4f05m69w3am4hd2czd05zfzpm83jlz8yyfk969js78tfcv nostr:npub1jj75jkmclrmwttlca0ysupfd8fqf68uastjr4dtv5t90hqd33h0s4gcksp nostr:npub12rl4kl474swvp5paeputazje7xmr63d86hnq4hjtdahnrm9zt92qgq500s nostr:npub17vqv727lnqyw6g5alfrgycr48g930xf4hku8vy4k6n6mnl3lcl8sglecc5 \n\nhttps://geyser.fund/entry/2636 https://video.nostr.build/7b4e7c326fa4fcba58a40914ce9db4f060bd917878f2194f6d139948b085ebb9.mp4 ","sig":"97d13c17d91c319f343cc770222d6d4a0a714d0e7e4ef43373adaf215a4c077f0bdf12bac488c74dbd4d55718d46c17a617b93c8660736b70bcd61a8820ece67"}
-...
+# and so on...
 ```
 
 ### sign an event collaboratively with multiple parties using musig2
@@ -422,6 +422,18 @@ gitnostr.com... ok.
 ```shell
 ~> nak req --ids-only -k 1111 -a npub1vyrx2prp0mne8pczrcvv38ahn5wahsl8hlceeu3f3aqyvmu8zh5s7kfy55 relay.damus.io
 ```
+
+### manage nip34/grasp git repositories
+```shell
+~> nak git clone
+~> nak git init
+~> nak git sync
+~> nak git fetch
+~> nak git pull
+~> nak git push
+```
+
+[demo screencast](https://njump.me/nevent1qvzqqqqqqypzqwlsccluhy6xxsr6l9a9uhhxf75g85g8a709tprjcn4e42h053vaqqswfth72qet7p4tdgvd92wpq4zcerseu3ecwqkac622xad5wqln6jsta5zpv).
 
 ### generate a new random key and print its associated public key at the same time
 ```shell
