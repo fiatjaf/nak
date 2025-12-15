@@ -53,6 +53,7 @@ var app = &cli.Command{
 		git,
 		nip,
 		syncCmd,
+		kanban,
 	},
 	Version: version,
 	Flags: []cli.Flag{
@@ -118,7 +119,7 @@ var app = &cli.Command{
 func init() {
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:  "version",
-		Usage: "prints the version",
+		Usage: "prints version",
 	}
 }
 

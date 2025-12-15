@@ -197,7 +197,7 @@ var mcpServer = &cli.Command{
 		})
 
 		s.AddTool(mcp.NewTool("read_events_from_relay",
-			mcp.WithDescription("Makes a REQ query to one relay using the specified parameters, this can be used to fetch notes from a profile"),
+			mcp.WithDescription("Makes a REQ query to one relay using specified parameters, this can be used to fetch notes from a profile"),
 			mcp.WithString("relay", mcp.Description("relay URL to send the query to"), mcp.Required()),
 			mcp.WithNumber("kind", mcp.Description("event kind number to include in the 'kinds' field"), mcp.Required()),
 			mcp.WithNumber("limit", mcp.Description("maximum number of events to query"), mcp.Required()),
@@ -236,6 +236,60 @@ var mcpServer = &cli.Command{
 			}
 
 			return mcp.NewToolResultText(result.String()), nil
+		})
+
+		// Kanban tools
+		s.AddTool(mcp.NewTool("create_kanban_board",
+			mcp.WithDescription("Create a new kanban board"),
+			mcp.WithString("title", mcp.Description("Board title"), mcp.Required()),
+			mcp.WithString("description", mcp.Description("Board description")),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to publish to (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return createBoardMCP(ctx, keyer, r)
+		})
+
+		s.AddTool(mcp.NewTool("create_kanban_card",
+			mcp.WithDescription("Create a new kanban card"),
+			mcp.WithString("title", mcp.Description("Card title"), mcp.Required()),
+			mcp.WithString("description", mcp.Description("Card description")),
+			mcp.WithString("board_id", mcp.Description("Board identifier"), mcp.Required()),
+			mcp.WithString("board_pubkey", mcp.Description("Board owner public key"), mcp.Required()),
+			mcp.WithString("column", mcp.Description("Column name"), mcp.Required()),
+			mcp.WithString("priority", mcp.Description("Card priority (low, medium, high)")),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to publish to (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return createCardMCP(ctx, keyer, r)
+		})
+
+		s.AddTool(mcp.NewTool("move_kanban_card",
+			mcp.WithDescription("Move a card to a different column"),
+			mcp.WithString("card_title", mcp.Description("Card title to search for"), mcp.Required()),
+			mcp.WithString("new_column", mcp.Description("Target column name"), mcp.Required()),
+			mcp.WithString("board_id", mcp.Description("Board identifier"), mcp.Required()),
+			mcp.WithString("board_pubkey", mcp.Description("Board owner public key"), mcp.Required()),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to publish to (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return moveCardMCP(ctx, keyer, r)
+		})
+
+		s.AddTool(mcp.NewTool("list_kanban_cards",
+			mcp.WithDescription("List cards on a board"),
+			mcp.WithString("board_id", mcp.Description("Board identifier"), mcp.Required()),
+			mcp.WithString("board_pubkey", mcp.Description("Board owner public key"), mcp.Required()),
+			mcp.WithString("column", mcp.Description("Filter by column")),
+			mcp.WithNumber("limit", mcp.Description("Maximum number of cards to return")),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to query (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return listCardsMCP(ctx, keyer, r)
+		})
+
+		s.AddTool(mcp.NewTool("get_kanban_board_info",
+			mcp.WithDescription("Get board information and columns"),
+			mcp.WithString("board_id", mcp.Description("Board identifier"), mcp.Required()),
+			mcp.WithString("board_pubkey", mcp.Description("Board owner public key"), mcp.Required()),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to query (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return getBoardInfoMCP(ctx, keyer, r)
 		})
 
 		return server.ServeStdio(s)
