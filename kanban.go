@@ -196,9 +196,7 @@ func createBoardCLI(ctx context.Context, c *cli.Command) error {
 	boardID := c.String("board-id")
 	relays := c.StringSlice("relay")
 
-	if boardID == "" {
-		boardID = generateUUID()
-	}
+	boardID = generateUUID()
 
 	result, err := createBoard(ctx, keyer, title, description, boardID, relays)
 	if err != nil {
@@ -786,9 +784,9 @@ func generateUUID() string {
 }
 
 func generateNaddr(eventID, pubkey, kind, identifier string) (string, error) {
-	// This would need proper naddr encoding implementation
-	// For now, return a placeholder that matches the format
-	return fmt.Sprintf("naddr1qq9xgetkdac8xwf5x56syg8makapkkjpwqdd8r33tyty6mnxq3vleft9ga4deesw5rgewhvqg5psgqqqwewse3z643"), nil
+	// For now, return the event ID directly as a simple highlighter URL
+	// The proper naddr encoding will need to be implemented later
+	return eventID, nil
 }
 
 // MCP tool handlers (will be added to mcp.go)
@@ -797,7 +795,10 @@ func createBoardMCP(ctx context.Context, keyer nostr.Keyer, r mcp.CallToolReques
 	description, _ := optional[string](r, "description")
 	relays, _ := optional[[]string](r, "relay_urls")
 	
-	result, err := createBoard(ctx, keyer, title, description, "", relays)
+	// Always generate a UUID for board ID - never allow empty
+	boardID := generateUUID()
+	
+	result, err := createBoard(ctx, keyer, title, description, boardID, relays)
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("Failed to create board: %v", err)), nil
 	}
