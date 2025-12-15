@@ -738,7 +738,6 @@ aside from those, there is also:
 		{
 			Name:      "pr",
 			Usage:     "create a pull request (kind 1618)",
-			UsageText: "nak git pr <base-repo-id> <base-branch> <head-branch> <subject>",
 			Flags: append(defaultKeyFlags,
 				&cli.StringFlag{
 					Name:  "base",
@@ -767,18 +766,33 @@ aside from those, there is also:
 					Usage:   "force creation of pull request even if validation warnings exist",
 				},
 			),
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				base := c.String("base")
 				baseBranch := c.String("base-branch")
 				head := c.String("head")
 				subject := c.String("subject")
 				relay := c.String("relay")
-
+				// Try to auto-detect base repository from nip34.json if not provided
 				if base == "" {
-					if c.Args().Len() < 1 {
-						return fmt.Errorf("must specify base repository or provide it as argument")
+					// Check if we have a local nip34.json file
+					if localConfig, err := readNip34ConfigFile(""); err == nil && localConfig.Identifier != "" {
+						// Use local repository as base if no explicit base provided
+						// This creates PRs FROM this repository TO itself (for testing/internal PRs)
+						if c.Args().Len() >= 1 {
+							// If argument provided, use it as external target
+							base = c.Args().Get(0)
+						} else {
+							// No argument and no --base flag, create internal PR
+							base = ""
+						}
+					} else {
+						// No local config found, require base repository
+						if c.Args().Len() < 1 {
+							return fmt.Errorf("must specify base repository or provide it as argument")
+						}
+						base = c.Args().Get(0)
 					}
-					base = c.Args().Get(0)
 				}
 
 				if head == "" {
@@ -805,7 +819,6 @@ aside from those, there is also:
 		{
 			Name:      "pr-update",
 			Usage:     "update an existing pull request (kind 1619)",
-			UsageText: "nak git pr-update <pr-event-id> <new-head-branch> <subject>",
 			Flags: append(defaultKeyFlags,
 				&cli.StringFlag{
 					Name:  "pr-id",
@@ -1670,11 +1683,51 @@ func graspServerHost(s string) string {
 	return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2]
 }
 
-func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBranch, headBranch, subject, relayURL string) error {
-	// Parse base repository address
-	baseOwner, baseIdentifier, baseRelayHints, err := parseRepositoryAddress(ctx, baseRepoAddr)
+// getCurrentGitBranch returns the current git branch name
+func getCurrentGitBranch(path string) (string, error) {
+	cmd := exec.Command("git", "branch", "--show-current")
+	if path != "" {
+		cmd.Dir = path
+	}
+	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to parse base repository address: %w", err)
+		return "", fmt.Errorf("failed to get current git branch: %w", err)
+	}
+	
+	branch := strings.TrimSpace(string(output))
+	if branch == "" {
+		return "", fmt.Errorf("no current branch detected")
+	}
+	
+	return branch, nil
+}
+
+func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBranch, headBranch, subject, relayURL string) error {
+	// Read current repository config first
+	localConfig, err := readNip34ConfigFile("")
+	if err != nil {
+		return fmt.Errorf("failed to read local repository config: %w", err)
+	}
+
+	var baseOwner nostr.PubKey
+	var baseIdentifier string
+	var baseRelayHints []string
+
+	// If no base repository address provided, create internal PR (PR to same repository)
+	if baseRepoAddr == "" {
+		// Parse local owner for internal PR
+		baseOwner, err = parsePubKey(localConfig.Owner)
+		if err != nil {
+			return fmt.Errorf("failed to parse local owner pubkey: %w", err)
+		}
+		baseIdentifier = localConfig.Identifier
+		baseRelayHints = localConfig.GraspServers
+	} else {
+		// Parse external base repository address
+		baseOwner, baseIdentifier, baseRelayHints, err = parseRepositoryAddress(ctx, baseRepoAddr)
+		if err != nil {
+			return fmt.Errorf("failed to parse base repository address: %w", err)
+		}
 	}
 
 	// Get signer from command arguments
@@ -1692,11 +1745,6 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 		return fmt.Errorf("failed to get signer pubkey: %w", err)
 	}
 
-	// Read current repository config
-	localConfig, err := readNip34ConfigFile("")
-	if err != nil {
-		return fmt.Errorf("failed to read local repository config: %w", err)
-	}
 
 	// Get current commit for head branch
 	cmd := exec.Command("git", "rev-parse", headBranch)
