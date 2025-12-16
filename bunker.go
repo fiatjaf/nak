@@ -366,6 +366,7 @@ var bunker = &cli.Command{
 			handlerWg.Add(len(relayURLs))
 			for _, relayURL := range relayURLs {
 				go func(relayURL string) {
+					defer handlerWg.Done()
 					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
 						err := relay.Publish(ctx, eventResponse)
 						printLock.Lock()
@@ -375,7 +376,6 @@ var bunker = &cli.Command{
 							log("* failed to send response: %s\n", err)
 						}
 						printLock.Unlock()
-						handlerWg.Done()
 					}
 				}(relayURL)
 			}
