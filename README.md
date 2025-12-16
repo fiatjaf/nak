@@ -437,7 +437,7 @@ gitnostr.com... ok.
 
 ### generate a new random key and print its associated public key at the same time
 ```shell
-~> nak key generate | pee 'cat' 'nak key public'
+~> nak key generate | pee 'nak encode nsec' 'nak key public | nak encode npub'
 1a851afaa70a26faa82c5b4422ce967c07e278efc56a1413b9719b662f86551a
 8031621a54b2502f5bd4dbb87c971c0a69675d252a64d69e22224f3aee6dd2b2
 ```
