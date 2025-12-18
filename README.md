@@ -1,15 +1,15 @@
-# Nostr Project Board
+# thisisathing
 
-This repository is associated with the Nostr Project Board kanban board.
+This is a test repository to demonstrate Nostr git workflow functionality.
 
-## About
+## Description
 
-This project demonstrates integration between Nostr git repositories and kanban boards for task management.
+A simple repository created for testing purposes.
 
 ## Getting Started
 
-This repository uses NIP-34 for git operations on Nostr.
+This is just a placeholder repository for demonstration.
 
 ## License
 
-MIT License
+MIT
