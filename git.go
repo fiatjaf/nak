@@ -1,3 +1,4 @@
+//TODO kind 30618 or default
 package main
 
 import (
@@ -17,11 +18,15 @@ import (
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
+type EnhancedRepository struct {
+    nip34.Repository
+    DefaultBranch string `json:"default_branch,omitempty"`
+}
 
 var git = &cli.Command{
 	Name:  "git",
 	Usage: "git-related operations",
-	Description: `this implements versions of common git commands, like 'clone', 'fetch', 'pull' and 'push', but differently from the normal git commands these never take a remote name, the remote is assumed to what is defined by nip34 events and specified in the (automatically hidden) nip34.json file.
+	Description: `this implements versions of common git commands, like 'clone', 'fetch', 'pull' and 'push', but differently from normal git commands these never take a remote name, the remote is assumed to what is defined by nip34 events and specified in the (automatically hidden) nip34.json file.
 
 aside from those, there is also:
   - 'nak git init' for setting up nip34 repository metadata; and
@@ -212,6 +217,7 @@ aside from those, there is also:
 						GraspServers:         []string{"gitnostr.com", "relay.ngit.dev"},
 						EarliestUniqueCommit: earliestCommit,
 						Maintainers:          []string{},
+						DefaultBranch:        "",
 					}
 				}
 
@@ -1092,20 +1098,20 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 				}
 			}
 		}
+
+		// setup remotes
+		gitSetupRemotes(ctx, "", repo)
+
+		// fetch from each grasp remote
+		fetchFromRemotes(ctx, "", repo)
+
+		// update refs from state
+		if state != nil {
+			gitUpdateRefs(ctx, "", *state)
+		}
 	}
+		return repo, state, nil
 
-	// setup remotes
-	gitSetupRemotes(ctx, "", repo)
-
-	// fetch from each grasp remote
-	fetchFromRemotes(ctx, "", repo)
-
-	// update refs from state
-	if state != nil {
-		gitUpdateRefs(ctx, "", *state)
-	}
-
-	return repo, state, nil
 }
 
 func fetchFromRemotes(ctx context.Context, targetDir string, repo nip34.Repository) {
@@ -1199,7 +1205,7 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 			if exiterr, ok := err.(*exec.ExitError); ok {
 				stderr = string(exiterr.Stderr)
 			}
-			logverbose("failed to add remote %s: %s %s\n", remote, stderr, string(out))
+			logverbose("failed to add remote %s: %s\n", remote, stderr, string(out))
 		}
 	}
 }
@@ -1322,7 +1328,7 @@ func fetchRepositoryAndState(
 		return repo, upToDateRelays, state, stateErr
 	}
 
-	return repo, upToDateRelays, state, nil
+		return repo, upToDateRelays, state, nil
 }
 
 type StateErr struct{ string }
@@ -1525,8 +1531,7 @@ func parseRepositoryAddress(
 			}
 		}
 	}
-
-	return owner, identifier, relayHints, nil
+		return owner, identifier, relayHints, nil
 }
 
 func figureOutBranches(c *cli.Command, refspec string, isPush bool) (
@@ -1608,6 +1613,7 @@ type Nip34Config struct {
 	GraspServers         []string `json:"grasp-servers"`
 	EarliestUniqueCommit string   `json:"earliest-unique-commit"`
 	Maintainers          []string `json:"maintainers"`
+	DefaultBranch        string   `json:"default-branch"`
 }
 
 func RepositoryToConfig(repo nip34.Repository) Nip34Config {
@@ -1742,7 +1748,6 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 			return fmt.Errorf("failed to parse base repository address: %w", err)
 		}
 	}
-
 	// Get signer from command arguments
 	kr, _, err := gatherKeyerFromArguments(ctx, c)
 	if err != nil {
@@ -1782,7 +1787,7 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 		CreatedAt: nostr.Now(),
 		Content:   subject,
 		Tags: nostr.Tags{
-			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", baseOwner, baseIdentifier)},
+			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", baseOwner.Hex(), baseIdentifier)},
 			nostr.Tag{"c", headCommit},
 		},
 		PubKey: signerPubkey,
@@ -1817,7 +1822,7 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 		return fmt.Errorf("failed to sign PR event: %w", err)
 	}
 
-	// Push to refs/nostr/ before publishing the event (NIP-34 requirement)
+	// Push to refs/nostr/ before publishing to event (NIP-34 requirement)
 	refName := fmt.Sprintf("refs/nostr/%s", event.ID)
 	pushCmd := exec.Command("git", "update-ref", refName, headCommit)
 	if err := pushCmd.Run(); err != nil {
@@ -1828,9 +1833,11 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 	// Publish the PR event to relays
 	log("publishing pull request to relays...\n")
 	publishedCount := 0
+	eventJSON, err := json.Marshal(event)
 	for res := range sys.Pool.PublishMany(ctx, relays, event) {
 		if res.Error != nil {
 			log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+			log(string(eventJSON))
 		} else {
 			log("> published to %s\n", color.GreenString(res.RelayURL))
 			publishedCount++
@@ -1942,7 +1949,7 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 		return fmt.Errorf("failed to sign PR update event: %w", err)
 	}
 
-	// Push to refs/nostr/ before publishing the event (NIP-34 requirement)
+	// Push to refs/nostr/ before publishing to event (NIP-34 requirement)
 	refName := fmt.Sprintf("refs/nostr/%s", event.ID)
 	pushCmd := exec.Command("git", "update-ref", refName, headCommit)
 	if err := pushCmd.Run(); err != nil {
@@ -1950,7 +1957,7 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 		// Continue anyway as some servers may handle this differently
 	}
 
-	// Publish the PR update event to relays
+	// Publish PR update event to relays
 	log("publishing pull request update to relays...\n")
 	publishedCount := 0
 	for res := range sys.Pool.PublishMany(ctx, relays, event) {
@@ -1981,6 +1988,8 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 	log("Original PR ID: %s\n", prID)
 	log("New Head: %s/%s (branch: %s)\n", nip19.EncodeNpub(signerPubkey), localConfig.Identifier, headBranch)
 	log("Subject: %s\n", subject)
+
+	return nil
 
 	return nil
 }
