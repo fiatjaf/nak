@@ -736,144 +736,157 @@ aside from those, there is also:
 			},
 		},
 		{
-			Name:      "pr",
-			Usage:     "create a pull request (kind 1618)",
-			Flags: append(defaultKeyFlags,
-				&cli.StringFlag{
-					Name:  "base",
-					Usage: "base repository address (kind 30617 event id or nip19 identifier)",
+			Name:  "pr",
+			Usage: "manage pull requests (create, update, list)",
+			Flags: defaultKeyFlags,
+			Commands: []*cli.Command{
+				{
+					Name:      "create",
+					Usage:     "create a pull request (kind 1618)",
+					ArgsUsage: "[base-repo] [head-branch] [subject] [relay]",
+					Flags: append(defaultKeyFlags,
+						&cli.StringFlag{
+							Name:  "base",
+							Usage: "base repository address (kind 30617 event id or nip19 identifier)",
+						},
+						&cli.StringFlag{
+							Name:  "base-branch",
+							Usage: "base branch to merge into",
+							Value: "main",
+						},
+						&cli.StringFlag{
+							Name:  "head",
+							Usage: "head branch to merge from",
+						},
+						&cli.StringFlag{
+							Name:  "subject",
+							Usage: "pull request title/description",
+						},
+						&cli.StringFlag{
+							Name:  "relay",
+							Usage: "relay to publish PR to (will use configured relays if not specified)",
+						},
+						&cli.BoolFlag{
+							Name:    "force",
+							Aliases: []string{"f"},
+							Usage:   "force creation of pull request even if validation warnings exist",
+						},
+					),
+					Action: func(ctx context.Context, c *cli.Command) error {
+						base := c.String("base")
+						baseBranch := c.String("base-branch")
+						head := c.String("head")
+						subject := c.String("subject")
+						relay := c.String("relay")
+						
+						// Try to auto-detect base repository from nip34.json if not provided
+						if base == "" {
+							// Check if we have a local nip34.json file
+							if localConfig, err := readNip34ConfigFile(""); err == nil && localConfig.Identifier != "" {
+								// Use local repository as base if no explicit base provided
+								// This creates PRs FROM this repository TO itself (for testing/internal PRs)
+								if c.Args().Len() >= 1 {
+									// If argument provided, use it as external target
+									base = c.Args().Get(0)
+								} else {
+									// No argument and no --base flag, create internal PR
+									base = ""
+								}
+							} else {
+								// No local config found, require base repository
+								if c.Args().Len() < 1 {
+									return fmt.Errorf("must specify base repository or provide it as argument")
+								}
+								base = c.Args().Get(0)
+							}
+						}
+
+						if head == "" {
+							if c.Args().Len() < 2 {
+								return fmt.Errorf("must specify head branch or provide it as argument")
+							}
+							head = c.Args().Get(1)
+						}
+
+						if subject == "" {
+							if c.Args().Len() < 3 {
+								return fmt.Errorf("must specify PR subject or provide it as argument")
+							}
+							subject = c.Args().Get(2)
+						}
+
+						if c.Args().Len() > 3 {
+							relay = c.Args().Get(3)
+						}
+
+						return createPullRequest(ctx, c, base, baseBranch, head, subject, relay)
+					},
 				},
-				&cli.StringFlag{
-					Name:  "base-branch",
-					Usage: "base branch to merge into",
-					Value: "main",
+				{
+					Name:      "update",
+					Usage:     "update an existing pull request (kind 1619)",
+					ArgsUsage: "[pr-id] [head-branch] [subject] [relay]",
+					Flags: append(defaultKeyFlags,
+						&cli.StringFlag{
+							Name:  "pr-id",
+							Usage: "ID of the PR event to update",
+						},
+						&cli.StringFlag{
+							Name:  "head",
+							Usage: "new head branch with updated commits",
+						},
+						&cli.StringFlag{
+							Name:  "subject",
+							Usage: "updated PR title/description",
+						},
+						&cli.StringFlag{
+							Name:  "relay",
+							Usage: "relay to publish PR update to (will use configured relays if not specified)",
+						},
+						&cli.BoolFlag{
+							Name:    "force",
+							Aliases: []string{"f"},
+							Usage:   "force update of pull request even if validation warnings exist",
+						},
+					),
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prID := c.String("pr-id")
+						head := c.String("head")
+						subject := c.String("subject")
+						relay := c.String("relay")
+
+						if prID == "" {
+							if c.Args().Len() < 1 {
+								return fmt.Errorf("must specify PR event ID or provide it as argument")
+							}
+							prID = c.Args().Get(0)
+						}
+
+						if head == "" {
+							if c.Args().Len() < 2 {
+								return fmt.Errorf("must specify head branch or provide it as argument")
+							}
+							head = c.Args().Get(1)
+						}
+
+						if subject == "" {
+							if c.Args().Len() < 3 {
+								return fmt.Errorf("must specify PR subject or provide it as argument")
+							}
+							subject = c.Args().Get(2)
+						}
+
+						if c.Args().Len() > 3 {
+							relay = c.Args().Get(3)
+						}
+
+						return updatePullRequest(ctx, c, prID, head, subject, relay)
+					},
 				},
-				&cli.StringFlag{
-					Name:  "head",
-					Usage: "head branch to merge from",
-				},
-				&cli.StringFlag{
-					Name:  "subject",
-					Usage: "pull request title/description",
-				},
-				&cli.StringFlag{
-					Name:  "relay",
-					Usage: "relay to publish PR to (will use configured relays if not specified)",
-				},
-				&cli.BoolFlag{
-					Name:    "force",
-					Aliases: []string{"f"},
-					Usage:   "force creation of pull request even if validation warnings exist",
-				},
-			),
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				base := c.String("base")
-				baseBranch := c.String("base-branch")
-				head := c.String("head")
-				subject := c.String("subject")
-				relay := c.String("relay")
-				// Try to auto-detect base repository from nip34.json if not provided
-				if base == "" {
-					// Check if we have a local nip34.json file
-					if localConfig, err := readNip34ConfigFile(""); err == nil && localConfig.Identifier != "" {
-						// Use local repository as base if no explicit base provided
-						// This creates PRs FROM this repository TO itself (for testing/internal PRs)
-						if c.Args().Len() >= 1 {
-							// If argument provided, use it as external target
-							base = c.Args().Get(0)
-						} else {
-							// No argument and no --base flag, create internal PR
-							base = ""
-						}
-					} else {
-						// No local config found, require base repository
-						if c.Args().Len() < 1 {
-							return fmt.Errorf("must specify base repository or provide it as argument")
-						}
-						base = c.Args().Get(0)
-					}
-				}
-
-				if head == "" {
-					if c.Args().Len() < 2 {
-						return fmt.Errorf("must specify head branch or provide it as argument")
-					}
-					head = c.Args().Get(1)
-				}
-
-				if subject == "" {
-					if c.Args().Len() < 3 {
-						return fmt.Errorf("must specify PR subject or provide it as argument")
-					}
-					subject = c.Args().Get(2)
-				}
-
-				if c.Args().Len() > 3 {
-					relay = c.Args().Get(3)
-				}
-
-				return createPullRequest(ctx, c, base, baseBranch, head, subject, relay)
-			},
-		},
-		{
-			Name:      "pr-update",
-			Usage:     "update an existing pull request (kind 1619)",
-			Flags: append(defaultKeyFlags,
-				&cli.StringFlag{
-					Name:  "pr-id",
-					Usage: "ID of the PR event to update",
-				},
-				&cli.StringFlag{
-					Name:  "head",
-					Usage: "new head branch with updated commits",
-				},
-				&cli.StringFlag{
-					Name:  "subject",
-					Usage: "updated PR title/description",
-				},
-				&cli.StringFlag{
-					Name:  "relay",
-					Usage: "relay to publish PR update to (will use configured relays if not specified)",
-				},
-				&cli.BoolFlag{
-					Name:    "force",
-					Aliases: []string{"f"},
-					Usage:   "force update of pull request even if validation warnings exist",
-				},
-			),
-			Action: func(ctx context.Context, c *cli.Command) error {
-				prID := c.String("pr-id")
-				head := c.String("head")
-				subject := c.String("subject")
-				relay := c.String("relay")
-
-				if prID == "" {
-					if c.Args().Len() < 1 {
-						return fmt.Errorf("must specify PR event ID or provide it as argument")
-					}
-					prID = c.Args().Get(0)
-				}
-
-				if head == "" {
-					if c.Args().Len() < 2 {
-						return fmt.Errorf("must specify head branch or provide it as argument")
-					}
-					head = c.Args().Get(1)
-				}
-
-				if subject == "" {
-					if c.Args().Len() < 3 {
-						return fmt.Errorf("must specify PR subject or provide it as argument")
-					}
-					subject = c.Args().Get(2)
-				}
-
-				if c.Args().Len() > 3 {
-					relay = c.Args().Get(3)
-				}
-
-				return updatePullRequest(ctx, c, prID, head, subject, relay)
+				// Default action - if no subcommand provided, show help
+				return fmt.Errorf("missing subcommand. Use 'create' to create a PR or 'update' to update an existing PR")
 			},
 		},
 	},
