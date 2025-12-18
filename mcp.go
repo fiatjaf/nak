@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
@@ -307,7 +308,7 @@ var mcpServer = &cli.Command{
 			mcp.WithString("web", mcp.Description("Web URLs for the repository")),
 			mcp.WithString("grasp_servers", mcp.Description("GRASP servers for the repository")),
 			mcp.WithString("maintainers", mcp.Description("Maintainer public keys (npub or hex)")),
-			mcp.WithString("directory", mcp.Description("Directory to initialize repository in (defaults to current directory)")),
+			mcp.WithString("directory", mcp.Description("Directory to initialize repository in (defaults to ./identifier)")),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			identifier := required[string](r, "identifier")
 			name, _ := optional[string](r, "name")
@@ -318,13 +319,18 @@ var mcpServer = &cli.Command{
 			maintainers, _ := optional[[]string](r, "maintainers")
 			directory, _ := optional[string](r, "directory")
 
-			// Default to current directory if not specified
+			// Default to creating a subdirectory named after identifier if not specified
 			if directory == "" {
-				var err error
-				directory, err = os.Getwd()
+				currentDir, err := os.Getwd()
 				if err != nil {
 					return mcp.NewToolResultError("failed to get current directory: " + err.Error()), nil
 				}
+				directory = filepath.Join(currentDir, identifier)
+			}
+
+			// Create target directory if it doesn't exist
+			if err := os.MkdirAll(directory, 0755); err != nil {
+				return mcp.NewToolResultError("failed to create directory: " + err.Error()), nil
 			}
 
 			// Check if directory is a git repository, initialize if not
@@ -394,11 +400,99 @@ var mcpServer = &cli.Command{
 			// Add to git exclude
 			excludeNip34ConfigFile(directory)
 
-			result := fmt.Sprintf("Successfully created NIP-34 repository '%s' in directory '%s'\n", identifier, directory)
+			// Create default README.md if it doesn't exist
+			readmePath := filepath.Join(directory, "README.md")
+			if _, err := os.Stat(readmePath); os.IsNotExist(err) {
+				// Debug: Print that we're creating README
+				fmt.Fprintf(os.Stderr, "DEBUG: Creating README.md at %s\n", readmePath)
+				readmeContent := fmt.Sprintf(`# %s
+
+A new Nostr repository created with Nak.
+
+## Getting Started
+
+This repository is hosted on the Nostr network using NIP-34.
+
+### Clone this repository
+
+` + "```bash" + `
+nak clone %s/%s
+` + "```" + `
+
+### Add files and commit
+
+` + "```bash" + `
+# Add your files
+git add .
+
+# Commit changes
+git commit -m "Initial commit"
+
+# Push to Nostr relays
+nak git push
+` + "```" + `
+
+## About
+
+This repository was created using the Nak tool for Nostr-based git repositories.
+`, name, owner, identifier)
+
+				if err := os.WriteFile(readmePath, []byte(readmeContent), 0644); err != nil {
+					return mcp.NewToolResultError("failed to create README.md: " + err.Error()), nil
+				}
+
+				// Add README.md to git
+				addCmd := exec.Command("git", "add", "README.md")
+				addCmd.Dir = directory
+				if output, err := addCmd.CombinedOutput(); err != nil {
+					return mcp.NewToolResultError("failed to add README.md to git: " + string(output)), nil
+				}
+
+				// Commit README.md
+				commitCmd := exec.Command("git", "commit", "-m", "init")
+				commitCmd.Dir = directory
+				if output, err := commitCmd.CombinedOutput(); err != nil {
+					return mcp.NewToolResultError("failed to commit README.md: " + string(output)), nil
+				}
+			}
+
+			// Auto-sync repository to relays and push initial commit
+			originalDir, _ := os.Getwd()
+			defer os.Chdir(originalDir)
+			os.Chdir(directory)
+			
+			// First sync the repository to establish connection with relays
+			_, _, syncErr := gitSync(ctx, keyer)
+			if syncErr != nil {
+				result := fmt.Sprintf("Successfully created NIP-34 repository '%s' in directory '%s'\n", identifier, directory)
+				result += fmt.Sprintf("Repository name: %s\n", name)
+				result += fmt.Sprintf("Owner: %s\n", owner)
+				result += fmt.Sprintf("GRASP servers: %v\n", graspServers)
+				result += fmt.Sprintf("\n⚠️  Warning: Failed to sync to relays: %s\n", syncErr.Error())
+				result += "Repository created locally but may not be available on relays. Run 'nak git sync' and 'nak git push' manually to publish."
+				return mcp.NewToolResultText(result), nil
+			}
+
+			// After successful sync, attempt to push the initial commit with retry logic
+			// This handles the case where relays need time to set up the remote repository
+			// Retry every 10 seconds for 5 minutes (30 attempts × 10 seconds = 300 seconds = 5 minutes)
+			if pushErr := retryInitialPush(ctx, keyer, 30, 10*time.Second); pushErr != nil {
+				result := fmt.Sprintf("Successfully created and synced NIP-34 repository '%s' in directory '%s'\n", identifier, directory)
+				result += fmt.Sprintf("Repository name: %s\n", name)
+				result += fmt.Sprintf("Owner: %s\n", owner)
+				result += fmt.Sprintf("GRASP servers: %v\n", graspServers)
+				result += fmt.Sprintf("\n⚠️  Warning: Failed to push initial commit after retries: %s\n", pushErr.Error())
+				result += "Repository is synced to relays but initial commit may not be published. Run 'nak git push' manually to push commits."
+				result += "\n📝 This is normal for new repositories as relays may need time to set up the remote repository."
+				return mcp.NewToolResultText(result), nil
+			}
+
+			result := fmt.Sprintf("Successfully created and synced NIP-34 repository '%s' in directory '%s'\n", identifier, directory)
 			result += fmt.Sprintf("Repository name: %s\n", name)
 			result += fmt.Sprintf("Owner: %s\n", owner)
 			result += fmt.Sprintf("GRASP servers: %v\n", graspServers)
-			result += "\nRun 'nak git sync' to publish the repository to relays."
+			result += "\n✅ Repository is now published to relays and ready for use!"
+			result += "\n✅ Initial commit with README.md has been pushed to the network!"
 
 			return mcp.NewToolResultText(result), nil
 		})
@@ -778,10 +872,15 @@ var mcpServer = &cli.Command{
 		})
 
 		// Pull Request Tools
+		// IMPORTANT: When creating pull requests, remember to:
+		// 1. Create a new branch BEFORE making changes
+		// 2. Add your changes and commit to the new branch
+		// 3. Push the new branch
+		// 4. Create PR from new branch to base branch
 		s.AddTool(mcp.NewTool("create_pull_request",
 			mcp.WithDescription("Create a pull request (kind 1618)"),
-			mcp.WithString("base_repository", mcp.Description("Base repository address (format: <npub>/<identifier> or leave empty for internal PR)")),
-			mcp.WithString("base_branch", mcp.Description("Base branch to merge into (defaults to 'main')")),
+			mcp.WithString("base_repository", mcp.Description("Base repository address (format: <npub>/<identifier> or leave empty for internal PR)"), mcp.Required()),
+			mcp.WithString("base_branch", mcp.Description("Base branch to merge into (defaults to 'master')")),
 			mcp.WithString("head_branch", mcp.Description("Head branch to merge from (required)"), mcp.Required()),
 			mcp.WithString("subject", mcp.Description("Pull request title/description (required)"), mcp.Required()),
 			mcp.WithString("relay", mcp.Description("Relay to publish PR to (will use configured relays if not specified)")),
@@ -808,10 +907,10 @@ var mcpServer = &cli.Command{
 			os.Chdir(directory)
 
 			if baseBranch == "" {
-				baseBranch = "main"
+				baseBranch = "master"
 			}
 
-			if err := createPullRequest(ctx, &cli.Command{}, baseRepo, baseBranch, headBranch, subject, relay); err != nil {
+			if err := createPullRequestWithSigner(ctx, keyer, baseRepo, baseBranch, headBranch, subject, relay); err != nil {
 				return mcp.NewToolResultError("failed to create pull request: " + err.Error()), nil
 			}
 
@@ -850,7 +949,7 @@ var mcpServer = &cli.Command{
 			defer os.Chdir(originalDir)
 			os.Chdir(directory)
 
-			if err := updatePullRequest(ctx, &cli.Command{}, prID, headBranch, subject, relay); err != nil {
+			if err := updatePullRequestWithSigner(ctx, keyer, prID, headBranch, subject, relay); err != nil {
 				return mcp.NewToolResultError("failed to update pull request: " + err.Error()), nil
 			}
 
@@ -1029,6 +1128,40 @@ var mcpServer = &cli.Command{
 		})
 		return server.ServeStdio(s)
 	},
+}
+
+// retryInitialPush attempts to push the initial commit with retry logic for new repositories
+// This handles the case where relays need time to set up the remote repository
+func retryInitialPush(ctx context.Context, signer nostr.Keyer, maxRetries int, retryInterval time.Duration) error {
+	fmt.Fprintf(os.Stderr, "Starting initial push retry loop (max %d retries, %v interval)...\n", maxRetries, retryInterval)
+	
+	for attempt := 0; attempt < maxRetries; attempt++ {
+		if attempt > 0 {
+			fmt.Fprintf(os.Stderr, "Waiting %v before attempt %d...\n", retryInterval, attempt+1)
+			select {
+			case <-time.After(retryInterval):
+			case <-ctx.Done():
+				return ctx.Err()
+			}
+		}
+		
+		fmt.Fprintf(os.Stderr, "Attempt %d/%d: pushing initial commit...\n", attempt+1, maxRetries)
+		
+		if err := gitPush(ctx, signer, "", "master", false); err != nil {
+			fmt.Fprintf(os.Stderr, "Attempt %d failed: %v\n", attempt+1, err)
+			
+			// Check if this is the last attempt
+			if attempt == maxRetries-1 {
+				return fmt.Errorf("failed to push initial commit after %d attempts: %w", maxRetries, err)
+			}
+			continue
+		}
+		
+		fmt.Fprintf(os.Stderr, "Initial push successful on attempt %d!\n", attempt+1)
+		return nil
+	}
+	
+	return fmt.Errorf("unexpected: retry loop completed without success or failure")
 }
 
 func required[T comparable](r mcp.CallToolRequest, p string) T {

@@ -1990,6 +1990,350 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 	log("Subject: %s\n", subject)
 
 	return nil
+}
+
+// gitPush is a helper function to push git changes to Nostr relays
+// It can be called from MCP tools after creating commits
+func gitPush(ctx context.Context, signer nostr.Keyer, branch, remoteBranch string, force bool) error {
+	// sync to ensure everything is up to date
+	repo, state, err := gitSync(ctx, signer)
+	if err != nil {
+		return fmt.Errorf("failed to sync: %w", err)
+	}
+
+	// check if signer matches owner or is in maintainers
+	currentPk, err := signer.GetPublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get current public key: %w", err)
+	}
+
+	if currentPk != repo.Event.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
+		return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
+	}
+
+	// determine branch names
+	if branch == "" {
+		res, err := exec.Command("git", "rev-parse", "--abbrev-ref", "HEAD").Output()
+		if err != nil {
+			return fmt.Errorf("failed to get current branch: %w", err)
+		}
+		branch = strings.TrimSpace(string(res))
+	}
+
+	if remoteBranch == "" {
+		remoteBranch = branch
+	}
+
+	// get commit for the local branch
+	res, err := exec.Command("git", "rev-parse", branch).Output()
+	if err != nil {
+		return fmt.Errorf("failed to get commit for branch %s: %w", branch, err)
+	}
+	currentCommit := strings.TrimSpace(string(res))
+
+	// create a new state if we didn't find any
+	if state == nil {
+		state = &nip34.RepositoryState{
+			ID:       repo.ID,
+			Branches: make(map[string]string),
+			Tags:     make(map[string]string),
+		}
+	}
+
+	// update the branch
+	if !force {
+		if prevCommit, exists := state.Branches[remoteBranch]; exists {
+			// check if prevCommit is an ancestor of currentCommit (fast-forward check)
+			cmd := exec.Command("git", "merge-base", "--is-ancestor", prevCommit, currentCommit)
+			if err := cmd.Run(); err != nil {
+				return fmt.Errorf("non-fast-forward push not allowed, use force to override")
+			}
+		}
+	}
+	state.Branches[remoteBranch] = currentCommit
+
+	// set the HEAD to the local branch if none is set
+	if state.HEAD == "" {
+		state.HEAD = remoteBranch
+	}
+
+	// create and sign the new state event
+	newStateEvent := state.ToEvent()
+	err = signer.SignEvent(ctx, &newStateEvent)
+	if err != nil {
+		return fmt.Errorf("error signing state event: %w", err)
+	}
+
+	// publish to relays
+	publishCount := 0
+	for res := range sys.Pool.PublishMany(ctx, repo.Relays, newStateEvent) {
+		if res.Error != nil {
+			continue
+		}
+		publishCount++
+	}
+
+	if publishCount == 0 {
+		return fmt.Errorf("failed to publish state event to any relay")
+	}
+
+	// push to each grasp remote
+	pushSuccesses := 0
+	for _, relay := range repo.Relays {
+		relayURL := nostr.NormalizeURL(relay)
+		remoteName := gitRemoteName(relayURL)
+
+		pushArgs := []string{"push", remoteName, fmt.Sprintf("%s:refs/heads/%s", branch, remoteBranch)}
+		if force {
+			pushArgs = append(pushArgs, "--force")
+		}
+		pushCmd := exec.Command("git", pushArgs...)
+		if err := pushCmd.Run(); err == nil {
+			pushSuccesses++
+		}
+	}
+
+	if pushSuccesses == 0 {
+		return fmt.Errorf("failed to push to any remote")
+	}
+
+	// update refs
+	gitUpdateRefs(ctx, "", *state)
+
+	return nil
+}
+
+// createPullRequestWithSigner is a helper function to create pull requests using a provided signer
+// This is similar to gitPush helper function and can be called from MCP tools
+func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRepoAddr, baseBranch, headBranch, subject, relayURL string) error {
+	// Read current repository config first
+	localConfig, err := readNip34ConfigFile("")
+	if err != nil {
+		return fmt.Errorf("failed to read local repository config: %w", err)
+	}
+
+	var baseOwner nostr.PubKey
+	var baseIdentifier string
+	var baseRelayHints []string
+
+	// If no base repository address provided, create internal PR (PR to same repository)
+	if baseRepoAddr == "" {
+		// Parse local owner for internal PR
+		baseOwner, err = parsePubKey(localConfig.Owner)
+		if err != nil {
+			return fmt.Errorf("failed to parse local owner pubkey: %w", err)
+		}
+		baseIdentifier = localConfig.Identifier
+		baseRelayHints = localConfig.GraspServers
+	} else {
+		// Parse external base repository address
+		baseOwner, baseIdentifier, baseRelayHints, err = parseRepositoryAddress(ctx, baseRepoAddr)
+		if err != nil {
+			return fmt.Errorf("failed to parse base repository address: %w", err)
+		}
+	}
+
+	// Get signer's public key
+	signerPubkey, err := signer.GetPublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get signer pubkey: %w", err)
+	}
+
+	// Get current commit for head branch
+	cmd := exec.Command("git", "rev-parse", headBranch)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get head commit: %w", err)
+	}
+	headCommit := strings.TrimSpace(string(output))
+
+	// Generate clone URL for the head repository
+	cloneURL := ""
+	if len(localConfig.GraspServers) > 0 {
+		cloneURL = fmt.Sprintf("https://%s/%s/%s",
+			graspServerHost(localConfig.GraspServers[0]),
+			nip19.EncodeNpub(signerPubkey),
+			localConfig.Identifier)
+	}
+
+	// Create unsigned PR event based on NIP-34 specification
+	event := nostr.Event{
+		Kind:      1618, // Pull Request
+		CreatedAt: nostr.Now(),
+		Content:   subject,
+		Tags: nostr.Tags{
+			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", baseOwner.Hex(), baseIdentifier)},
+			nostr.Tag{"c", headCommit},
+		},
+		PubKey: signerPubkey,
+	}
+
+	// Add clone URL if available
+	if cloneURL != "" {
+		event.Tags = append(event.Tags, nostr.Tag{"clone", cloneURL})
+	}
+
+	// Add subject tag (title)
+	event.Tags = append(event.Tags, nostr.Tag{"subject", subject})
+
+	// Determine relays to publish to
+	relays := []string{}
+	if relayURL != "" {
+		relays = append(relays, relayURL)
+	}
+	
+	// Add base repository relays
+	relays = appendUnique(relays, baseRelayHints...)
+	
+	// Add local repository grasp servers
+	for _, server := range localConfig.GraspServers {
+		if !slices.Contains(relays, server) {
+			relays = append(relays, server)
+		}
+	}
+
+	// Sign the event
+	if err := signer.SignEvent(ctx, &event); err != nil {
+		return fmt.Errorf("failed to sign PR event: %w", err)
+	}
+
+	// Push to refs/nostr/ before publishing to event (NIP-34 requirement)
+	refName := fmt.Sprintf("refs/nostr/%s", event.ID)
+	pushCmd := exec.Command("git", "update-ref", refName, headCommit)
+	if err := pushCmd.Run(); err != nil {
+		logverbose("warning: failed to push to refs/nostr/%s: %v\n", event.ID, err)
+		// Continue anyway as some servers may handle this differently
+	}
+
+	// Publish the PR event to relays
+	log("publishing pull request to relays...\n")
+	publishedCount := 0
+	for res := range sys.Pool.PublishMany(ctx, relays, event) {
+		if res.Error != nil {
+			log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+		} else {
+			log("> published to %s\n", color.GreenString(res.RelayURL))
+			publishedCount++
+		}
+	}
+
+	if publishedCount == 0 {
+		return fmt.Errorf("failed to publish pull request to any relay")
+	}
+
+	log("pull request created successfully!\n")
+	log("PR ID: %s\n", event.ID)
+	log("Base: %s/%s (branch: %s)\n", nip19.EncodeNpub(baseOwner), baseIdentifier, baseBranch)
+	log("Head: %s/%s (branch: %s)\n", nip19.EncodeNpub(signerPubkey), localConfig.Identifier, headBranch)
+	log("Subject: %s\n", subject)
+
+	return nil
+}
+
+// updatePullRequestWithSigner is a helper function to update pull requests using a provided signer
+// This is similar to gitPush helper function and can be called from MCP tools
+func updatePullRequestWithSigner(ctx context.Context, signer nostr.Keyer, prID, headBranch, subject, relayURL string) error {
+	// Parse PR event ID to validate it
+	if prID == "" {
+		return fmt.Errorf("PR event ID is required")
+	}
+
+	// Get signer's public key
+	signerPubkey, err := signer.GetPublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get signer pubkey: %w", err)
+	}
+
+	// Read current repository config
+	localConfig, err := readNip34ConfigFile("")
+	if err != nil {
+		return fmt.Errorf("failed to read local repository config: %w", err)
+	}
+
+	// Get current commit for head branch
+	cmd := exec.Command("git", "rev-parse", headBranch)
+	output, err := cmd.Output()
+	if err != nil {
+		return fmt.Errorf("failed to get head commit: %w", err)
+	}
+	headCommit := strings.TrimSpace(string(output))
+
+	// Generate clone URL for the head repository
+	cloneURL := ""
+	if len(localConfig.GraspServers) > 0 {
+		cloneURL = fmt.Sprintf("https://%s/%s/%s",
+			graspServerHost(localConfig.GraspServers[0]),
+			nip19.EncodeNpub(signerPubkey),
+			localConfig.Identifier)
+	}
+
+	// Create unsigned PR update event based on NIP-34 specification
+	event := nostr.Event{
+		Kind:      1619, // Pull Request Update
+		CreatedAt: nostr.Now(),
+		Content:   subject,
+		Tags: nostr.Tags{
+			nostr.Tag{"a", prID}, // Reference to original PR event
+			nostr.Tag{"c", headCommit},
+		},
+		PubKey: signerPubkey,
+	}
+
+	// Add clone URL if available
+	if cloneURL != "" {
+		event.Tags = append(event.Tags, nostr.Tag{"clone", cloneURL})
+	}
+
+	// Add subject tag (title)
+	event.Tags = append(event.Tags, nostr.Tag{"subject", subject})
+
+	// Determine relays to publish to
+	relays := []string{}
+	if relayURL != "" {
+		relays = append(relays, relayURL)
+	}
+	
+	// Add local repository grasp servers
+	for _, server := range localConfig.GraspServers {
+		if !slices.Contains(relays, server) {
+			relays = append(relays, server)
+		}
+	}
+
+	// Sign the event
+	if err := signer.SignEvent(ctx, &event); err != nil {
+		return fmt.Errorf("failed to sign PR update event: %w", err)
+	}
+
+	// Push to refs/nostr/ before publishing to event (NIP-34 requirement)
+	refName := fmt.Sprintf("refs/nostr/%s", event.ID)
+	pushCmd := exec.Command("git", "update-ref", refName, headCommit)
+	if err := pushCmd.Run(); err != nil {
+		logverbose("warning: failed to push to refs/nostr/%s: %v\n", event.ID, err)
+		// Continue anyway as some servers may handle this differently
+	}
+
+	// Publish PR update event to relays
+	log("publishing pull request update to relays...\n")
+	publishedCount := 0
+	for res := range sys.Pool.PublishMany(ctx, relays, event) {
+		if res.Error != nil {
+			log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+		} else {
+			log("> published to %s\n", color.GreenString(res.RelayURL))
+			publishedCount++
+		}
+	}
+
+	if publishedCount == 0 {
+		return fmt.Errorf("failed to publish pull request update to any relay")
+	}
+
+	log("pull request updated successfully!\n")
+	log("PR Update ID: %s\n", event.ID)
+	log("Original PR ID: %s\n", prID)
+	log("New Head: %s/%s (branch: %s)\n", nip19.EncodeNpub(signerPubkey), localConfig.Identifier, headBranch)
+	log("Subject: %s\n", subject)
 
 	return nil
 }
