@@ -28,7 +28,7 @@ var app = &cli.Command{
 	Commands: []*cli.Command{
 		event,
 		req,
-		filter,
+		filterCmd,
 		fetch,
 		count,
 		decode,
@@ -53,6 +53,7 @@ var app = &cli.Command{
 		git,
 		nip,
 		syncCmd,
+		spell,
 	},
 	Version: version,
 	Flags: []cli.Flag{

@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/eventstore"
@@ -76,11 +77,6 @@ example:
 			&cli.DurationFlag{
 				Name:  "paginate-interval",
 				Usage: "time between queries when using --paginate",
-			},
-			&cli.UintFlag{
-				Name:        "paginate-global-limit",
-				Usage:       "global limit at which --paginate should stop",
-				DefaultText: "uses the value given by --limit/-l or infinite",
 			},
 			&cli.BoolFlag{
 				Name:  "bare",
@@ -226,106 +222,7 @@ example:
 						}
 					}
 				} else {
-					var results chan nostr.RelayEvent
-					var closeds chan nostr.RelayClosed
-
-					opts := nostr.SubscriptionOptions{
-						Label: "nak-req",
-					}
-
-					if c.Bool("paginate") {
-						paginator := sys.Pool.PaginatorWithInterval(c.Duration("paginate-interval"))
-						results = paginator(ctx, relayUrls, filter, opts)
-					} else if c.Bool("outbox") {
-						defs := make([]nostr.DirectedFilter, 0, len(filter.Authors)*2)
-
-						// hardcoded relays, if any
-						for _, relayUrl := range relayUrls {
-							defs = append(defs, nostr.DirectedFilter{
-								Filter: filter,
-								Relay:  relayUrl,
-							})
-						}
-
-						// relays for each pubkey
-						errg := errgroup.Group{}
-						errg.SetLimit(16)
-						mu := sync.Mutex{}
-						for _, pubkey := range filter.Authors {
-							errg.Go(func() error {
-								n := int(c.Uint("outbox-relays-per-pubkey"))
-								for _, url := range sys.FetchOutboxRelays(ctx, pubkey, n) {
-									if slices.Contains(relayUrls, url) {
-										// already hardcoded, ignore
-										continue
-									}
-									if !nostr.IsValidRelayURL(url) {
-										continue
-									}
-
-									matchUrl := func(def nostr.DirectedFilter) bool { return def.Relay == url }
-									idx := slices.IndexFunc(defs, matchUrl)
-									if idx == -1 {
-										// new relay, add it
-										mu.Lock()
-										// check again after locking to prevent races
-										idx = slices.IndexFunc(defs, matchUrl)
-										if idx == -1 {
-											// then add it
-											filter := filter.Clone()
-											filter.Authors = []nostr.PubKey{pubkey}
-											defs = append(defs, nostr.DirectedFilter{
-												Filter: filter,
-												Relay:  url,
-											})
-											mu.Unlock()
-											continue // done with this relay url
-										}
-
-										// otherwise we'll just use the idx
-										mu.Unlock()
-									}
-
-									// existing relay, add this pubkey
-									defs[idx].Authors = append(defs[idx].Authors, pubkey)
-								}
-
-								return nil
-							})
-						}
-						errg.Wait()
-
-						if c.Bool("stream") {
-							results, closeds = sys.Pool.BatchedSubscribeManyNotifyClosed(ctx, defs, opts)
-						} else {
-							results, closeds = sys.Pool.BatchedQueryManyNotifyClosed(ctx, defs, opts)
-						}
-					} else {
-						if c.Bool("stream") {
-							results, closeds = sys.Pool.SubscribeManyNotifyClosed(ctx, relayUrls, filter, opts)
-						} else {
-							results, closeds = sys.Pool.FetchManyNotifyClosed(ctx, relayUrls, filter, opts)
-						}
-					}
-
-				readevents:
-					for {
-						select {
-						case ie, ok := <-results:
-							if !ok {
-								break readevents
-							}
-							stdout(ie.Event)
-						case closed := <-closeds:
-							if closed.HandledAuth {
-								logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
-							} else {
-								log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
-							}
-						case <-ctx.Done():
-							break readevents
-						}
-					}
+					performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), "nak-req")
 				}
 			} else {
 				// no relays given, will just print the filter
@@ -344,6 +241,123 @@ example:
 		exitIfLineProcessingError(ctx)
 		return nil
 	},
+}
+
+func performReq(
+	ctx context.Context,
+	filter nostr.Filter,
+	relayUrls []string,
+	stream bool,
+	outbox bool,
+	outboxRelaysPerPubKey uint64,
+	paginate bool,
+	paginateInterval time.Duration,
+	label string,
+) {
+	var results chan nostr.RelayEvent
+	var closeds chan nostr.RelayClosed
+
+	opts := nostr.SubscriptionOptions{
+		Label: label,
+	}
+
+	if paginate {
+		paginator := sys.Pool.PaginatorWithInterval(paginateInterval)
+		results = paginator(ctx, relayUrls, filter, opts)
+	} else if outbox {
+		defs := make([]nostr.DirectedFilter, 0, len(filter.Authors)*2)
+
+		for _, relayUrl := range relayUrls {
+			defs = append(defs, nostr.DirectedFilter{
+				Filter: filter,
+				Relay:  relayUrl,
+			})
+		}
+
+		// relays for each pubkey
+		errg := errgroup.Group{}
+		errg.SetLimit(16)
+		mu := sync.Mutex{}
+		logverbose("gathering outbox relays for %d authors...\n", len(filter.Authors))
+		for _, pubkey := range filter.Authors {
+			errg.Go(func() error {
+				n := int(outboxRelaysPerPubKey)
+				for _, url := range sys.FetchOutboxRelays(ctx, pubkey, n) {
+					if slices.Contains(relayUrls, url) {
+						// already specified globally, ignore
+						continue
+					}
+					if !nostr.IsValidRelayURL(url) {
+						continue
+					}
+
+					matchUrl := func(def nostr.DirectedFilter) bool { return def.Relay == url }
+					idx := slices.IndexFunc(defs, matchUrl)
+					if idx == -1 {
+						// new relay, add it
+						mu.Lock()
+						// check again after locking to prevent races
+						idx = slices.IndexFunc(defs, matchUrl)
+						if idx == -1 {
+							// then add it
+							filter := filter.Clone()
+							filter.Authors = []nostr.PubKey{pubkey}
+							defs = append(defs, nostr.DirectedFilter{
+								Filter: filter,
+								Relay:  url,
+							})
+							mu.Unlock()
+							continue // done with this relay url
+						}
+
+						// otherwise we'll just use the idx
+						mu.Unlock()
+					}
+
+					// existing relay, add this pubkey
+					defs[idx].Authors = append(defs[idx].Authors, pubkey)
+				}
+
+				return nil
+			})
+		}
+		errg.Wait()
+
+		if stream {
+			logverbose("running subscription with %d directed filters...\n", len(defs))
+			results, closeds = sys.Pool.BatchedSubscribeManyNotifyClosed(ctx, defs, opts)
+		} else {
+			logverbose("running query with %d directed filters...\n", len(defs))
+			results, closeds = sys.Pool.BatchedQueryManyNotifyClosed(ctx, defs, opts)
+		}
+	} else {
+		if stream {
+			logverbose("running subscription to %d relays...\n", len(relayUrls))
+			results, closeds = sys.Pool.SubscribeManyNotifyClosed(ctx, relayUrls, filter, opts)
+		} else {
+			logverbose("running query to %d relays...\n", len(relayUrls))
+			results, closeds = sys.Pool.FetchManyNotifyClosed(ctx, relayUrls, filter, opts)
+		}
+	}
+
+readevents:
+	for {
+		select {
+		case ie, ok := <-results:
+			if !ok {
+				break readevents
+			}
+			stdout(ie.Event)
+		case closed := <-closeds:
+			if closed.HandledAuth {
+				logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+			} else {
+				log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+			}
+		case <-ctx.Done():
+			break readevents
+		}
+	}
 }
 
 var reqFilterFlags = []cli.Flag{
