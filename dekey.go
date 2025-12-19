@@ -9,6 +9,7 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip44"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -30,11 +31,13 @@ var dekey = &cli.Command{
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
+		log(color.CyanString("gathering keyer from arguments...\n"))
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
 		}
 
+		log(color.CyanString("getting user public key...\n"))
 		userPub, err := kr.GetPublicKey(ctx)
 		if err != nil {
 			return fmt.Errorf("failed to get user public key: %w", err)
@@ -43,32 +46,40 @@ var dekey = &cli.Command{
 		configPath := c.String("config-path")
 		deviceName := c.String("device-name")
 
+		log(color.YellowString("handling device key for %s...\n"), deviceName)
 		// check if we already have a local-device secret key
 		deviceKeyPath := filepath.Join(configPath, "dekey", "device-key")
 		var deviceSec nostr.SecretKey
 		if data, err := os.ReadFile(deviceKeyPath); err == nil {
+			log(color.GreenString("found existing device key\n"))
 			deviceSec, err = nostr.SecretKeyFromHex(string(data))
 			if err != nil {
 				return fmt.Errorf("invalid device key in %s: %w", deviceKeyPath, err)
 			}
 		} else {
+			log(color.YellowString("generating new device key...\n"))
 			// create one
 			deviceSec = nostr.Generate()
 			os.MkdirAll(filepath.Dir(deviceKeyPath), 0700)
 			if err := os.WriteFile(deviceKeyPath, []byte(deviceSec.Hex()), 0600); err != nil {
 				return fmt.Errorf("failed to write device key: %w", err)
 			}
+			log(color.GreenString("device key generated and stored\n"))
 		}
 		devicePub := deviceSec.Public()
 
 		// get relays for the user
+		log(color.CyanString("fetching write relays for user...\n"))
 		relays := sys.FetchWriteRelays(ctx, userPub)
+		log(color.CyanString("connecting to %d relays...\n"), len(relays))
 		relayList := connectToAllRelays(ctx, c, relays, nil, nostr.PoolOptions{})
 		if len(relayList) == 0 {
 			return fmt.Errorf("no relays to use")
 		}
+		log(color.GreenString("connected to %d relays\n"), len(relayList))
 
 		// check if kind:4454 is already published
+		log(color.CyanString("checking for existing device registration (kind:4454)...\n"))
 		events := sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{4454},
 			Authors: []nostr.PubKey{userPub},
@@ -77,6 +88,7 @@ var dekey = &cli.Command{
 			},
 		}, nostr.SubscriptionOptions{Label: "nak-nip4e"})
 		if len(events) == 0 {
+			log(color.YellowString("no device registration found, publishing kind:4454...\n"))
 			// publish kind:4454
 			evt := nostr.Event{
 				Kind:      4454,
@@ -97,9 +109,13 @@ var dekey = &cli.Command{
 			if err := publishFlow(ctx, c, kr, evt, relayList); err != nil {
 				return err
 			}
+			log(color.GreenString("device registration published\n"))
+		} else {
+			log(color.GreenString("device already registered\n"))
 		}
 
 		// check for kind:10044
+		log(color.CyanString("checking for user encryption key (kind:10044)...\n"))
 		userKeyEventDate := nostr.Now()
 		userKeyResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{10044},
@@ -108,6 +124,7 @@ var dekey = &cli.Command{
 		var eSec nostr.SecretKey
 		var ePub nostr.PubKey
 		if userKeyEvent, ok := userKeyResult.Load(nostr.ReplaceableKey{PubKey: userPub, D: ""}); !ok {
+			log(color.YellowString("no user encryption key found, generating new one...\n"))
 			// generate main secret key
 			eSec = nostr.Generate()
 			ePub := eSec.Public()
@@ -118,8 +135,10 @@ var dekey = &cli.Command{
 			if err := os.WriteFile(eKeyPath, []byte(eSec.Hex()), 0600); err != nil {
 				return fmt.Errorf("failed to write user encryption key: %w", err)
 			}
+			log(color.GreenString("user encryption key generated and stored\n"))
 
 			// publish kind:10044
+			log(color.YellowString("publishing user encryption key (kind:10044)...\n"))
 			evt10044 := nostr.Event{
 				Kind:      10044,
 				Content:   "",
@@ -135,7 +154,9 @@ var dekey = &cli.Command{
 			if err := publishFlow(ctx, c, kr, evt10044, relayList); err != nil {
 				return err
 			}
+			log(color.GreenString("user encryption key published\n"))
 		} else {
+			log(color.GreenString("found existing user encryption key\n"))
 			userKeyEventDate = userKeyEvent.CreatedAt
 
 			// get the pub from the tag
@@ -152,6 +173,7 @@ var dekey = &cli.Command{
 			// check if we have the key
 			eKeyPath := filepath.Join(configPath, "dekey", "e", ePub.Hex())
 			if data, err := os.ReadFile(eKeyPath); err == nil {
+				log(color.GreenString("found stored user encryption key\n"))
 				eSec, err = nostr.SecretKeyFromHex(string(data))
 				if err != nil {
 					return fmt.Errorf("invalid main key: %w", err)
@@ -160,6 +182,7 @@ var dekey = &cli.Command{
 					return fmt.Errorf("stored user encryption key is corrupted: %w", err)
 				}
 			} else {
+				log(color.YellowString("user encryption key not stored locally, attempting to decrypt from other devices...\n"))
 				// try to decrypt from kind:4455
 				for eKeyMsg := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 					Kinds: []nostr.Kind{4455},
@@ -191,6 +214,7 @@ var dekey = &cli.Command{
 					}
 					// check if it matches mainPub
 					if eSec.Public() == ePub {
+						log(color.GreenString("successfully decrypted user encryption key from another device\n"))
 						// store it
 						os.MkdirAll(filepath.Dir(eKeyPath), 0700)
 						os.WriteFile(eKeyPath, []byte(eSecHex), 0600)
@@ -201,11 +225,13 @@ var dekey = &cli.Command{
 		}
 
 		if eSec == [32]byte{} {
-			log("main secret key not available, must authorize on another device\n")
+			log(color.RedString("main secret key not available, must authorize on another device\n"))
 			return nil
 		}
+		log(color.GreenString("user encryption key ready\n"))
 
 		// now we have mainSec, check for other kind:4454 events newer than the 10044
+		log(color.CyanString("checking for other devices and key messages...\n"))
 		keyMsgs := make([]string, 0, 5)
 		for keyOrDeviceEvt := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{4454, 4455},
@@ -214,6 +240,7 @@ var dekey = &cli.Command{
 		}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
 			if keyOrDeviceEvt.Kind == 4455 {
 				// key event
+				log(color.BlueString("received key message (kind:4455)\n"))
 
 				// skip ourselves
 				if keyOrDeviceEvt.Tags.FindWithValue("p", devicePub.Hex()) != nil {
@@ -229,6 +256,7 @@ var dekey = &cli.Command{
 				keyMsgs = append(keyMsgs, pubkeyTag[1])
 			} else if keyOrDeviceEvt.Kind == 4454 {
 				// device event
+				log(color.BlueString("received device registration (kind:4454)\n"))
 
 				// skip ourselves
 				if keyOrDeviceEvt.Tags.FindWithValue("pubkey", devicePub.Hex()) != nil {
@@ -246,6 +274,7 @@ var dekey = &cli.Command{
 
 				// here we know we're dealing with a deviceMsg without a corresponding keyMsg
 				// so we have to build a keyMsg for them
+				log(color.YellowString("sending encryption key to new device...\n"))
 				theirDevice, err := nostr.PubKeyFromHex(pubkeyTag[1])
 				if err != nil {
 					continue
@@ -273,7 +302,11 @@ var dekey = &cli.Command{
 					continue
 				}
 
-				publishFlow(ctx, c, kr, evt4455, relayList)
+				if err := publishFlow(ctx, c, kr, evt4455, relayList); err != nil {
+					log(color.RedString("failed to publish key message: %v\n"), err)
+				} else {
+					log(color.GreenString("encryption key sent to device\n"))
+				}
 			}
 		}
 
