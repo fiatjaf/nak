@@ -1101,7 +1101,7 @@ func gitUpdateRefs(ctx context.Context, dir string, state nip34.RepositoryState)
 		lines := strings.Split(string(output), "\n")
 		for _, line := range lines {
 			parts := strings.Fields(line)
-			if len(parts) >= 2 && strings.Contains(parts[1], "refs/remotes/nip34/state/") {
+			if len(parts) >= 2 && strings.Contains(parts[1], "refs/heads/nip34/state/") {
 				delCmd := exec.Command("git", "update-ref", "-d", parts[1])
 				if dir != "" {
 					delCmd.Dir = dir
@@ -1118,7 +1118,7 @@ func gitUpdateRefs(ctx context.Context, dir string, state nip34.RepositoryState)
 			branchName = "refs/heads/" + branchName
 		}
 
-		refName := "refs/remotes/nip34/state/" + strings.TrimPrefix(branchName, "refs/heads/")
+		refName := "refs/heads/nip34/state/" + strings.TrimPrefix(branchName, "refs/heads/")
 		updateCmd := exec.Command("git", "update-ref", refName, commit)
 		if dir != "" {
 			updateCmd.Dir = dir
@@ -1131,7 +1131,7 @@ func gitUpdateRefs(ctx context.Context, dir string, state nip34.RepositoryState)
 	// create ref for HEAD
 	if state.HEAD != "" {
 		if headCommit, ok := state.Branches[state.HEAD]; ok {
-			headRefName := "refs/remotes/nip34/state/HEAD"
+			headRefName := "refs/heads/nip34/state/HEAD"
 			updateCmd := exec.Command("git", "update-ref", headRefName, headCommit)
 			if dir != "" {
 				updateCmd.Dir = dir
