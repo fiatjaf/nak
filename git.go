@@ -532,34 +532,37 @@ aside from those, there is also:
 					log("- setting HEAD to branch %s\n", color.CyanString(remoteBranch))
 				}
 
-				// add all refs/tags
-				output, err := exec.Command("git", "show-ref", "--tags").Output()
-				if err != nil {
-					return fmt.Errorf("failed to get local tags: %s", err)
-				} else {
-					lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-					for _, line := range lines {
-						line = strings.TrimSpace(line)
-						if line == "" {
-							continue
-						}
-						parts := strings.Fields(line)
-						if len(parts) != 2 {
-							continue
-						}
-						commitHash := parts[0]
-						ref := parts[1]
-
-						tagName := strings.TrimPrefix(ref, "refs/tags/")
-
-						if !c.Bool("force") {
-							// if --force is not passed then we can't overwrite tags
-							if existingHash, exists := state.Tags[tagName]; exists && existingHash != commitHash {
-								return fmt.Errorf("tag %s that is already published pointing to %s, call with --force to overwrite", tagName, existingHash)
+				if c.Bool("tags") {
+					// add all refs/tags
+					output, err := exec.Command("git", "show-ref", "--tags").Output()
+					if err != nil && err.Error() != "exit status 1" {
+						// exit status 1 is returned when there are no tags, which should be ok for us
+						return fmt.Errorf("failed to get local tags: %s", err)
+					} else {
+						lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+						for _, line := range lines {
+							line = strings.TrimSpace(line)
+							if line == "" {
+								continue
 							}
+							parts := strings.Fields(line)
+							if len(parts) != 2 {
+								continue
+							}
+							commitHash := parts[0]
+							ref := parts[1]
+
+							tagName := strings.TrimPrefix(ref, "refs/tags/")
+
+							if !c.Bool("force") {
+								// if --force is not passed then we can't overwrite tags
+								if existingHash, exists := state.Tags[tagName]; exists && existingHash != commitHash {
+									return fmt.Errorf("tag %s that is already published pointing to %s, call with --force to overwrite", tagName, existingHash)
+								}
+							}
+							state.Tags[tagName] = commitHash
+							log("- setting tag %s to commit %s\n", color.CyanString(tagName), color.CyanString(commitHash))
 						}
-						state.Tags[tagName] = commitHash
-						log("- setting tag %s to commit %s\n", color.CyanString(tagName), color.CyanString(commitHash))
 					}
 				}
 
