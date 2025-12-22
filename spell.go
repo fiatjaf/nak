@@ -24,6 +24,10 @@ var spell = &cli.Command{
 	ArgsUsage:   "[nevent_code]",
 	Description: `fetches a spell event (kind 777) and executes REQ command encoded in its tags.`,
 	Flags: append(defaultKeyFlags,
+		&cli.StringFlag{
+			Name:  "pub",
+			Usage: "public key to run spells in the context of (if you don't want to pass a --sec)",
+		},
 		&cli.UintFlag{
 			Name:    "outbox-relays-per-pubkey",
 			Aliases: []string{"n"},
@@ -259,6 +263,10 @@ func buildSpellReq(ctx context.Context, c *cli.Command, tags nostr.Tags) (nostr.
 	filter := nostr.Filter{}
 
 	getMe := func() (nostr.PubKey, error) {
+		if !c.IsSet("sec") && !c.IsSet("prompt-sec") && c.IsSet("pub") {
+			return parsePubKey(c.String("pub"))
+		}
+
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return nostr.ZeroPK, fmt.Errorf("failed to get keyer: %w", err)
