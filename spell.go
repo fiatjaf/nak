@@ -32,25 +32,69 @@ var spell = &cli.Command{
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
+		configPath := c.String("config-path")
+		os.MkdirAll(filepath.Join(configPath, "spells"), 0755)
+
 		// load history from file
 		var history []SpellHistoryEntry
-		historyPath, err := getSpellHistoryPath()
+		historyPath := filepath.Join(configPath, "spells/history")
+		file, err := os.Open(historyPath)
 		if err == nil {
-			file, err := os.Open(historyPath)
-			if err == nil {
-				defer file.Close()
-				scanner := bufio.NewScanner(file)
-				for scanner.Scan() {
-					var entry SpellHistoryEntry
-					if err := json.Unmarshal([]byte(scanner.Text()), &entry); err != nil {
-						continue // skip invalid entries
-					}
-					history = append(history, entry)
+			defer file.Close()
+			scanner := bufio.NewScanner(file)
+			for scanner.Scan() {
+				var entry SpellHistoryEntry
+				if err := json.Unmarshal([]byte(scanner.Text()), &entry); err != nil {
+					continue // skip invalid entries
 				}
+				history = append(history, entry)
 			}
 		}
 
 		if c.Args().Len() == 0 {
+			// check if we have input from stdin
+			for stdinEvent := range getJsonsOrBlank() {
+				var spell nostr.Event
+				if err := json.Unmarshal([]byte(stdinEvent), &spell); err != nil {
+					return fmt.Errorf("failed to parse spell event from stdin: %w", err)
+				}
+				if spell.Kind != 777 {
+					return fmt.Errorf("event is not a spell (expected kind 777, got %d)", spell.Kind)
+				}
+				// parse spell tags to build REQ filter
+				spellFilter, err := buildSpellReq(ctx, c, spell.Tags)
+				if err != nil {
+					return fmt.Errorf("failed to parse spell tags: %w", err)
+				}
+				// determine relays to query
+				var spellRelays []string
+				var outbox bool
+				relaysTag := spell.Tags.Find("relays")
+				if relaysTag == nil {
+					// if this tag doesn't exist assume $outbox
+					relaysTag = nostr.Tag{"relays", "$outbox"}
+				}
+				for i := 1; i < len(relaysTag); i++ {
+					switch relaysTag[i] {
+					case "$outbox":
+						outbox = true
+					default:
+						spellRelays = append(spellRelays, relaysTag[i])
+					}
+				}
+
+				stream := !spell.Tags.Has("close-on-eose")
+
+				logverbose("executing spell from stdin: %s relays=%v outbox=%v stream=%v\n",
+					spellFilter, spellRelays, outbox, stream)
+
+				// execute without adding to history
+				performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
+
+				return nil
+			}
+
+			// no stdin input, show recent spells
 			log("recent spells:\n")
 			for i, entry := range history {
 				if i >= 10 {
@@ -380,19 +424,4 @@ type SpellHistoryEntry struct {
 	Content    string             `json:"content,omitempty"`
 	LastUsed   time.Time          `json:"last_used"`
 	Pointer    nostr.EventPointer `json:"pointer"`
-}
-
-func getSpellHistoryPath() (string, error) {
-	home, err := os.UserHomeDir()
-	if err != nil {
-		return "", err
-	}
-	historyDir := filepath.Join(home, ".config", "nak", "spells")
-
-	// create directory if it doesn't exist
-	if err := os.MkdirAll(historyDir, 0755); err != nil {
-		return "", err
-	}
-
-	return filepath.Join(historyDir, "history"), nil
 }
