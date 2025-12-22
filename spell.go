@@ -65,38 +65,8 @@ var spell = &cli.Command{
 				if spell.Kind != 777 {
 					return fmt.Errorf("event is not a spell (expected kind 777, got %d)", spell.Kind)
 				}
-				// parse spell tags to build REQ filter
-				spellFilter, err := buildSpellReq(ctx, c, spell.Tags)
-				if err != nil {
-					return fmt.Errorf("failed to parse spell tags: %w", err)
-				}
-				// determine relays to query
-				var spellRelays []string
-				var outbox bool
-				relaysTag := spell.Tags.Find("relays")
-				if relaysTag == nil {
-					// if this tag doesn't exist assume $outbox
-					relaysTag = nostr.Tag{"relays", "$outbox"}
-				}
-				for i := 1; i < len(relaysTag); i++ {
-					switch relaysTag[i] {
-					case "$outbox":
-						outbox = true
-					default:
-						spellRelays = append(spellRelays, relaysTag[i])
-					}
-				}
 
-				stream := !spell.Tags.Has("close-on-eose")
-
-				logverbose("executing spell from stdin: %s relays=%v outbox=%v stream=%v\n",
-					spellFilter, spellRelays, outbox, stream)
-
-				// execute without adding to history
-				logSpellDetails(spell)
-				performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
-
-				return nil
+				return runSpell(ctx, c, historyPath, history, nostr.EventPointer{ID: spell.ID}, spell)
 			}
 
 			// no stdin input, show recent spells
@@ -123,13 +93,14 @@ var spell = &cli.Command{
 				}
 
 				lastUsed := entry.LastUsed.Format("2006-01-02 15:04")
-				stdout(fmt.Sprintf("  %s %s%s - %s\n",
+				stdout(fmt.Sprintf("  %s %s%s - %s",
 					color.BlueString(entry.Identifier),
 					displayName,
 					color.YellowString(lastUsed),
 					desc,
 				))
 			}
+
 			return nil
 		}
 
@@ -156,99 +127,132 @@ var spell = &cli.Command{
 			return fmt.Errorf("invalid spell reference")
 		}
 
-		// fetch spell
-		relays := pointer.Relays
-		if pointer.Author != nostr.ZeroPK {
-			for _, url := range relays {
-				sys.Hints.Save(pointer.Author, nostr.NormalizeURL(url), hints.LastInHint, nostr.Now())
-			}
-			relays = append(relays, sys.FetchOutboxRelays(ctx, pointer.Author, 3)...)
+		// first try to fetch spell from sys.Store
+		var spell nostr.Event
+		found := false
+		for evt := range sys.Store.QueryEvents(nostr.Filter{IDs: []nostr.ID{pointer.ID}}, 1) {
+			spell = evt
+			found = true
+			break
 		}
-		spell := sys.Pool.QuerySingle(ctx, relays, nostr.Filter{IDs: []nostr.ID{pointer.ID}},
-			nostr.SubscriptionOptions{Label: "nak-spell-f"})
-		if spell == nil {
-			return fmt.Errorf("spell event not found")
+
+		var relays []string
+		if !found {
+			// if not found in store, fetch from external relays
+			relays = pointer.Relays
+			if pointer.Author != nostr.ZeroPK {
+				for _, url := range relays {
+					sys.Hints.Save(pointer.Author, nostr.NormalizeURL(url), hints.LastInHint, nostr.Now())
+				}
+				relays = append(relays, sys.FetchOutboxRelays(ctx, pointer.Author, 3)...)
+			}
+			result := sys.Pool.QuerySingle(ctx, relays, nostr.Filter{IDs: []nostr.ID{pointer.ID}},
+				nostr.SubscriptionOptions{Label: "nak-spell-f"})
+			if result == nil {
+				return fmt.Errorf("spell event not found")
+			}
+			spell = result.Event
 		}
 		if spell.Kind != 777 {
 			return fmt.Errorf("event is not a spell (expected kind 777, got %d)", spell.Kind)
 		}
 
-		// parse spell tags to build REQ filter
-		spellFilter, err := buildSpellReq(ctx, c, spell.Tags)
+		return runSpell(ctx, c, historyPath, history, pointer, spell)
+	},
+}
+
+func runSpell(
+	ctx context.Context,
+	c *cli.Command,
+	historyPath string,
+	history []SpellHistoryEntry,
+	pointer nostr.EventPointer,
+	spell nostr.Event,
+) error {
+	// parse spell tags to build REQ filter
+	spellFilter, err := buildSpellReq(ctx, c, spell.Tags)
+	if err != nil {
+		return fmt.Errorf("failed to parse spell tags: %w", err)
+	}
+
+	// determine relays to query
+	var spellRelays []string
+	var outbox bool
+	relaysTag := spell.Tags.Find("relays")
+	if relaysTag == nil {
+		// if this tag doesn't exist assume $outbox
+		relaysTag = nostr.Tag{"relays", "$outbox"}
+	}
+	for i := 1; i < len(relaysTag); i++ {
+		switch relaysTag[i] {
+		case "$outbox":
+			outbox = true
+		default:
+			spellRelays = append(spellRelays, relaysTag[i])
+		}
+	}
+
+	stream := !spell.Tags.Has("close-on-eose")
+
+	// fill in the author if we didn't have it
+	pointer.Author = spell.PubKey
+
+	// save spell to sys.Store
+	if err := sys.Store.SaveEvent(spell); err != nil {
+		logverbose("failed to save spell to store: %v\n", err)
+	}
+
+	// add to history before execution
+	{
+		idStr := nip19.EncodeNevent(spell.ID, nil, nostr.ZeroPK)
+		identifier := "spell" + idStr[len(idStr)-7:]
+		nameTag := spell.Tags.Find("name")
+		var name string
+		if nameTag != nil {
+			name = nameTag[1]
+		}
+		if len(history) > 100 {
+			history = history[:100]
+		}
+		// write back to file
+		file, err := os.Create(historyPath)
 		if err != nil {
-			return fmt.Errorf("failed to parse spell tags: %w", err)
+			return err
 		}
-
-		// determine relays to query
-		var spellRelays []string
-		var outbox bool
-		relaysTag := spell.Event.Tags.Find("relays")
-		if relaysTag == nil {
-			// if this tag doesn't exist assume $outbox
-			relaysTag = nostr.Tag{"relays", "$outbox"}
-		}
-		for i := 1; i < len(relaysTag); i++ {
-			switch relaysTag[i] {
-			case "$outbox":
-				outbox = true
-			default:
-				relays = append(relays, relaysTag[i])
+		data, _ := json.Marshal(SpellHistoryEntry{
+			Identifier: identifier,
+			Name:       name,
+			Content:    spell.Content,
+			LastUsed:   time.Now(),
+			Pointer:    pointer,
+		})
+		file.Write(data)
+		file.Write([]byte{'\n'})
+		for i, entry := range history {
+			if entry.Identifier == identifier {
+				continue
 			}
-		}
 
-		stream := !spell.Tags.Has("close-on-eose")
-
-		// fill in the author if we didn't have it
-		pointer.Author = spell.PubKey
-
-		// add to history before execution
-		{
-			idStr := nip19.EncodeNevent(spell.ID, nil, nostr.ZeroPK)
-			identifier = "spell" + idStr[len(idStr)-7:]
-			nameTag := spell.Tags.Find("name")
-			var name string
-			if nameTag != nil {
-				name = nameTag[1]
-			}
-			if len(history) > 100 {
-				history = history[:100]
-			}
-			// write back to file
-			file, err := os.Create(historyPath)
-			if err != nil {
-				return err
-			}
-			data, _ := json.Marshal(SpellHistoryEntry{
-				Identifier: identifier,
-				Name:       name,
-				Content:    spell.Content,
-				LastUsed:   time.Now(),
-				Pointer:    pointer,
-			})
+			data, _ := json.Marshal(entry)
 			file.Write(data)
 			file.Write([]byte{'\n'})
-			for i, entry := range history {
-				// limit history size (keep last 100)
-				if i == 100 {
-					break
-				}
 
-				data, _ := json.Marshal(entry)
-				file.Write(data)
-				file.Write([]byte{'\n'})
+			// limit history size (keep last 100)
+			if i == 100 {
+				break
 			}
-			file.Close()
-
-			logverbose("executing %s: %s relays=%v outbox=%v stream=%v\n",
-				identifier, spellFilter, spellRelays, outbox, stream)
 		}
+		file.Close()
 
-		// execute
-		logSpellDetails(spell.Event)
-		performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
+		logverbose("executing %s: %s relays=%v outbox=%v stream=%v\n",
+			identifier, spellFilter, spellRelays, outbox, stream)
+	}
 
-		return nil
-	},
+	// execute
+	logSpellDetails(spell)
+	performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
+
+	return nil
 }
 
 func buildSpellReq(ctx context.Context, c *cli.Command, tags nostr.Tags) (nostr.Filter, error) {
