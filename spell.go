@@ -89,6 +89,7 @@ var spell = &cli.Command{
 					spellFilter, spellRelays, outbox, stream)
 
 				// execute without adding to history
+				logSpellDetails(spell)
 				performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
 
 				return nil
@@ -109,7 +110,7 @@ var spell = &cli.Command{
 					}
 				}
 				if displayName != "" {
-					displayName = displayName + ": "
+					displayName = color.HiMagentaString(displayName) + ": "
 				}
 
 				desc := entry.Content
@@ -239,6 +240,7 @@ var spell = &cli.Command{
 		}
 
 		// execute
+		logSpellDetails(spell.Event)
 		performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
 
 		return nil
@@ -424,4 +426,32 @@ type SpellHistoryEntry struct {
 	Content    string             `json:"content,omitempty"`
 	LastUsed   time.Time          `json:"last_used"`
 	Pointer    nostr.EventPointer `json:"pointer"`
+}
+
+func logSpellDetails(spell nostr.Event) {
+	nameTag := spell.Tags.Find("name")
+	name := ""
+	if nameTag != nil {
+		name = nameTag[1]
+		if len(name) > 28 {
+			name = name[:27] + "…"
+		}
+	}
+	if name != "" {
+		name = ": " + color.HiMagentaString(name)
+	}
+
+	desc := spell.Content
+	if len(desc) > 50 {
+		desc = desc[0:49] + "…"
+	}
+
+	idStr := nip19.EncodeNevent(spell.ID, nil, nostr.ZeroPK)
+	identifier := "spell" + idStr[len(idStr)-7:]
+
+	log("running %s%s - %s\n",
+		color.BlueString(identifier),
+		name,
+		desc,
+	)
 }
