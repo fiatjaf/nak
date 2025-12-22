@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/eventstore/boltdb"
+	"fiatjaf.com/nostr/eventstore/lmdb"
 	"fiatjaf.com/nostr/eventstore/nullstore"
 	"fiatjaf.com/nostr/sdk"
-	"fiatjaf.com/nostr/sdk/hints/bbolth"
-	"fiatjaf.com/nostr/sdk/kvstore/bbolt"
+	"fiatjaf.com/nostr/sdk/hints/lmdbh"
+	lmdbkv "fiatjaf.com/nostr/sdk/kvstore/lmdb"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
@@ -29,7 +29,7 @@ var app = &cli.Command{
 	Usage:                     "the nostr army knife command-line tool",
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
-		event,
+		eventCmd,
 		req,
 		filterCmd,
 		fetch,
@@ -105,22 +105,24 @@ var app = &cli.Command{
 
 		configPath := c.String("config-path")
 		if configPath != "" {
-			os.MkdirAll(filepath.Join("outbox"), 0755)
-			hintsFilePath := filepath.Join(configPath, "outbox/hints.db")
-			_, err := bbolth.NewBoltHints(hintsFilePath)
+			hintsPath := filepath.Join(configPath, "outbox/hints")
+			os.MkdirAll(hintsPath, 0755)
+			_, err := lmdbh.NewLMDBHints(hintsPath)
 			if err != nil {
-				log("failed to create bolt hints db at '%s': %s\n", hintsFilePath, err)
+				log("failed to create lmdb hints db at '%s': %s\n", hintsPath, err)
 			}
 
 			eventsPath := filepath.Join(configPath, "events")
-			sys.Store = &boltdb.BoltBackend{Path: eventsPath}
+			os.MkdirAll(eventsPath, 0755)
+			sys.Store = &lmdb.LMDBBackend{Path: eventsPath}
 			if err := sys.Store.Init(); err != nil {
 				log("failed to create boltdb events db at '%s': %s\n", eventsPath, err)
 				sys.Store = &nullstore.NullStore{}
 			}
 
 			kvPath := filepath.Join(configPath, "kvstore")
-			if kv, err := bbolt.NewStore(kvPath); err != nil {
+			os.MkdirAll(kvPath, 0755)
+			if kv, err := lmdbkv.NewStore(kvPath); err != nil {
 				log("failed to create boltdb kvstore db at '%s': %s\n", kvPath, err)
 			} else {
 				sys.KVStore = kv

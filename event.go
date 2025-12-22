@@ -24,7 +24,7 @@ const (
 	CATEGORY_EXTRAS       = "EXTRAS"
 )
 
-var event = &cli.Command{
+var eventCmd = &cli.Command{
 	Name:  "event",
 	Usage: "generates an encoded event and either prints it or sends it to a set of relays",
 	Description: `outputs an event built with the flags. if one or more relays are given as arguments, an attempt is also made to publish the event to these relays.
