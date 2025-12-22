@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -88,8 +89,8 @@ var kanban = &cli.Command{
 			Action: createCardCLI,
 		},
 		{
-			Name:  "move-card",
-			Usage: "move a card to a different column",
+			Name:  "update-card",
+			Usage: "update any field of a card (title, description, column, priority)",
 			Flags: append(defaultKeyFlags,
 				&cli.StringFlag{
 					Name:     "card-title",
@@ -107,9 +108,20 @@ var kanban = &cli.Command{
 					Required: true,
 				},
 				&cli.StringFlag{
+					Name:     "new-title",
+					Usage:    "new card title",
+				},
+				&cli.StringFlag{
+					Name:     "new-description",
+					Usage:    "new card description",
+				},
+				&cli.StringFlag{
 					Name:     "new-column",
-					Usage:    "target column name",
-					Required: true,
+					Usage:    "new column name",
+				},
+				&cli.StringFlag{
+					Name:     "new-priority",
+					Usage:    "new card priority (low, medium, high)",
 				},
 				&cli.StringSliceFlag{
 					Name:     "relay",
@@ -120,7 +132,7 @@ var kanban = &cli.Command{
 					Usage:    "show Highlighter URLs for debugging",
 				},
 			),
-			Action: moveCardCLI,
+			Action: updateCardCLI,
 		},
 		{
 			Name:  "list-cards",
@@ -245,7 +257,7 @@ func createCardCLI(ctx context.Context, c *cli.Command) error {
 	return nil
 }
 
-func moveCardCLI(ctx context.Context, c *cli.Command) error {
+func updateCardCLI(ctx context.Context, c *cli.Command) error {
 	keyer, _, err := gatherKeyerFromArguments(ctx, c)
 	if err != nil {
 		return err
@@ -254,20 +266,23 @@ func moveCardCLI(ctx context.Context, c *cli.Command) error {
 	cardTitle := c.String("card-title")
 	boardID := c.String("board-id")
 	boardPubkey := c.String("board-pubkey")
+	newTitle := c.String("new-title")
+	newDescription := c.String("new-description")
 	newColumn := c.String("new-column")
+	newPriority := c.String("new-priority")
 	relays := c.StringSlice("relay")
 
-	result, err := moveCard(ctx, keyer, cardTitle, boardID, boardPubkey, newColumn, relays)
+	result, err := updateCard(ctx, keyer, cardTitle, boardID, boardPubkey, newTitle, newDescription, newColumn, newPriority, relays)
 	if err != nil {
 		return err
 	}
 
-	fmt.Printf("✓ Card '%s' moved to '%s'\n", cardTitle, newColumn)
+	fmt.Printf("✓ Card '%s' updated successfully\n", cardTitle)
 	fmt.Printf("✓ Event ID: %s\n", result.EventID)
 	
 	// Only show Highlighter URL if debug flag is provided
 	if c.Bool("debug") {
-		fmt.Printf("✓ Moved Card Highlighter: https://highlighter.com/a/%s\n", result.Naddr)
+		fmt.Printf("✓ Updated Card Highlighter: https://highlighter.com/a/%s\n", result.Naddr)
 	}
 
 	return nil
@@ -525,9 +540,14 @@ func createCard(ctx context.Context, keyer nostr.Keyer, title, description, boar
 	}, nil
 }
 
-func moveCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardPubkey, newColumn string, relays []string) (*CardResult, error) {
+func updateCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardPubkey, newTitle, newDescription, newColumn, newPriority string, relays []string) (*CardResult, error) {
 	if len(relays) == 0 {
 		relays = []string{"wss://relay.damus.io", "wss://nos.lol"}
+	}
+
+	// Check if at least one field is being updated
+	if newTitle == "" && newDescription == "" && newColumn == "" && newPriority == "" {
+		return nil, fmt.Errorf("at least one field must be updated (title, description, column, or priority)")
 	}
 
 	// Parse board pubkey
@@ -542,29 +562,80 @@ func moveCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardP
 		return nil, fmt.Errorf("failed to find card: %w", err)
 	}
 
-	// Get board info to find column UUID
-	boardInfo, err := getBoardInfo(ctx, boardID, pk.Hex(), relays)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get board info: %w", err)
-	}
-
-	var newColumnUUID string
-	for _, col := range boardInfo.Columns {
-		if col.Name == newColumn {
-			newColumnUUID = col.UUID
-			break
+	// Get board info if updating column
+	var boardInfo *BoardInfo
+	if newColumn != "" {
+		boardInfo, err = getBoardInfo(ctx, boardID, pk.Hex(), relays)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get board info: %w", err)
 		}
 	}
-	if newColumnUUID == "" {
-		return nil, fmt.Errorf("column '%s' not found on board", newColumn)
+
+	// Update card tags based on provided parameters
+	tags := make(nostr.Tags, len(card.Tags))
+	copy(tags, card.Tags)
+
+	// Update title if provided
+	if newTitle != "" {
+		for i, tag := range tags {
+			if len(tag) >= 2 && tag[0] == "title" {
+				tags[i] = []string{"title", newTitle}
+				break
+			}
+		}
+		// Also update alt tag if present
+		for i, tag := range tags {
+			if len(tag) >= 2 && tag[0] == "alt" {
+				tags[i] = []string{"alt", fmt.Sprintf("A card titled %s", newTitle)}
+				break
+			}
+		}
 	}
 
-	// Update card tags with new column
-	tags := card.Tags
-	for i, tag := range tags {
-		if len(tag) > 0 && tag[0] == "s" {
-			tags[i] = []string{"s", newColumn}
+	// Update description tag if provided
+	if newDescription != "" {
+		for i, tag := range tags {
+			if len(tag) >= 2 && tag[0] == "description" {
+				tags[i] = []string{"description", newDescription}
+				break
+			}
 		}
+	}
+
+	// Update column if provided
+	if newColumn != "" {
+		var newColumnUUID string
+		for _, col := range boardInfo.Columns {
+			if col.Name == newColumn {
+				newColumnUUID = col.UUID
+				break
+			}
+		}
+		if newColumnUUID == "" {
+			return nil, fmt.Errorf("column '%s' not found on board", newColumn)
+		}
+		for i, tag := range tags {
+			if len(tag) > 0 && tag[0] == "s" {
+				tags[i] = []string{"s", newColumn}
+				break
+			}
+		}
+	}
+
+	// Update priority if provided
+	if newPriority != "" {
+		for i, tag := range tags {
+			if len(tag) >= 2 && tag[0] == "priority" {
+				tags[i] = []string{"priority", newPriority}
+				break
+			}
+		}
+	}
+
+	// Determine content for the new card
+	content := card.Content
+	if newDescription != "" {
+		content = newDescription
 	}
 
 	// Create updated card event
@@ -572,7 +643,7 @@ func moveCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardP
 		Kind:      30302,
 		CreatedAt: nostr.Now(),
 		Tags:      tags,
-		Content:   card.Content,
+		Content:   content,
 	}
 
 	if err := keyer.SignEvent(ctx, &event); err != nil {
@@ -607,6 +678,11 @@ func moveCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardP
 		EventID: event.ID.String(),
 		Naddr:   naddr,
 	}, nil
+}
+
+// Keep moveCard for backward compatibility but have it call updateCard
+func moveCard(ctx context.Context, keyer nostr.Keyer, cardTitle, boardID, boardPubkey, newColumn string, relays []string) (*CardResult, error) {
+	return updateCard(ctx, keyer, cardTitle, boardID, boardPubkey, "", "", newColumn, "", relays)
 }
 
 func listCards(ctx context.Context, boardID, boardPubkey, column string, limit int64, relays []string) ([]Card, error) {
@@ -827,6 +903,41 @@ func createCardMCP(ctx context.Context, keyer nostr.Keyer, r mcp.CallToolRequest
 	return mcp.NewToolResultText(fmt.Sprintf("Card '%s' created successfully with event ID: %s\nCard Highlighter: https://highlighter.com/a/%s", title, result.EventID, result.Naddr)), nil
 }
 
+func updateCardMCP(ctx context.Context, keyer nostr.Keyer, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+	cardTitle := required[string](r, "card_title")
+	boardID := required[string](r, "board_id")
+	boardPubkey := required[string](r, "board_pubkey")
+	newTitle, _ := optional[string](r, "new_title")
+	newDescription, _ := optional[string](r, "new_description")
+	newColumn, _ := optional[string](r, "new_column")
+	newPriority, _ := optional[string](r, "new_priority")
+	relays, _ := optional[[]string](r, "relay_urls")
+
+	result, err := updateCard(ctx, keyer, cardTitle, boardID, boardPubkey, newTitle, newDescription, newColumn, newPriority, relays)
+	if err != nil {
+		return mcp.NewToolResultError(fmt.Sprintf("Failed to update card: %v", err)), nil
+	}
+
+	// Build update summary
+	var updates []string
+	if newTitle != "" {
+		updates = append(updates, fmt.Sprintf("title to '%s'", newTitle))
+	}
+	if newDescription != "" {
+		updates = append(updates, "description")
+	}
+	if newColumn != "" {
+		updates = append(updates, fmt.Sprintf("column to '%s'", newColumn))
+	}
+	if newPriority != "" {
+		updates = append(updates, fmt.Sprintf("priority to '%s'", newPriority))
+	}
+
+	updateText := strings.Join(updates, ", ")
+	return mcp.NewToolResultText(fmt.Sprintf("Card '%s' updated successfully (%s) with event ID: %s\nCard Highlighter: https://highlighter.com/a/%s", cardTitle, updateText, result.EventID, result.Naddr)), nil
+}
+
+// Keep moveCardMCP for backward compatibility
 func moveCardMCP(ctx context.Context, keyer nostr.Keyer, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	cardTitle := required[string](r, "card_title")
 	newColumn := required[string](r, "new_column")

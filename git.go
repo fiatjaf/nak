@@ -2105,11 +2105,11 @@ func gitPush(ctx context.Context, signer nostr.Keyer, branch, remoteBranch strin
 
 // createPullRequestWithSigner is a helper function to create pull requests using a provided signer
 // This is similar to gitPush helper function and can be called from MCP tools
-func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRepoAddr, baseBranch, headBranch, subject, relayURL string) error {
+func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRepoAddr, baseBranch, headBranch, subject, relayURL string) (*string, error) {
 	// Read current repository config first
 	localConfig, err := readNip34ConfigFile("")
 	if err != nil {
-		return fmt.Errorf("failed to read local repository config: %w", err)
+		return nil, fmt.Errorf("failed to read local repository config: %w", err)
 	}
 
 	var baseOwner nostr.PubKey
@@ -2121,7 +2121,7 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 		// Parse local owner for internal PR
 		baseOwner, err = parsePubKey(localConfig.Owner)
 		if err != nil {
-			return fmt.Errorf("failed to parse local owner pubkey: %w", err)
+			return nil, fmt.Errorf("failed to parse local owner pubkey: %w", err)
 		}
 		baseIdentifier = localConfig.Identifier
 		baseRelayHints = localConfig.GraspServers
@@ -2129,21 +2129,28 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 		// Parse external base repository address
 		baseOwner, baseIdentifier, baseRelayHints, err = parseRepositoryAddress(ctx, baseRepoAddr)
 		if err != nil {
-			return fmt.Errorf("failed to parse base repository address: %w", err)
+			return nil, fmt.Errorf("failed to parse base repository address: %w", err)
 		}
 	}
 
 	// Get signer's public key
 	signerPubkey, err := signer.GetPublicKey(ctx)
 	if err != nil {
-		return fmt.Errorf("failed to get signer pubkey: %w", err)
+		return nil, fmt.Errorf("failed to get signer pubkey: %w", err)
 	}
+
+	// Ensure the head branch is pushed before creating PR
+	log("ensuring head branch is pushed before creating PR...\n")
+	if err := gitPush(ctx, signer, headBranch, headBranch, false); err != nil {
+		return nil, fmt.Errorf("failed to push head branch '%s' before creating PR: %w", headBranch, err)
+	}
+	log("head branch pushed successfully\n")
 
 	// Get current commit for head branch
 	cmd := exec.Command("git", "rev-parse", headBranch)
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("failed to get head commit: %w", err)
+		return nil, fmt.Errorf("failed to get head commit: %w", err)
 	}
 	headCommit := strings.TrimSpace(string(output))
 
@@ -2194,7 +2201,7 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 
 	// Sign the event
 	if err := signer.SignEvent(ctx, &event); err != nil {
-		return fmt.Errorf("failed to sign PR event: %w", err)
+		return nil, fmt.Errorf("failed to sign PR event: %w", err)
 	}
 
 	// Push to refs/nostr/ before publishing to event (NIP-34 requirement)
@@ -2218,7 +2225,7 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 	}
 
 	if publishedCount == 0 {
-		return fmt.Errorf("failed to publish pull request to any relay")
+		return nil, fmt.Errorf("failed to publish pull request to any relay")
 	}
 
 	log("pull request created successfully!\n")
@@ -2227,7 +2234,10 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 	log("Head: %s/%s (branch: %s)\n", nip19.EncodeNpub(signerPubkey), localConfig.Identifier, headBranch)
 	log("Subject: %s\n", subject)
 
-	return nil
+	// Return the nevent code for the PR
+	neventCode := nip19.EncodeNevent(event.ID, []string{}, baseOwner)
+
+	return &neventCode, nil
 }
 
 // updatePullRequestWithSigner is a helper function to update pull requests using a provided signer

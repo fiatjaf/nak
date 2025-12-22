@@ -267,6 +267,21 @@ var mcpServer = &cli.Command{
 			return createCardMCP(ctx, keyer, r)
 		})
 
+		s.AddTool(mcp.NewTool("update_kanban_card",
+			mcp.WithDescription("Update any field of a kanban card (title, description, column, priority)"),
+			mcp.WithString("card_title", mcp.Description("Card title to search for"), mcp.Required()),
+			mcp.WithString("board_id", mcp.Description("Board identifier"), mcp.Required()),
+			mcp.WithString("board_pubkey", mcp.Description("Board owner public key"), mcp.Required()),
+			mcp.WithString("new_title", mcp.Description("New card title")),
+			mcp.WithString("new_description", mcp.Description("New card description")),
+			mcp.WithString("new_column", mcp.Description("New column name")),
+			mcp.WithString("new_priority", mcp.Description("New card priority (low, medium, high)")),
+			mcp.WithString("relay_urls", mcp.Description("Relay URLs to publish to (comma-separated)")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			return updateCardMCP(ctx, keyer, r)
+		})
+
+		// Keep move_kanban_card for backward compatibility
 		s.AddTool(mcp.NewTool("move_kanban_card",
 			mcp.WithDescription("Move a card to a different column"),
 			mcp.WithString("card_title", mcp.Description("Card title to search for"), mcp.Required()),
@@ -468,6 +483,7 @@ This repository was created using the Nak tool for Nostr-based git repositories.
 				result += fmt.Sprintf("Repository name: %s\n", name)
 				result += fmt.Sprintf("Owner: %s\n", owner)
 				result += fmt.Sprintf("GRASP servers: %v\n", graspServers)
+				result += fmt.Sprintf("Gitworkshop Link: https://gitworkshop.dev/%s/%s\n", owner, identifier)
 				result += fmt.Sprintf("\n⚠️  Warning: Failed to sync to relays: %s\n", syncErr.Error())
 				result += "Repository created locally but may not be available on relays. Run 'nak git sync' and 'nak git push' manually to publish."
 				return mcp.NewToolResultText(result), nil
@@ -491,6 +507,7 @@ This repository was created using the Nak tool for Nostr-based git repositories.
 			result += fmt.Sprintf("Repository name: %s\n", name)
 			result += fmt.Sprintf("Owner: %s\n", owner)
 			result += fmt.Sprintf("GRASP servers: %v\n", graspServers)
+			result += fmt.Sprintf("Gitworkshop Link: https://gitworkshop.dev/%s/%s\n", owner, identifier)
 			result += "\n✅ Repository is now published to relays and ready for use!"
 			result += "\n✅ Initial commit with README.md has been pushed to the network!"
 
@@ -910,7 +927,8 @@ This repository was created using the Nak tool for Nostr-based git repositories.
 				baseBranch = "master"
 			}
 
-			if err := createPullRequestWithSigner(ctx, keyer, baseRepo, baseBranch, headBranch, subject, relay); err != nil {
+			prNevent, err := createPullRequestWithSigner(ctx, keyer, baseRepo, baseBranch, headBranch, subject, relay)
+			if err != nil {
 				return mcp.NewToolResultError("failed to create pull request: " + err.Error()), nil
 			}
 
@@ -918,6 +936,10 @@ This repository was created using the Nak tool for Nostr-based git repositories.
 			result += fmt.Sprintf("Base branch: %s\n", baseBranch)
 			result += fmt.Sprintf("Head branch: %s\n", headBranch)
 			result += fmt.Sprintf("Subject: %s\n", subject)
+			if prNevent != nil {
+				result += fmt.Sprintf("Pull Request ID: %s\n", *prNevent)
+				result += fmt.Sprintf("Gitworkshop Link: https://gitworkshop.dev/%s\n", *prNevent)
+			}
 
 			return mcp.NewToolResultText(result), nil
 		})
