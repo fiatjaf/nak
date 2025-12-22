@@ -2,14 +2,17 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/textproto"
 	"os"
 	"path/filepath"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/eventstore/boltdb"
+	"fiatjaf.com/nostr/eventstore/nullstore"
 	"fiatjaf.com/nostr/sdk"
+	"fiatjaf.com/nostr/sdk/hints/bbolth"
+	"fiatjaf.com/nostr/sdk/kvstore/bbolt"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
@@ -44,7 +47,7 @@ var app = &cli.Command{
 		encrypt,
 		decrypt,
 		gift,
-		outbox,
+		outboxCmd,
 		wallet,
 		mcpServer,
 		curl,
@@ -64,7 +67,7 @@ var app = &cli.Command{
 				if home, err := os.UserHomeDir(); err == nil {
 					return filepath.Join(home, ".config/nak")
 				} else {
-					return filepath.Join("/dev/null")
+					return ""
 				}
 			})(),
 		},
@@ -100,8 +103,28 @@ var app = &cli.Command{
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		sys = sdk.NewSystem()
 
-		if err := initializeOutboxHintsDB(c, sys); err != nil {
-			return ctx, fmt.Errorf("failed to initialize outbox hints: %w", err)
+		configPath := c.String("config-path")
+		if configPath != "" {
+			os.MkdirAll(filepath.Join("outbox"), 0755)
+			hintsFilePath := filepath.Join(configPath, "outbox/hints.db")
+			_, err := bbolth.NewBoltHints(hintsFilePath)
+			if err != nil {
+				log("failed to create bolt hints db at '%s': %s\n", hintsFilePath, err)
+			}
+
+			eventsPath := filepath.Join(configPath, "events")
+			sys.Store = &boltdb.BoltBackend{Path: eventsPath}
+			if err := sys.Store.Init(); err != nil {
+				log("failed to create boltdb events db at '%s': %s\n", eventsPath, err)
+				sys.Store = &nullstore.NullStore{}
+			}
+
+			kvPath := filepath.Join(configPath, "kvstore")
+			if kv, err := bbolt.NewStore(kvPath); err != nil {
+				log("failed to create boltdb kvstore db at '%s': %s\n", kvPath, err)
+			} else {
+				sys.KVStore = kv
+			}
 		}
 
 		sys.Pool = nostr.NewPool(nostr.PoolOptions{
