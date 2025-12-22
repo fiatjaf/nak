@@ -9,7 +9,7 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var filter = &cli.Command{
+var filterCmd = &cli.Command{
 	Name:  "filter",
 	Usage: "applies an event filter to an event to see if it matches.",
 	Description: `
