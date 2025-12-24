@@ -92,51 +92,9 @@ var dekey = &cli.Command{
 			return fmt.Errorf("no relays to use")
 		}
 
-		// check if kind:4454 is already published
-		log("- checking for existing device registration (kind:4454)\n")
-		events := make([]nostr.Event, 0, 1)
-		for evt := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
-			Kinds:   []nostr.Kind{4454},
-			Authors: []nostr.PubKey{userPub},
-			Tags: nostr.TagMap{
-				"P": []string{devicePub.Hex()},
-			},
-			Limit: 1,
-		}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
-			events = append(events, evt.Event)
-		}
-
-		if len(events) == 0 {
-			log(". no device registration found, publishing kind:4454 for %s\n", color.YellowString(deviceName))
-			// publish kind:4454
-			evt := nostr.Event{
-				Kind:      4454,
-				Content:   "",
-				CreatedAt: nostr.Now(),
-				Tags: nostr.Tags{
-					{"client", deviceName},
-					{"P", devicePub.Hex()},
-				},
-			}
-
-			// sign with main key
-			if err := kr.SignEvent(ctx, &evt); err != nil {
-				return fmt.Errorf("failed to sign device event: %w", err)
-			}
-
-			// publish
-			if err := publishFlow(ctx, c, kr, evt, relayList); err != nil {
-				return err
-			}
-			log(color.GreenString(". device registration published\n"))
-		} else {
-			log(color.GreenString(". device already registered\n"))
-		}
-
 		// check for kind:10044
 		log("- checking for user encryption key (kind:10044)\n")
-		userKeyEventDate := nostr.Now()
-		userKeyResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
+		keyAnnouncementResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{10044},
 			Authors: []nostr.PubKey{userPub},
 		}, nostr.SubscriptionOptions{Label: "nak-nip4e"})
@@ -144,13 +102,13 @@ var dekey = &cli.Command{
 		var ePub nostr.PubKey
 
 		var generateNewEncryptionKey bool
-		userKeyEvent, ok := userKeyResult.Load(nostr.ReplaceableKey{PubKey: userPub, D: ""})
+		keyAnnouncementEvent, ok := keyAnnouncementResult.Load(nostr.ReplaceableKey{PubKey: userPub, D: ""})
 		if !ok {
 			log("- no user encryption key found, generating new one\n")
 			generateNewEncryptionKey = true
 		} else {
 			// get the pub from the tag
-			for _, tag := range userKeyEvent.Tags {
+			for _, tag := range keyAnnouncementEvent.Tags {
 				if len(tag) >= 2 && tag[0] == "n" {
 					ePub, _ = nostr.PubKeyFromHex(tag[1])
 					break
@@ -170,7 +128,7 @@ var dekey = &cli.Command{
 		if generateNewEncryptionKey {
 			// generate main secret key
 			eSec = nostr.Generate()
-			ePub := eSec.Public()
+			ePub = eSec.Public()
 
 			// store it
 			eKeyPath := filepath.Join(configPath, "dekey", "p", userPub.Hex(), "e", ePub.Hex())
@@ -185,7 +143,7 @@ var dekey = &cli.Command{
 			evt10044 := nostr.Event{
 				Kind:      10044,
 				Content:   "",
-				CreatedAt: userKeyEventDate,
+				CreatedAt: nostr.Now(),
 				Tags: nostr.Tags{
 					{"n", ePub.Hex()},
 				},
@@ -197,8 +155,6 @@ var dekey = &cli.Command{
 				return err
 			}
 		} else {
-			userKeyEventDate = userKeyEvent.CreatedAt
-
 			// check if we have the key
 			eKeyPath := filepath.Join(configPath, "dekey", "p", userPub.Hex(), "e", ePub.Hex())
 			if data, err := os.ReadFile(eKeyPath); err == nil {
@@ -211,14 +167,56 @@ var dekey = &cli.Command{
 					return fmt.Errorf("stored user encryption key is corrupted: %w", err)
 				}
 			} else {
-				log("- encryption key not stored locally, attempting to fetch the key from other devices\n")
-				// try to decrypt from kind:4455
+				log("- encryption key not found locally, attempting to fetch the key from other devices\n")
+
+				// check if our kind:4454 is already published
+				log("- checking for existing device announcement (kind:4454)\n")
+				ourDeviceAnnouncementEvents := make([]nostr.Event, 0, 1)
+				for evt := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
+					Kinds:   []nostr.Kind{4454},
+					Authors: []nostr.PubKey{userPub},
+					Tags: nostr.TagMap{
+						"P": []string{devicePub.Hex()},
+					},
+					Limit: 1,
+				}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
+					ourDeviceAnnouncementEvents = append(ourDeviceAnnouncementEvents, evt.Event)
+				}
+				if len(ourDeviceAnnouncementEvents) == 0 {
+					log(". no device announcement found, publishing kind:4454 for %s\n", color.YellowString(deviceName))
+					// publish kind:4454
+					evt := nostr.Event{
+						Kind:      4454,
+						Content:   "",
+						CreatedAt: nostr.Now(),
+						Tags: nostr.Tags{
+							{"client", deviceName},
+							{"P", devicePub.Hex()},
+						},
+					}
+
+					// sign with main key
+					if err := kr.SignEvent(ctx, &evt); err != nil {
+						return fmt.Errorf("failed to sign device event: %w", err)
+					}
+
+					// publish
+					if err := publishFlow(ctx, c, kr, evt, relayList); err != nil {
+						return err
+					}
+					log(color.GreenString(". device announcement published\n"))
+					ourDeviceAnnouncementEvents = append(ourDeviceAnnouncementEvents, evt)
+				} else {
+					log(color.GreenString(". device already registered\n"))
+				}
+
+				// see if some other device has shared the key with us from kind:4455
 				for eKeyMsg := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 					Kinds: []nostr.Kind{4455},
 					Tags: nostr.TagMap{
 						"p": []string{devicePub.Hex()},
 					},
-					Since: userKeyEventDate,
+					Since: keyAnnouncementEvent.CreatedAt + 1,
 				}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
 					var senderPub nostr.PubKey
 					for _, tag := range eKeyMsg.Tags {
@@ -248,6 +246,43 @@ var dekey = &cli.Command{
 						// store it
 						os.MkdirAll(filepath.Dir(eKeyPath), 0700)
 						os.WriteFile(eKeyPath, []byte(eSecHex), 0600)
+
+						// delete our 4454 if we had one, since we received the key
+						if len(ourDeviceAnnouncementEvents) > 0 {
+							log("deleting our device announcement (kind:4454) since we received the encryption key\n")
+							deletion4454 := nostr.Event{
+								CreatedAt: nostr.Now(),
+								Kind:      5,
+								Tags: nostr.Tags{
+									{"e", ourDeviceAnnouncementEvents[0].ID.Hex()},
+								},
+							}
+							if err := kr.SignEvent(ctx, &deletion4454); err != nil {
+								log(color.RedString("failed to sign 4454 deletion: %v\n"), err)
+							} else if err := publishFlow(ctx, c, kr, deletion4454, relayList); err != nil {
+								log(color.RedString("failed to publish 4454 deletion: %v\n"), err)
+							} else {
+								log(color.GreenString("- device announcement deleted\n"))
+							}
+						}
+
+						// delete the 4455 we just decrypted
+						log("deleting the key message (kind:4455) we just decrypted\n")
+						deletion4455 := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      5,
+							Tags: nostr.Tags{
+								{"e", eKeyMsg.ID.Hex()},
+							},
+						}
+						if err := kr.SignEvent(ctx, &deletion4455); err != nil {
+							log(color.RedString("failed to sign 4455 deletion: %v\n"), err)
+						} else if err := publishFlow(ctx, c, kr, deletion4455, relayList); err != nil {
+							log(color.RedString("failed to publish 4455 deletion: %v\n"), err)
+						} else {
+							log(color.GreenString("- key message deleted\n"))
+						}
+
 						break
 					}
 				}
@@ -267,10 +302,8 @@ var dekey = &cli.Command{
 		for keyOrDeviceEvt := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{4454, 4455},
 			Authors: []nostr.PubKey{userPub},
-			Since:   userKeyEventDate,
+			Since:   keyAnnouncementEvent.CreatedAt + 1,
 		}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
-			fmt.Println("~~~", keyOrDeviceEvt.Kind, keyOrDeviceEvt)
-
 			if keyOrDeviceEvt.Kind == 4455 {
 				// got key event
 				keyEvent := keyOrDeviceEvt
@@ -302,9 +335,6 @@ var dekey = &cli.Command{
 					continue
 				}
 
-				fmt.Println("KEYMSGS", keyMsgs)
-				fmt.Println(">>", pubkeyTag[1])
-				fmt.Println(">>", deviceEvt.Tags.Find("p"))
 				if slices.Contains(keyMsgs, pubkeyTag[1]) {
 					continue
 				}
@@ -321,15 +351,16 @@ var dekey = &cli.Command{
 					continue
 				}
 
-				log("- sending encryption key to new device %s\n", color.YellowString(deviceTag[1]))
 				if c.Bool("authorize-all") {
 					// will proceed
 				} else if c.Bool("reject-all") {
+					log("  - skipping %s\n", color.YellowString(deviceTag[1]))
 					continue
 				} else {
 					var proceed bool
 					if err := survey.AskOne(&survey.Confirm{
-						Message: "authorize?",
+						Message: fmt.Sprintf("share encryption key with %s"+colors.bold("?"),
+							color.YellowString(deviceTag[1])),
 					}, &proceed); err != nil {
 						return err
 					}
@@ -339,7 +370,7 @@ var dekey = &cli.Command{
 						// won't proceed
 						var deleteDevice bool
 						if err := survey.AskOne(&survey.Confirm{
-							Message: "  delete this device announcement?",
+							Message: fmt.Sprintf("  delete %s"+colors.bold("'s announcement?"), color.YellowString(deviceTag[1])),
 						}, &deleteDevice); err != nil {
 							return err
 						}
@@ -367,6 +398,7 @@ var dekey = &cli.Command{
 					}
 				}
 
+				log("- sending encryption key to new device %s\n", color.YellowString(deviceTag[1]))
 				ss, err := nip44.GenerateConversationKey(theirDevice, deviceSec)
 				if err != nil {
 					continue
@@ -397,6 +429,7 @@ var dekey = &cli.Command{
 			}
 		}
 
+		stdout(ePub.Hex())
 		return nil
 	},
 }
