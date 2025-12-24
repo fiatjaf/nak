@@ -92,6 +92,10 @@ example:
 				Usage:    "after connecting, for a nip42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
 				Category: CATEGORY_SIGNER,
 			},
+			&cli.BoolFlag{
+				Name:  "spell",
+				Usage: "output a spell event (kind 777) instead of a filter",
+			},
 		)...,
 	),
 	ArgsUsage: "[relay...]",
@@ -111,7 +115,16 @@ example:
 			return fmt.Errorf("incompatible flags --paginate and --outbox")
 		}
 
+		if c.Bool("bare") && c.Bool("spell") {
+			return fmt.Errorf("incompatible flags --bare and --spell")
+		}
+
 		relayUrls := c.Args().Slice()
+
+		if len(relayUrls) > 0 && (c.Bool("bare") || c.Bool("spell")) {
+			return fmt.Errorf("relay URLs are incompatible with --bare or --spell")
+		}
+
 		if len(relayUrls) > 0 && !negentropy {
 			// this is used both for the normal AUTH (after "auth-required:" is received) or forced pre-auth
 			// connect to all relays we expect to use in this call in parallel
@@ -225,15 +238,26 @@ example:
 					performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), "nak-req")
 				}
 			} else {
-				// no relays given, will just print the filter
+				// no relays given, will just print the filter or spell
 				var result string
-				if c.Bool("bare") {
+				if c.Bool("spell") {
+					// output a spell event instead of a filter
+					kr, _, err := gatherKeyerFromArguments(ctx, c)
+					if err != nil {
+						return err
+					}
+					spellEvent := createSpellEvent(ctx, filter, kr)
+					j, _ := json.Marshal(spellEvent)
+					result = string(j)
+				} else if c.Bool("bare") {
+					// bare filter output
 					result = filter.String()
 				} else {
+					// normal filter
 					j, _ := json.Marshal(nostr.ReqEnvelope{SubscriptionID: "nak", Filters: []nostr.Filter{filter}})
 					result = string(j)
-				}
 
+				}
 				stdout(result)
 			}
 		}

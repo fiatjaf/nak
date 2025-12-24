@@ -471,3 +471,77 @@ func logSpellDetails(spell nostr.Event) {
 		desc,
 	)
 }
+
+func createSpellEvent(ctx context.Context, filter nostr.Filter, kr nostr.Keyer) nostr.Event {
+	spell := nostr.Event{
+		Kind: 777,
+		Tags: make(nostr.Tags, 0),
+	}
+
+	// add cmd tag
+	spell.Tags = append(spell.Tags, nostr.Tag{"cmd", "REQ"})
+
+	// add kinds
+	if len(filter.Kinds) > 0 {
+		kindTag := nostr.Tag{"k"}
+		for _, kind := range filter.Kinds {
+			kindTag = append(kindTag, strconv.Itoa(int(kind)))
+		}
+		spell.Tags = append(spell.Tags, kindTag)
+	}
+
+	// add authors
+	if len(filter.Authors) > 0 {
+		authorsTag := nostr.Tag{"authors"}
+		for _, author := range filter.Authors {
+			authorsTag = append(authorsTag, author.Hex())
+		}
+		spell.Tags = append(spell.Tags, authorsTag)
+	}
+
+	// add ids
+	if len(filter.IDs) > 0 {
+		idsTag := nostr.Tag{"ids"}
+		for _, id := range filter.IDs {
+			idsTag = append(idsTag, id.Hex())
+		}
+		spell.Tags = append(spell.Tags, idsTag)
+	}
+
+	// add tags
+	for tagName, values := range filter.Tags {
+		if len(values) > 0 {
+			tag := nostr.Tag{"tag", tagName}
+			for _, value := range values {
+				tag = append(tag, value)
+			}
+			spell.Tags = append(spell.Tags, tag)
+		}
+	}
+
+	// add limit
+	if filter.Limit > 0 {
+		spell.Tags = append(spell.Tags, nostr.Tag{"limit", strconv.Itoa(filter.Limit)})
+	}
+
+	// add since
+	if filter.Since > 0 {
+		spell.Tags = append(spell.Tags, nostr.Tag{"since", strconv.FormatInt(int64(filter.Since), 10)})
+	}
+
+	// add until
+	if filter.Until > 0 {
+		spell.Tags = append(spell.Tags, nostr.Tag{"until", strconv.FormatInt(int64(filter.Until), 10)})
+	}
+
+	// add search
+	if filter.Search != "" {
+		spell.Tags = append(spell.Tags, nostr.Tag{"search", filter.Search})
+	}
+
+	if err := kr.SignEvent(ctx, &spell); err != nil {
+		log("failed to sign spell: %s\n", err)
+	}
+
+	return spell
+}
