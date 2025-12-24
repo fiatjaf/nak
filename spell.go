@@ -120,7 +120,7 @@ var spell = &cli.Command{
 		} else {
 			// search our history
 			for _, entry := range history {
-				if entry.Identifier == identifier {
+				if entry.Identifier == identifier || entry.Name == identifier {
 					pointer = entry.Pointer
 					break
 				}
