@@ -33,16 +33,16 @@ var dekey = &cli.Command{
 		},
 		&cli.BoolFlag{
 			Name:  "rotate",
-			Usage: "force the creation of a new encryption key, effectively invalidating any previous ones",
+			Usage: "force the creation of a new decoupled encryption key, effectively invalidating any previous ones",
 		},
 		&cli.BoolFlag{
 			Name:    "authorize-all",
 			Aliases: []string{"yolo"},
-			Usage:   "do not ask for confirmation, just automatically send the encryption key to all devices that exist",
+			Usage:   "do not ask for confirmation, just automatically send the decoupled encryption key to all devices that exist",
 		},
 		&cli.BoolFlag{
 			Name:  "reject-all",
-			Usage: "do not ask for confirmation, just not send the encryption key to any device",
+			Usage: "do not ask for confirmation, just not send the decoupled encryption key to any device",
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -93,7 +93,7 @@ var dekey = &cli.Command{
 		}
 
 		// check for kind:10044
-		log("- checking for user encryption key (kind:10044)\n")
+		log("- checking for decoupled encryption key (kind:10044)\n")
 		keyAnnouncementResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
 			Kinds:   []nostr.Kind{10044},
 			Authors: []nostr.PubKey{userPub},
@@ -104,7 +104,7 @@ var dekey = &cli.Command{
 		var generateNewEncryptionKey bool
 		keyAnnouncementEvent, ok := keyAnnouncementResult.Load(nostr.ReplaceableKey{PubKey: userPub, D: ""})
 		if !ok {
-			log("- no user encryption key found, generating new one\n")
+			log("- no decoupled encryption key found, generating new one\n")
 			generateNewEncryptionKey = true
 		} else {
 			// get the pub from the tag
@@ -118,7 +118,7 @@ var dekey = &cli.Command{
 				return fmt.Errorf("got invalid kind:10044 event, no 'n' tag")
 			}
 
-			log(". an encryption public key already exists: %s\n", color.CyanString(ePub.Hex()))
+			log(". a decoupled encryption public key already exists: %s\n", color.CyanString(ePub.Hex()))
 			if c.Bool("rotate") {
 				log(color.GreenString("rotating it by generating a new one\n"))
 				generateNewEncryptionKey = true
@@ -134,12 +134,12 @@ var dekey = &cli.Command{
 			eKeyPath := filepath.Join(configPath, "dekey", "p", userPub.Hex(), "e", ePub.Hex())
 			os.MkdirAll(filepath.Dir(eKeyPath), 0700)
 			if err := os.WriteFile(eKeyPath, []byte(eSec.Hex()), 0600); err != nil {
-				return fmt.Errorf("failed to write user encryption key: %w", err)
+				return fmt.Errorf("failed to write decoupled encryption key: %w", err)
 			}
-			log("user encryption key generated and stored, public key: %s\n", color.CyanString(ePub.Hex()))
+			log("decoupled encryption key generated and stored, public key: %s\n", color.CyanString(ePub.Hex()))
 
 			// publish kind:10044
-			log("publishing user encryption public key (kind:10044)\n")
+			log("publishing decoupled encryption public key (kind:10044)\n")
 			evt10044 := nostr.Event{
 				Kind:      10044,
 				Content:   "",
@@ -164,10 +164,10 @@ var dekey = &cli.Command{
 					return fmt.Errorf("invalid main key: %w", err)
 				}
 				if eSec.Public() != ePub {
-					return fmt.Errorf("stored user encryption key is corrupted: %w", err)
+					return fmt.Errorf("stored decoupled encryption key is corrupted: %w", err)
 				}
 			} else {
-				log("- encryption key not found locally, attempting to fetch the key from other devices\n")
+				log("- decoupled encryption key not found locally, attempting to fetch the key from other devices\n")
 
 				// check if our kind:4454 is already published
 				log("- checking for existing device announcement (kind:4454)\n")
@@ -242,14 +242,14 @@ var dekey = &cli.Command{
 					}
 					// check if it matches mainPub
 					if eSec.Public() == ePub {
-						log(color.GreenString("successfully decrypted encryption key from another device\n"))
+						log(color.GreenString("successfully received decoupled encryption key from another device\n"))
 						// store it
 						os.MkdirAll(filepath.Dir(eKeyPath), 0700)
 						os.WriteFile(eKeyPath, []byte(eSecHex), 0600)
 
 						// delete our 4454 if we had one, since we received the key
 						if len(ourDeviceAnnouncementEvents) > 0 {
-							log("deleting our device announcement (kind:4454) since we received the encryption key\n")
+							log("deleting our device announcement (kind:4454) since we received the decoupled encryption key\n")
 							deletion4454 := nostr.Event{
 								CreatedAt: nostr.Now(),
 								Kind:      5,
@@ -290,11 +290,11 @@ var dekey = &cli.Command{
 		}
 
 		if eSec == [32]byte{} {
-			log("encryption secret key not available, must be sent from another device to %s first\n",
+			log("decoupled encryption secret key not available, must be sent from another device to %s first\n",
 				color.YellowString(deviceName))
 			return nil
 		}
-		log(color.GreenString("- encryption key ready\n"))
+		log(color.GreenString("- decoupled encryption key ready\n"))
 
 		// now we have mainSec, check for other kind:4454 events newer than the 10044
 		log("- checking for other devices and key messages so we can send the key\n")
@@ -359,7 +359,7 @@ var dekey = &cli.Command{
 				} else {
 					var proceed bool
 					if err := survey.AskOne(&survey.Confirm{
-						Message: fmt.Sprintf("share encryption key with %s"+colors.bold("?"),
+						Message: fmt.Sprintf("share decoupled encryption key with %s"+colors.bold("?"),
 							color.YellowString(deviceTag[1])),
 					}, &proceed); err != nil {
 						return err
@@ -398,7 +398,7 @@ var dekey = &cli.Command{
 					}
 				}
 
-				log("- sending encryption key to new device %s\n", color.YellowString(deviceTag[1]))
+				log("- sending decoupled encryption key to new device %s\n", color.YellowString(deviceTag[1]))
 				ss, err := nip44.GenerateConversationKey(theirDevice, deviceSec)
 				if err != nil {
 					continue
@@ -424,7 +424,7 @@ var dekey = &cli.Command{
 				if err := publishFlow(ctx, c, kr, evt4455, relayList); err != nil {
 					log(color.RedString("failed to publish key message: %v\n"), err)
 				} else {
-					log("  - encryption key sent to %s\n", color.GreenString(deviceTag[1]))
+					log("  - decoupled encryption key sent to %s\n", color.GreenString(deviceTag[1]))
 				}
 			}
 		}
