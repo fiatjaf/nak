@@ -277,6 +277,10 @@ aside from those, there is also:
 
 					// prompt for web URLs
 					webURLs, err := promptForStringList("web URLs", config.Web, []string{
+						fmt.Sprintf("https://viewsource.win/%s/%s",
+							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
+							config.Identifier,
+						),
 						fmt.Sprintf("https://gitworkshop.dev/%s/%s",
 							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
 							config.Identifier,
