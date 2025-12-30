@@ -24,13 +24,7 @@ var gift = &cli.Command{
 
 a decoupled key (if it has been created or received with "nak dekey" previously) will be used by default.`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(
-		defaultKeyFlags,
-		&cli.BoolFlag{
-			Name:  "use-direct",
-			Usage: "Use the key given to --sec directly even when a decoupled key exists.",
-		},
-	),
+	Flags:                     defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name: "wrap",
@@ -39,6 +33,14 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					Name:     "recipient-pubkey",
 					Aliases:  []string{"p", "tgt", "target", "pubkey", "to"},
 					Required: true,
+				},
+				&cli.BoolFlag{
+					Name:  "use-our-identity-key",
+					Usage: "Encrypt with the key given to --sec directly even when a decoupled key exists for the sender.",
+				},
+				&cli.BoolFlag{
+					Name:  "use-their-identity-key",
+					Usage: "Encrypt to the public key given as --recipient-pubkey directly even when a decoupled key exists for the receiver.",
 				},
 			},
 			Usage: "turns an event into a rumor (unsigned) then gift-wraps it to the recipient",
@@ -56,18 +58,39 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					return fmt.Errorf("failed to get sender pubkey: %w", err)
 				}
 
+				var using bool
+
 				var cipher nostr.Cipher = kr
 				// use decoupled key if it exists
-				configPath := c.String("config-path")
-				eSec, has, err := getDecoupledEncryptionKey(ctx, configPath, sender)
-				if has {
-					if err != nil {
-						return fmt.Errorf("decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
+				using = false
+				if !c.Bool("use-our-identity-key") {
+					configPath := c.String("config-path")
+					eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, sender)
+					if has {
+						if err != nil {
+							return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --encrypt-with-our-identity-key to bypass", err)
+						}
+						cipher = keyer.NewPlainKeySigner(eSec)
+						log("- using our decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
+						using = true
 					}
-					cipher = keyer.NewPlainKeySigner(eSec)
+				}
+				if !using {
+					log("- using our identity key %s\n", color.CyanString(sender.Hex()))
 				}
 
 				recipient := getPubKey(c, "recipient-pubkey")
+				using = false
+				if !c.Bool("use-their-identity-key") {
+					if theirEPub, exists := getDecoupledEncryptionPublicKey(ctx, recipient); exists {
+						recipient = theirEPub
+						using = true
+						log("- using their decoupled encryption public key %s\n", color.CyanString(theirEPub.Hex()))
+					}
+				}
+				if !using {
+					log("- using their identity public key %s\n", color.CyanString(recipient.Hex()))
+				}
 
 				// read event from stdin
 				for eventJSON := range getJsonsOrBlank() {
@@ -137,14 +160,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 			Name:  "unwrap",
 			Usage: "decrypts a gift-wrap event sent by the sender to us and exposes its internal rumor (unsigned event).",
 			Description: `example:
-  nak req -p <my-public-key> -k 1059 dmrelay.com | nak gift unwrap --sec <my-secret-key> --from <sender-public-key>`,
-			Flags: []cli.Flag{
-				&PubKeyFlag{
-					Name:     "sender-pubkey",
-					Aliases:  []string{"p", "src", "source", "pubkey", "from"},
-					Required: true,
-				},
-			},
+  nak req -p <my-public-key> -k 1059 dmrelay.com | nak gift unwrap --sec <my-secret-key>`,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				kr, _, err := gatherKeyerFromArguments(ctx, c)
 				if err != nil {
@@ -157,18 +173,17 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					return err
 				}
 
-				var cipher nostr.Cipher = kr
+				ciphers := []nostr.Cipher{kr}
 				// use decoupled key if it exists
 				configPath := c.String("config-path")
-				eSec, has, err := getDecoupledEncryptionKey(ctx, configPath, receiver)
+				eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, receiver)
 				if has {
 					if err != nil {
-						return fmt.Errorf("decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
+						return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
 					}
-					cipher = keyer.NewPlainKeySigner(eSec)
+					ciphers = append(ciphers, kr)
+					ciphers[0] = keyer.NewPlainKeySigner(eSec) // pub decoupled key first
 				}
-
-				sender := getPubKey(c, "sender-pubkey")
 
 				// read gift-wrapped event from stdin
 				for wrapJSON := range getJsonsOrBlank() {
@@ -185,36 +200,79 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						return fmt.Errorf("not a gift wrap event (kind %d)", wrap.Kind)
 					}
 
-					ephemeralPubkey := wrap.PubKey
-
-					// decrypt seal
-					sealJSON, err := cipher.Decrypt(ctx, wrap.Content, ephemeralPubkey)
-					if err != nil {
-						return fmt.Errorf("failed to decrypt seal: %w", err)
-					}
-
+					// decrypt seal (in the process also find out if they encrypted it to our identity key or to our decoupled key)
+					var cipher nostr.Cipher
 					var seal nostr.Event
-					if err := easyjson.Unmarshal([]byte(sealJSON), &seal); err != nil {
-						return fmt.Errorf("invalid seal JSON: %w", err)
+
+					// try both the receiver identity key and decoupled key
+					err = nil
+					for c, potentialCipher := range ciphers {
+						switch c {
+						case 0:
+							log("- trying the receiver's decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
+						case 1:
+							log("- trying the receiver's identity key %s\n", color.CyanString(receiver.Hex()))
+						}
+
+						sealj, thisErr := potentialCipher.Decrypt(ctx, wrap.Content, wrap.PubKey)
+						if thisErr != nil {
+							err = thisErr
+							continue
+						}
+						if thisErr := easyjson.Unmarshal([]byte(sealj), &seal); thisErr != nil {
+							err = fmt.Errorf("invalid seal JSON: %w", thisErr)
+							continue
+						}
+
+						cipher = potentialCipher
+						break
+					}
+					if seal.ID == nostr.ZeroID {
+						// if both ciphers failed above we'll reach here
+						return fmt.Errorf("failed to decrypt seal: %w", err)
 					}
 
 					if seal.Kind != 13 {
 						return fmt.Errorf("not a seal event (kind %d)", seal.Kind)
 					}
 
-					// decrypt rumor
-					rumorJSON, err := cipher.Decrypt(ctx, seal.Content, sender)
-					if err != nil {
+					senderEncryptionPublicKeys := []nostr.PubKey{seal.PubKey}
+					if theirEPub, exists := getDecoupledEncryptionPublicKey(ctx, seal.PubKey); exists {
+						senderEncryptionPublicKeys = append(senderEncryptionPublicKeys, seal.PubKey)
+						senderEncryptionPublicKeys[0] = theirEPub // put decoupled key first
+					}
+
+					// decrypt rumor (at this point we know what cipher is the one they encrypted to)
+					// (but we don't know if they have encrypted with their identity key or their decoupled key, so try both)
+					var rumor nostr.Event
+					err = nil
+					for s, senderEncryptionPublicKey := range senderEncryptionPublicKeys {
+						switch s {
+						case 0:
+							log("- trying the sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
+						case 1:
+							log("- trying the sender's identity public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
+						}
+
+						rumorj, thisErr := cipher.Decrypt(ctx, seal.Content, senderEncryptionPublicKey)
+						if thisErr != nil {
+							err = fmt.Errorf("failed to decrypt rumor: %w", thisErr)
+							continue
+						}
+						if thisErr := easyjson.Unmarshal([]byte(rumorj), &rumor); thisErr != nil {
+							err = fmt.Errorf("invalid rumor JSON: %w", thisErr)
+							continue
+						}
+
+						break
+					}
+
+					if rumor.ID == nostr.ZeroID {
 						return fmt.Errorf("failed to decrypt rumor: %w", err)
 					}
 
-					var rumor nostr.Event
-					if err := easyjson.Unmarshal([]byte(rumorJSON), &rumor); err != nil {
-						return fmt.Errorf("invalid rumor JSON: %w", err)
-					}
-
 					// output the unwrapped event (rumor)
-					stdout(rumorJSON)
+					stdout(rumor.String())
 				}
 
 				return nil
@@ -230,18 +288,18 @@ func randomNow() nostr.Timestamp {
 	return nostr.Timestamp(now - randomOffset)
 }
 
-func getDecoupledEncryptionKey(ctx context.Context, configPath string, pubkey nostr.PubKey) (nostr.SecretKey, bool, error) {
+func getDecoupledEncryptionSecretKey(ctx context.Context, configPath string, pubkey nostr.PubKey) (nostr.SecretKey, bool, error) {
 	relays := sys.FetchWriteRelays(ctx, pubkey)
 
 	keyAnnouncementResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{10044},
 		Authors: []nostr.PubKey{pubkey},
 	}, nostr.SubscriptionOptions{Label: "nak-nip4e-gift"})
-	var eSec nostr.SecretKey
-	var ePub nostr.PubKey
 
 	keyAnnouncementEvent, ok := keyAnnouncementResult.Load(nostr.ReplaceableKey{PubKey: pubkey, D: ""})
 	if ok {
+		var ePub nostr.PubKey
+
 		// get the pub from the tag
 		for _, tag := range keyAnnouncementEvent.Tags {
 			if len(tag) >= 2 && tag[0] == "n" {
@@ -256,8 +314,7 @@ func getDecoupledEncryptionKey(ctx context.Context, configPath string, pubkey no
 		// check if we have the key
 		eKeyPath := filepath.Join(configPath, "dekey", "p", pubkey.Hex(), "e", ePub.Hex())
 		if data, err := os.ReadFile(eKeyPath); err == nil {
-			log(color.GreenString("- and we have it locally already\n"))
-			eSec, err = nostr.SecretKeyFromHex(string(data))
+			eSec, err := nostr.SecretKeyFromHex(string(data))
 			if err != nil {
 				return [32]byte{}, true, fmt.Errorf("invalid main key: %w", err)
 			}
@@ -270,4 +327,33 @@ func getDecoupledEncryptionKey(ctx context.Context, configPath string, pubkey no
 	}
 
 	return [32]byte{}, false, nil
+}
+
+func getDecoupledEncryptionPublicKey(ctx context.Context, pubkey nostr.PubKey) (nostr.PubKey, bool) {
+	relays := sys.FetchWriteRelays(ctx, pubkey)
+
+	keyAnnouncementResult := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
+		Kinds:   []nostr.Kind{10044},
+		Authors: []nostr.PubKey{pubkey},
+	}, nostr.SubscriptionOptions{Label: "nak-nip4e-gift"})
+
+	keyAnnouncementEvent, ok := keyAnnouncementResult.Load(nostr.ReplaceableKey{PubKey: pubkey, D: ""})
+	if ok {
+		var ePub nostr.PubKey
+
+		// get the pub from the tag
+		for _, tag := range keyAnnouncementEvent.Tags {
+			if len(tag) >= 2 && tag[0] == "n" {
+				ePub, _ = nostr.PubKeyFromHex(tag[1])
+				break
+			}
+		}
+		if ePub == nostr.ZeroPK {
+			return nostr.ZeroPK, false
+		}
+
+		return ePub, true
+	}
+
+	return nostr.ZeroPK, false
 }
