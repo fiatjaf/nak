@@ -1,9 +1,11 @@
 package main
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"encoding/hex"
+	"fiatjaf.com/nostr/nip44"
 	"fmt"
 	"net/url"
 	"os"
@@ -11,6 +13,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -229,6 +232,67 @@ var bunker = &cli.Command{
 		// static information
 		pubkey := sec.Public()
 		npub := nip19.EncodeNpub(pubkey)
+		signer := nip46.NewStaticKeySigner(sec)
+		printLock := sync.Mutex{}
+		exitChan := make(chan bool, 1)
+
+		// subscription management
+		var events chan nostr.RelayEvent
+		var cancelSubscription context.CancelFunc
+		subscriptionMutex := sync.Mutex{}
+
+		// Function to create/recreate subscription
+		updateSubscription := func() {
+			subscriptionMutex.Lock()
+			defer subscriptionMutex.Unlock()
+
+			// Cancel existing subscription if it exists
+			if cancelSubscription != nil {
+				cancelSubscription()
+			}
+
+			// Create new context for the subscription
+			subCtx, cancel := context.WithCancel(ctx)
+			cancelSubscription = cancel
+
+			// Create new subscription with current relay list
+			events = sys.Pool.SubscribeMany(subCtx, relayURLs, nostr.Filter{
+				Kinds:     []nostr.Kind{nostr.KindNostrConnect},
+				Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
+				Since:     nostr.Now(),
+				LimitZero: true,
+			}, nostr.SubscriptionOptions{
+				Label: "nak-bunker",
+			})
+		}
+
+		// Initial subscription to relays
+		updateSubscription()
+		handlerWg := sync.WaitGroup{}
+
+		// == SUBCOMMANDS ==
+
+		// printHelp displays available commands for the bunker interface
+		printHelp := func() {
+			log("%s\n", color.CyanString("Available Commands:"))
+			log("  %s - Show this help message\n", color.GreenString("help, h, ?"))
+			log("  %s - Display current bunker information\n", color.GreenString("info, i"))
+			log("  %s - Generate and display QR code for the bunker URI\n", color.GreenString("qr"))
+			log("  %s - Connect to a remote client using nostrconnect:// URI\n", color.GreenString("connect, c <nostrconnect://uri>"))
+			log("  %s - Shutdown the bunker\n", color.GreenString("exit, quit, q"))
+			log("\n")
+		}
+
+		// Create a function to print QR code on demand
+		printQR := func() {
+			qs.Set("secret", newSecret)
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
+			printLock.Lock()
+			log("\nQR Code for bunker URI:\n")
+			qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
+			log("\n\n")
+			printLock.Unlock()
+		}
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
@@ -301,26 +365,223 @@ var bunker = &cli.Command{
 
 			// print QR code if requested
 			if c.Bool("qrcode") {
-				log("QR Code for bunker URI:\n")
-				qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
-				log("\n\n")
+				printQR()
 			}
 		}
+
+		// handleConnect processes nostrconnect:// URIs for direct connection flow
+		handleConnect := func(connectURI string) {
+			if !strings.HasPrefix(connectURI, "nostrconnect://") {
+				log("Error: URI must start with nostrconnect://\n")
+				return
+			}
+
+			// Parse the nostrconnect URI
+			u, err := url.Parse(connectURI)
+			if err != nil {
+				log("Error: Invalid nostrconnect URI: %v\n", err)
+				return
+			}
+
+			// Extract client pubkey from the URI
+			clientPubkeyHex := u.Host
+			if clientPubkeyHex == "" {
+				log("Error: Missing client pubkey in URI\n")
+				return
+			}
+
+			clientPubkey, err := nostr.PubKeyFromHex(clientPubkeyHex)
+			if err != nil {
+				log("Error: Invalid client pubkey: %v\n", err)
+				return
+			}
+
+			// Extract relays from query parameters
+			queryParams := u.Query()
+			newRelayURLs := queryParams["relay"]
+			if len(newRelayURLs) == 0 {
+				log("Error: No relays specified in URI\n")
+				return
+			}
+
+			// Extract secret from query parameters (optional)
+			var secret string
+			secrets := queryParams["secret"]
+			if len(secrets) > 0 {
+				secret = secrets[0]
+			} else {
+				// log error and return if no secret is provided
+				log("Error: No secret provided in URI\n")
+				return
+			}
+
+			log("Parsed nostrconnect URI:\n")
+			log("  Client pubkey: %s\n", color.CyanString(clientPubkey.Hex()))
+			log("  Relays: %v\n", newRelayURLs)
+			log("  Secret: %s\n", color.YellowString(secret))
+
+			// Normalize relay URLs
+			for i, relayURL := range newRelayURLs {
+				newRelayURLs[i] = nostr.NormalizeURL(relayURL)
+			}
+
+			// Update relays in config (add new ones)
+			relaysAdded := false
+			for _, relayURL := range newRelayURLs {
+				if !slices.Contains(config.Relays, relayURL) {
+					config.Relays = append(config.Relays, relayURL)
+					log("Added new relay: %s\n", color.MagentaString(relayURL))
+					relaysAdded = true
+				}
+			}
+
+			// Add client key to authorized keys
+			keyAdded := false
+			if !slices.Contains(config.AuthorizedKeys, clientPubkey) {
+				config.AuthorizedKeys = append(config.AuthorizedKeys, clientPubkey)
+				log("Added client key to authorized keys: %s\n", color.GreenString(clientPubkey.Hex()))
+				keyAdded = true
+			}
+
+			// Persist config if needed and changes were made
+			if persist != nil && (relaysAdded || keyAdded) {
+				persist()
+				log(color.GreenString("Configuration saved\n"))
+			}
+
+			// Connect to new relays if any were added
+			if relaysAdded {
+				newRelays := connectToAllRelays(ctx, c, newRelayURLs, nil, nostr.PoolOptions{})
+				log("Connected to %d new relay(s)\n", len(newRelays))
+
+				// Update the relay URLs list with successfully connected relays
+				for _, relay := range newRelays {
+					if !slices.Contains(relayURLs, relay.URL) {
+						relayURLs = append(relayURLs, relay.URL)
+					}
+				}
+				log("Updated subscription to listen on %d relay(s)\n", len(relayURLs))
+
+				// Cancel and recreate subscription with updated relay list
+				updateSubscription()
+				log("Subscription updated to include new relays\n")
+			}
+
+			// Prepare the response payload
+			responsePayload := nip46.Response{
+				ID:     secret,
+				Result: "ack",
+			}
+
+			// Marshal the response payload to JSON
+			responseJSON, err := json.MarshalIndent(responsePayload, "", "  ")
+			if err != nil {
+				log("Error: Failed to marshal response payload: %v\n", err)
+				return
+			}
+
+			log("Sending connect response with:\n%s\n", string(responseJSON))
+
+			// Encrypt the response using NIP-44
+			conversationKey, err := nip44.GenerateConversationKey(clientPubkey, sec)
+			if err != nil {
+				log("Error: Failed to generate conversation key: %v\n", err)
+				return
+			}
+			encryptedContent, err := nip44.Encrypt(string(responseJSON), conversationKey)
+			if err != nil {
+				log("Error: Failed to encrypt response content: %v\n", err)
+				return
+			}
+
+			// Create the kind 24133 event
+			eventResponse := nostr.Event{
+				Kind:      nostr.KindNostrConnect,
+				PubKey:    pubkey,
+				Content:   encryptedContent,
+				Tags:      nostr.Tags{{"p", clientPubkey.Hex()}},
+				CreatedAt: nostr.Now(),
+			}
+
+			// Sign the event with the signer
+			if err := eventResponse.Sign(sec); err != nil {
+				log("Error: Failed to sign connect response: %v\n", err)
+				return
+			}
+
+			targetRelays := newRelayURLs
+			if len(targetRelays) == 0 {
+				targetRelays = relayURLs
+			}
+
+			log("Sending connect response...\n")
+			successCount := atomic.Uint32{}
+			handlerWg.Add(len(targetRelays))
+			for _, relayURL := range targetRelays {
+				go func(relayURL string) {
+					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
+						err := relay.Publish(ctx, eventResponse)
+						printLock.Lock()
+						if err != nil {
+							log("Failed to publish to %s: %v\n", relayURL, err)
+						} else {
+							log("Published connect response to %s\n", color.GreenString(relayURL))
+							successCount.Add(1)
+						}
+						printLock.Unlock()
+						handlerWg.Done()
+					}
+				}(relayURL)
+			}
+			handlerWg.Wait()
+
+			if successCount.Load() == 0 {
+				log("Error: Failed to publish connect response to any relay\n")
+			} else {
+				log(color.GreenString("\nConnect response sent successfully to %d relay(s)!\n"), successCount.Load())
+			}
+
+			// print bunker info again after this
+			go func() {
+				time.Sleep(3 * time.Second)
+				printBunkerInfo()
+			}()
+		}
+
+		// handleBunkerCommand processes user commands in the bunker interface
+		handleBunkerCommand := func(command string) {
+			parts := strings.Fields(command)
+			if len(parts) == 0 {
+				return
+			}
+
+			switch strings.ToLower(parts[0]) {
+			case "help", "h", "?":
+				printHelp()
+			case "info", "i":
+				printBunkerInfo()
+			case "qr":
+				printQR()
+			case "connect", "c":
+				if len(parts) < 2 {
+					log("Usage: connect <nostrconnect://uri>\n")
+					return
+				}
+				handleConnect(parts[1])
+			case "exit", "quit", "q":
+				log("Exit command received.\n")
+				exitChan <- true
+			case "":
+				// Ignore empty commands
+			default:
+				log("Unknown command: %s. Type 'help' for available commands.\n", command)
+			}
+		}
+
+		// == END OF SUBCOMMANDS ==
+
+		// Print initial bunker information
 		printBunkerInfo()
-
-		// subscribe to relays
-		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
-			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
-			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
-			Since:     nostr.Now(),
-			LimitZero: true,
-		}, nostr.SubscriptionOptions{
-			Label: "nak-bunker",
-		})
-
-		signer := nip46.NewStaticKeySigner(sec)
-		handlerWg := sync.WaitGroup{}
-		printLock := sync.Mutex{}
 
 		// just a gimmick
 		var cancelPreviousBunkerInfoPrint context.CancelFunc
@@ -348,77 +609,82 @@ var bunker = &cli.Command{
 			return slices.Contains(config.AuthorizedKeys, from) || slices.Contains(authorizedSecrets, secret)
 		}
 
-		for ie := range events {
-			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
+		// Start command input handler in a separate goroutine
+		go func() {
+			scanner := bufio.NewScanner(os.Stdin)
+			for scanner.Scan() {
+				command := strings.TrimSpace(scanner.Text())
+				handleBunkerCommand(command)
+			}
+			if err := scanner.Err(); err != nil {
+				log("error reading command: %v\n", err)
+			}
+		}()
 
-			// handle the NIP-46 request event
-			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
-			if err != nil {
-				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
+		// Print initial command help
+		log("%s\nType 'help' for available commands or 'exit' to quit.\n%s\n",
+			color.CyanString("--------------- Bunker Command Interface ---------------"),
+			color.CyanString("--------------------------------------------------------"))
+
+		for {
+			// Check if exit was requested first
+			select {
+			case <-exitChan:
+				log("Shutting down bunker...\n")
+				return nil
+			case ie := <-events:
+				cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
+
+				// handle the NIP-46 request event
+				req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
+				if err != nil {
+					log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
+					continue
+				}
+
+				jreq, _ := json.MarshalIndent(req, "", "  ")
+				log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
+				jresp, _ := json.MarshalIndent(resp, "", "  ")
+				log("~ responding with %s\n", string(jresp))
+
+				handlerWg.Add(len(relayURLs))
+				for _, relayURL := range relayURLs {
+					go func(relayURL string) {
+						defer handlerWg.Done()
+						if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
+							err := relay.Publish(ctx, eventResponse)
+							printLock.Lock()
+							if err == nil {
+								log("* sent response through %s\n", relay.URL)
+							} else {
+								log("* failed to send response: %s\n", err)
+							}
+							printLock.Unlock()
+
+						}
+					}(relayURL)
+				}
+				handlerWg.Wait()
+
+				// just after handling one request we trigger this
+				go func() {
+					ctx, cancel := context.WithCancel(ctx)
+					defer cancel()
+					cancelPreviousBunkerInfoPrint = cancel
+					// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
+					// but we will only do if the bunker is inactive for more than 5 minutes
+					select {
+					case <-ctx.Done():
+					case <-time.After(time.Minute * 5):
+						log("\n")
+						printBunkerInfo()
+					}
+				}()
+			case <-time.After(100 * time.Millisecond):
+				// Continue to check for exit signal even when no events
 				continue
 			}
-
-			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
-			jresp, _ := json.MarshalIndent(resp, "", "  ")
-			log("~ responding with %s\n", string(jresp))
-
-			handlerWg.Add(len(relayURLs))
-			for _, relayURL := range relayURLs {
-				go func(relayURL string) {
-					defer handlerWg.Done()
-					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
-						err := relay.Publish(ctx, eventResponse)
-						printLock.Lock()
-						if err == nil {
-							log("* sent response through %s\n", relay.URL)
-						} else {
-							log("* failed to send response: %s\n", err)
-						}
-						printLock.Unlock()
-					}
-				}(relayURL)
-			}
-			handlerWg.Wait()
-
-			// just after handling one request we trigger this
-			go func() {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-				cancelPreviousBunkerInfoPrint = cancel
-				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
-				// but we will only do if the bunker is inactive for more than 5 minutes
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Minute * 5):
-					log("\n")
-					printBunkerInfo()
-				}
-			}()
 		}
-
-		return nil
-	},
-	Commands: []*cli.Command{
-		{
-			Name:      "connect",
-			Usage:     "use the client-initiated NostrConnect flow of NIP46",
-			ArgsUsage: "<nostrconnect-uri>",
-			Action: func(ctx context.Context, c *cli.Command) error {
-				if c.Args().Len() != 1 {
-					return fmt.Errorf("must be called with a nostrconnect://... uri")
-				}
-
-				uri, err := url.Parse(c.Args().First())
-				if err != nil || uri.Scheme != "nostrconnect" {
-					return fmt.Errorf("invalid uri")
-				}
-
-				// TODO
-
-				return fmt.Errorf("this is not implemented yet")
-			},
-		},
 	},
 }
 
