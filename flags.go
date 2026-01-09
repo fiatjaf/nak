@@ -11,6 +11,62 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+type (
+	BoolIntFlag = cli.FlagBase[int, struct{}, boolIntValue]
+)
+
+type boolIntValue struct {
+	int            int
+	defaultWhenSet int
+	hasDefault     bool
+	hasBeenSet     bool
+}
+
+var _ cli.ValueCreator[int, struct{}] = boolIntValue{}
+
+func (t boolIntValue) Create(val int, p *int, c struct{}) cli.Value {
+	*p = val
+
+	return &boolIntValue{
+		defaultWhenSet: val,
+		hasDefault:     true,
+	}
+}
+
+func (t boolIntValue) IsBoolFlag() bool {
+	return true
+}
+
+func (t boolIntValue) ToString(b int) string { return "<<>>" }
+
+func (t *boolIntValue) Set(value string) error {
+	t.hasBeenSet = true
+	if value == "true" {
+		if t.hasDefault {
+			t.int = t.defaultWhenSet
+		} else {
+			t.int = 1
+		}
+		return nil
+	} else {
+		var err error
+		t.int, err = strconv.Atoi(value)
+		return err
+	}
+}
+
+func (t *boolIntValue) String() string { return fmt.Sprintf("%#v", t.int) }
+func (t *boolIntValue) Value() int     { return t.int }
+func (t *boolIntValue) Get() any       { return t.int }
+
+func getBoolInt(cmd *cli.Command, name string) int {
+	return cmd.Value(name).(int)
+}
+
+//
+//
+//
+
 type NaturalTimeFlag = cli.FlagBase[nostr.Timestamp, struct{}, naturalTimeValue]
 
 type naturalTimeValue struct {

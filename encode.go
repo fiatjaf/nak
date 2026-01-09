@@ -25,13 +25,6 @@ var encode = &cli.Command{
 		  "relays":["wss://nada.zero"],
 		  "author":"ebb6ff85430705651b311ed51328767078fd790b14f02d22efba68d5513376bc"
 		} | nak encode`,
-	Flags: []cli.Flag{
-		&cli.StringSliceFlag{
-			Name:    "relay",
-			Aliases: []string{"r"},
-			Usage:   "attach relay hints to naddr code",
-		},
-	},
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() != 0 {
@@ -126,7 +119,12 @@ var encode = &cli.Command{
 				&cli.StringSliceFlag{
 					Name:    "relay",
 					Aliases: []string{"r"},
-					Usage:   "attach relay hints to nprofile code",
+					Usage:   "attach relay hints to the code",
+				},
+				&BoolIntFlag{
+					Name:  "outbox",
+					Usage: "automatically appends outbox relays to the code",
+					Value: 3,
 				},
 			},
 			DisableSliceFlagSeparator: true,
@@ -139,6 +137,13 @@ var encode = &cli.Command{
 					}
 
 					relays := c.StringSlice("relay")
+
+					if getBoolInt(c, "outbox") > 0 {
+						for _, r := range sys.FetchOutboxRelays(ctx, pk, int(getBoolInt(c, "outbox"))) {
+							relays = appendUnique(relays, r)
+						}
+					}
+
 					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
@@ -159,6 +164,16 @@ var encode = &cli.Command{
 					Aliases: []string{"a"},
 					Usage:   "attach an author pubkey as a hint to the nevent code",
 				},
+				&cli.StringSliceFlag{
+					Name:    "relay",
+					Aliases: []string{"r"},
+					Usage:   "attach relay hints to the code",
+				},
+				&BoolIntFlag{
+					Name:  "outbox",
+					Usage: "automatically appends outbox relays to the code",
+					Value: 3,
+				},
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
@@ -171,6 +186,13 @@ var encode = &cli.Command{
 
 					author := getPubKey(c, "author")
 					relays := c.StringSlice("relay")
+
+					if getBoolInt(c, "outbox") > 0 && author != nostr.ZeroPK {
+						for _, r := range sys.FetchOutboxRelays(ctx, author, int(getBoolInt(c, "outbox"))) {
+							relays = appendUnique(relays, r)
+						}
+					}
+
 					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
@@ -204,6 +226,16 @@ var encode = &cli.Command{
 					Usage:    "kind of referred replaceable event",
 					Required: true,
 				},
+				&cli.StringSliceFlag{
+					Name:    "relay",
+					Aliases: []string{"r"},
+					Usage:   "attach relay hints to the code",
+				},
+				&BoolIntFlag{
+					Name:  "outbox",
+					Usage: "automatically appends outbox relays to the code",
+					Value: 3,
+				},
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
@@ -224,6 +256,13 @@ var encode = &cli.Command{
 					}
 
 					relays := c.StringSlice("relay")
+
+					if getBoolInt(c, "outbox") > 0 {
+						for _, r := range sys.FetchOutboxRelays(ctx, pubkey, int(getBoolInt(c, "outbox"))) {
+							relays = appendUnique(relays, r)
+						}
+					}
+
 					if err := normalizeAndValidateRelayURLs(relays); err != nil {
 						return err
 					}
