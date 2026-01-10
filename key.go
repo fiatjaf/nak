@@ -279,12 +279,13 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, key
 					continue
 				}
 				sk = data.(nostr.SecretKey)
-			}
-
-			sk, err := nostr.SecretKeyFromHex(sec)
-			if err != nil {
-				ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
-				continue
+			} else {
+				var err error
+				sk, err = nostr.SecretKeyFromHex(sec)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
+					continue
+				}
 			}
 
 			ch <- sk
