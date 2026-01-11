@@ -329,6 +329,10 @@ var bunker = &cli.Command{
 
 		// asking user for authorization
 		signer.AuthorizeRequest = func(harmless bool, from nostr.PubKey, secret string) bool {
+			if slices.Contains(config.AuthorizedKeys, from) || slices.Contains(authorizedSecrets, secret) {
+				return true
+			}
+
 			if secret == newSecret {
 				// store this key
 				config.AuthorizedKeys = appendUnique(config.AuthorizedKeys, from)
@@ -343,9 +347,11 @@ var bunker = &cli.Command{
 				if persist != nil {
 					persist()
 				}
+
+				return true
 			}
 
-			return slices.Contains(config.AuthorizedKeys, from) || slices.Contains(authorizedSecrets, secret)
+			return false
 		}
 
 		for ie := range events {
