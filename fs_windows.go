@@ -1,4 +1,4 @@
-//go:build !windows && !openbsd
+//go:build windows
 
 package main
 
@@ -6,8 +6,7 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -88,31 +87,55 @@ var fsCmd = &cli.Command{
 		host.SetCapReaddirPlus(true)
 		host.SetUseIno(true)
 
-		// Mount the filesystem
-		mountArgs := []string{"-s", "-o", "allow_other", mountpoint}
-		if isVerbose {
-			mountArgs = append([]string{"-d"}, mountArgs...)
+		// Mount the filesystem - Windows/WinFsp version
+		// Based on rclone cmount implementation
+		mountArgs := []string{
+			"-o", "uid=-1",
+			"-o", "gid=-1",
+			"--FileSystemName=nak",
 		}
-
-		go func() {
-			host.Mount("", mountArgs)
-		}()
+		
+		// Check if mountpoint is a drive letter or directory
+		isDriveLetter := len(mountpoint) == 2 && mountpoint[1] == ':'
+		
+		if !isDriveLetter {
+			// WinFsp primarily supports drive letters on Windows
+			// Directory mounting may not work reliably
+			log("WARNING: directory mounting may not work on Windows (WinFsp limitation)\n")
+			log("         consider using a drive letter instead (e.g., 'nak fs Z:')\n")
+			
+			// For directory mounts, follow rclone's approach:
+			// 1. Check that mountpoint doesn't already exist
+			if _, err := os.Stat(mountpoint); err == nil {
+				return fmt.Errorf("mountpoint path already exists: %s (must not exist before mounting)", mountpoint)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to check mountpoint: %w", err)
+			}
+			
+			// 2. Check that parent directory exists
+			parent := filepath.Join(mountpoint, "..")
+			if _, err := os.Stat(parent); err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("parent of mountpoint directory does not exist: %s", parent)
+				}
+				return fmt.Errorf("failed to check parent directory: %w", err)
+			}
+			
+			// 3. Use network mode for directory mounts
+			mountArgs = append(mountArgs, "--VolumePrefix=\\nak\\"+filepath.Base(mountpoint))
+		}
+		
+		if isVerbose {
+			mountArgs = append(mountArgs, "-o", "debug")
+		}
+		mountArgs = append(mountArgs, mountpoint)
 
 		log("ok.\n")
 
-		// setup signal handling for clean unmount
-		ch := make(chan os.Signal, 1)
-		chErr := make(chan error)
-		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-ch
-			log("- unmounting... ")
-			// cgofuse doesn't have explicit unmount, it unmounts on process exit
-			log("ok\n")
-			chErr <- nil
-		}()
-
-		// wait for signals
-		return <-chErr
+		// Mount in main thread like hellofs
+		if !host.Mount("", mountArgs) {
+			return fmt.Errorf("failed to mount filesystem")
+		}
+		return nil
 	},
 }
