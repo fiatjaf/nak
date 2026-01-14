@@ -89,7 +89,7 @@ var fsCmd = &cli.Command{
 		host.SetUseIno(true)
 
 		// Mount the filesystem
-		mountArgs := []string{"-s", "-o", "allow_other", mountpoint}
+		mountArgs := []string{"-s", mountpoint}
 		if isVerbose {
 			mountArgs = append([]string{"-d"}, mountArgs...)
 		}
