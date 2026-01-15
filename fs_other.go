@@ -1,4 +1,4 @@
-//go:build windows || openbsd
+//go:build openbsd
 
 package main
 
