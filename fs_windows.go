@@ -94,16 +94,16 @@ var fsCmd = &cli.Command{
 			"-o", "gid=-1",
 			"--FileSystemName=nak",
 		}
-		
+
 		// Check if mountpoint is a drive letter or directory
 		isDriveLetter := len(mountpoint) == 2 && mountpoint[1] == ':'
-		
+
 		if !isDriveLetter {
 			// WinFsp primarily supports drive letters on Windows
 			// Directory mounting may not work reliably
 			log("WARNING: directory mounting may not work on Windows (WinFsp limitation)\n")
 			log("         consider using a drive letter instead (e.g., 'nak fs Z:')\n")
-			
+
 			// For directory mounts, follow rclone's approach:
 			// 1. Check that mountpoint doesn't already exist
 			if _, err := os.Stat(mountpoint); err == nil {
@@ -111,7 +111,7 @@ var fsCmd = &cli.Command{
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to check mountpoint: %w", err)
 			}
-			
+
 			// 2. Check that parent directory exists
 			parent := filepath.Join(mountpoint, "..")
 			if _, err := os.Stat(parent); err != nil {
@@ -120,11 +120,11 @@ var fsCmd = &cli.Command{
 				}
 				return fmt.Errorf("failed to check parent directory: %w", err)
 			}
-			
+
 			// 3. Use network mode for directory mounts
 			mountArgs = append(mountArgs, "--VolumePrefix=\\nak\\"+filepath.Base(mountpoint))
 		}
-		
+
 		if isVerbose {
 			mountArgs = append(mountArgs, "-o", "debug")
 		}
