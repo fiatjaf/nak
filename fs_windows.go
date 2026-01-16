@@ -12,7 +12,6 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/nak/nostrfs"
 	"github.com/urfave/cli/v3"
 	"github.com/winfsp/cgofuse/fuse"
 )
@@ -62,7 +61,7 @@ var fsCmd = &cli.Command{
 			apat = time.Hour * 24 * 365 * 3
 		}
 
-		root := nostrfs.NewNostrRoot(
+		root := NewFSRoot(
 			context.WithValue(
 				context.WithValue(
 					ctx,
@@ -73,7 +72,7 @@ var fsCmd = &cli.Command{
 			sys,
 			kr,
 			mountpoint,
-			nostrfs.Options{
+			FSOptions{
 				AutoPublishNotesTimeout:    apnt,
 				AutoPublishArticlesTimeout: apat,
 			},
@@ -82,37 +81,37 @@ var fsCmd = &cli.Command{
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
 
-		// Create cgofuse host
+		// create cgofuse host
 		host := fuse.NewFileSystemHost(root)
 		host.SetCapReaddirPlus(true)
 		host.SetUseIno(true)
 
-		// Mount the filesystem - Windows/WinFsp version
-		// Based on rclone cmount implementation
+		// mount the filesystem - Windows/WinFsp version
+		// based on rclone cmount implementation
 		mountArgs := []string{
 			"-o", "uid=-1",
 			"-o", "gid=-1",
 			"--FileSystemName=nak",
 		}
 
-		// Check if mountpoint is a drive letter or directory
+		// check if mountpoint is a drive letter or directory
 		isDriveLetter := len(mountpoint) == 2 && mountpoint[1] == ':'
 
 		if !isDriveLetter {
-			// WinFsp primarily supports drive letters on Windows
-			// Directory mounting may not work reliably
+			// winFsp primarily supports drive letters on Windows
+			// directory mounting may not work reliably
 			log("WARNING: directory mounting may not work on Windows (WinFsp limitation)\n")
 			log("         consider using a drive letter instead (e.g., 'nak fs Z:')\n")
 
-			// For directory mounts, follow rclone's approach:
-			// 1. Check that mountpoint doesn't already exist
+			// for directory mounts, follow rclone's approach:
+			// 1. check that mountpoint doesn't already exist
 			if _, err := os.Stat(mountpoint); err == nil {
 				return fmt.Errorf("mountpoint path already exists: %s (must not exist before mounting)", mountpoint)
 			} else if !os.IsNotExist(err) {
 				return fmt.Errorf("failed to check mountpoint: %w", err)
 			}
 
-			// 2. Check that parent directory exists
+			// 2. check that parent directory exists
 			parent := filepath.Join(mountpoint, "..")
 			if _, err := os.Stat(parent); err != nil {
 				if os.IsNotExist(err) {
@@ -121,7 +120,7 @@ var fsCmd = &cli.Command{
 				return fmt.Errorf("failed to check parent directory: %w", err)
 			}
 
-			// 3. Use network mode for directory mounts
+			// 3. use network mode for directory mounts
 			mountArgs = append(mountArgs, "--VolumePrefix=\\nak\\"+filepath.Base(mountpoint))
 		}
 
@@ -132,7 +131,6 @@ var fsCmd = &cli.Command{
 
 		log("ok.\n")
 
-		// Mount in main thread like hellofs
 		if !host.Mount("", mountArgs) {
 			return fmt.Errorf("failed to mount filesystem")
 		}

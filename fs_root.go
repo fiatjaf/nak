@@ -1,8 +1,8 @@
-package nostrfs
+package main
 
 import (
 	"context"
-	"encoding/json"
+	stdjson "encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -718,7 +718,7 @@ func (r *FSRoot) createEventDirLocked(name string, pointer nostr.EventPointer) b
 	dirNode.children["content."+ext] = contentNode
 
 	// add event.json
-	eventJSON, _ := json.MarshalIndent(evt, "", "  ")
+	eventJSON, _ := stdjson.MarshalIndent(evt, "", "  ")
 	eventJSONPath := dirPath + "/event.json"
 	eventJSONNode := &FSNode{
 		ino:   r.nextIno,

@@ -13,7 +13,6 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/nak/nostrfs"
 	"github.com/urfave/cli/v3"
 	"github.com/winfsp/cgofuse/fuse"
 )
@@ -63,7 +62,7 @@ var fsCmd = &cli.Command{
 			apat = time.Hour * 24 * 365 * 3
 		}
 
-		root := nostrfs.NewNostrRoot(
+		root := NewFSRoot(
 			context.WithValue(
 				context.WithValue(
 					ctx,
@@ -74,7 +73,7 @@ var fsCmd = &cli.Command{
 			sys,
 			kr,
 			mountpoint,
-			nostrfs.Options{
+			FSOptions{
 				AutoPublishNotesTimeout:    apnt,
 				AutoPublishArticlesTimeout: apat,
 			},
@@ -83,12 +82,12 @@ var fsCmd = &cli.Command{
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
 
-		// Create cgofuse host
+		// create cgofuse host
 		host := fuse.NewFileSystemHost(root)
 		host.SetCapReaddirPlus(true)
 		host.SetUseIno(true)
 
-		// Mount the filesystem
+		// mount the filesystem
 		mountArgs := []string{"-s", mountpoint}
 		if isVerbose {
 			mountArgs = append([]string{"-d"}, mountArgs...)

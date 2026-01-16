@@ -15,6 +15,6 @@ var fsCmd = &cli.Command{
 	Description:               `doesn't work on Windows and OpenBSD.`,
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
-		return fmt.Errorf("this doesn't work on Windows and OpenBSD.")
+		return fmt.Errorf("this doesn't work on OpenBSD.")
 	},
 }
