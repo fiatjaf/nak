@@ -55,18 +55,27 @@ jobs:
         goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'stable'
       - name: Install macFUSE
         run: brew install --cask macfuse
-      - uses: wangyoucao577/go-release-action@v1.40
+      - name: Build binary
+        env:
+          GOOS: darwin
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets. GITHUB_TOKEN }}
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos:  darwin
-          goarch: ${{ matrix.goarch }}
-          ldflags: -X main.version=${{ github.ref_name }}
-          overwrite: true
-          md5sum: false
-          sha256sum: false
-          compress_assets: false
+          upload_url: ${{ needs.make-release.outputs.upload_url }}
+          asset_path: ./nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
+          asset_name: nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
+          asset_content_type: application/octet-stream
   smoke-test-linux-amd64:
     runs-on: ubuntu-latest
     needs:
