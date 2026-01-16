@@ -155,6 +155,7 @@ example:
 				os.Exit(3)
 			}
 		}
+
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err

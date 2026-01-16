@@ -46,8 +46,14 @@ var (
 )
 
 func isPiped() bool {
-	stat, _ := os.Stdin.Stat()
-	return stat.Mode()&os.ModeCharDevice == 0
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		panic(err)
+	}
+
+	mode := stat.Mode()
+	is := mode&os.ModeCharDevice == 0
+	return is
 }
 
 func getJsonsOrBlank() iter.Seq[string] {
@@ -76,7 +82,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 			return true
 		})
 
-		if !hasStdin && !isPiped() {
+		if !hasStdin {
 			yield("{}")
 		}
 
