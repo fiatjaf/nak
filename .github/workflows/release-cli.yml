@@ -24,15 +24,13 @@ jobs:
       - make-release
     strategy:
       matrix:
-        goos: [linux, freebsd, darwin, windows]
+        goos: [linux, freebsd, windows]
         goarch: [amd64, arm64, riscv64]
         exclude:
           - goarch: arm64
             goos: windows
           - goarch: riscv64
             goos: windows
-          - goarch: riscv64
-            goos: darwin
           - goarch: arm64
             goos: freebsd
     steps:
@@ -41,6 +39,28 @@ jobs:
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          ldflags: -X main.version=${{ github. ref_name }}
+          overwrite: true
+          md5sum:  false
+          sha256sum: false
+          compress_assets: false
+
+  build-darwin:
+    runs-on: macos-latest
+    needs:
+      - make-release
+    strategy:
+      matrix:
+        goarch: [amd64, arm64]
+    steps:
+      - uses: actions/checkout@v3
+      - name: Install macFUSE
+        run: brew install --cask macfuse
+      - uses: wangyoucao577/go-release-action@v1.40
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos:  darwin
           goarch: ${{ matrix.goarch }}
           ldflags: -X main.version=${{ github.ref_name }}
           overwrite: true
