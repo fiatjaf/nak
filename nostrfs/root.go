@@ -17,27 +17,27 @@ import (
 	"github.com/winfsp/cgofuse/fuse"
 )
 
-type Options struct {
+type FSOptions struct {
 	AutoPublishNotesTimeout    time.Duration
 	AutoPublishArticlesTimeout time.Duration
 }
 
-type NostrRoot struct {
+type FSRoot struct {
 	fuse.FileSystemBase
 	ctx        context.Context
 	sys        *sdk.System
 	rootPubKey nostr.PubKey
 	signer     nostr.Signer
-	opts       Options
+	opts       FSOptions
 	mountpoint string
 
 	mu           sync.RWMutex
-	nodes        map[string]*Node // path -> node
+	nodes        map[string]*FSNode // path -> node
 	nextIno      uint64
 	pendingNotes map[string]*time.Timer // path -> auto-publish timer
 }
 
-type Node struct {
+type FSNode struct {
 	ino      uint64
 	path     string
 	name     string
@@ -46,14 +46,14 @@ type Node struct {
 	mode     uint32
 	mtime    time.Time
 	data     []byte
-	children map[string]*Node
+	children map[string]*FSNode
 	loadFunc func() ([]byte, error) // for lazy loading
 	loaded   bool
 }
 
-var _ fuse.FileSystemInterface = (*NostrRoot)(nil)
+var _ fuse.FileSystemInterface = (*FSRoot)(nil)
 
-func NewNostrRoot(ctx context.Context, sys interface{}, user interface{}, mountpoint string, o Options) *NostrRoot {
+func NewFSRoot(ctx context.Context, sys interface{}, user interface{}, mountpoint string, o FSOptions) *FSRoot {
 	var system *sdk.System
 	if sys != nil {
 		system = sys.(*sdk.System)
@@ -71,37 +71,37 @@ func NewNostrRoot(ctx context.Context, sys interface{}, user interface{}, mountp
 
 	abs, _ := filepath.Abs(mountpoint)
 
-	root := &NostrRoot{
+	root := &FSRoot{
 		ctx:          ctx,
 		sys:          system,
 		rootPubKey:   pubkey,
 		signer:       signer,
 		opts:         o,
 		mountpoint:   abs,
-		nodes:        make(map[string]*Node),
+		nodes:        make(map[string]*FSNode),
 		nextIno:      2, // 1 is reserved for root
 		pendingNotes: make(map[string]*time.Timer),
 	}
 
-	// Initialize root directory
-	rootNode := &Node{
+	// initialize root directory
+	rootNode := &FSNode{
 		ino:      1,
 		path:     "/",
 		name:     "",
 		isDir:    true,
 		mode:     fuse.S_IFDIR | 0755,
 		mtime:    time.Now(),
-		children: make(map[string]*Node),
+		children: make(map[string]*FSNode),
 	}
 	root.nodes["/"] = rootNode
 
-	// Start async initialization
+	// start async initialization
 	go root.initialize()
 
 	return root
 }
 
-func (r *NostrRoot) initialize() {
+func (r *FSRoot) initialize() {
 	if r.rootPubKey == nostr.ZeroPK {
 		return
 	}
@@ -109,14 +109,14 @@ func (r *NostrRoot) initialize() {
 	log := r.getLog()
 	time.Sleep(time.Millisecond * 100)
 
-	// Fetch follow list
+	// fetch follow list
 	fl := r.sys.FetchFollowList(r.ctx, r.rootPubKey)
 	log("- fetched %d contacts\n", len(fl.Items))
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Add our contacts
+	// add our contacts
 	for _, f := range fl.Items {
 		npub := nip19.EncodeNpub(f.Pubkey)
 		if _, exists := r.nodes["/"+npub]; !exists {
@@ -124,14 +124,14 @@ func (r *NostrRoot) initialize() {
 		}
 	}
 
-	// Add ourselves
+	// add ourselves
 	npub := nip19.EncodeNpub(r.rootPubKey)
 	if _, exists := r.nodes["/"+npub]; !exists {
 		r.createNpubDirLocked(npub, r.rootPubKey, r.signer)
 	}
 
-	// Add @me symlink (for now, just create a text file pointing to our npub)
-	meNode := &Node{
+	// add @me symlink (for now, just create a text file pointing to our npub)
+	meNode := &FSNode{
 		ino:   r.nextIno,
 		path:  "/@me",
 		name:  "@me",
@@ -146,19 +146,19 @@ func (r *NostrRoot) initialize() {
 	r.nodes["/"].children["@me"] = meNode
 }
 
-func (r *NostrRoot) fetchMetadata(dirPath string, pubkey nostr.PubKey) {
+func (r *FSRoot) fetchMetadata(dirPath string, pubkey nostr.PubKey) {
 	pm := r.sys.FetchProfileMetadata(r.ctx, pubkey)
 	if pm.Event == nil {
 		return
 	}
 
-	// Use the content field which contains the actual profile JSON
+	// use the content field which contains the actual profile JSON
 	metadataJ := []byte(pm.Event.Content)
 
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	metadataNode := &Node{
+	metadataNode := &FSNode{
 		ino:   r.nextIno,
 		path:  dirPath + "/metadata.json",
 		name:  "metadata.json",
@@ -175,13 +175,13 @@ func (r *NostrRoot) fetchMetadata(dirPath string, pubkey nostr.PubKey) {
 	}
 }
 
-func (r *NostrRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
+func (r *FSRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
 	pm := r.sys.FetchProfileMetadata(r.ctx, pubkey)
 	if pm.Event == nil || pm.Picture == "" {
 		return
 	}
 
-	// Download picture
+	// download picture
 	ctx, cancel := context.WithTimeout(r.ctx, time.Second*20)
 	defer cancel()
 
@@ -200,7 +200,7 @@ func (r *NostrRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
 		return
 	}
 
-	// Read image data
+	// read image data
 	imageData := make([]byte, 0, 1024*1024) // 1MB initial capacity
 	buf := make([]byte, 32*1024)
 	for {
@@ -220,7 +220,7 @@ func (r *NostrRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
 		return
 	}
 
-	// Detect file extension from content-type or URL
+	// detect file extension from content-type or URL
 	ext := "png"
 	if ct := resp.Header.Get("Content-Type"); ct != "" {
 		switch ct {
@@ -239,7 +239,7 @@ func (r *NostrRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
 	defer r.mu.Unlock()
 
 	picturePath := dirPath + "/picture." + ext
-	pictureNode := &Node{
+	pictureNode := &FSNode{
 		ino:   r.nextIno,
 		path:  picturePath,
 		name:  "picture." + ext,
@@ -256,11 +256,11 @@ func (r *NostrRoot) fetchProfilePicture(dirPath string, pubkey nostr.PubKey) {
 	}
 }
 
-func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
+func (r *FSRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 	ctx, cancel := context.WithTimeout(r.ctx, time.Second*10)
 	defer cancel()
 
-	// Get relays for authors
+	// get relays for authors
 	var relays []string
 	if len(filter.Authors) > 0 {
 		relays = r.sys.FetchOutboxRelays(ctx, filter.Authors[0], 3)
@@ -272,12 +272,12 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 	log := r.getLog()
 	log("- fetching events for %s from %v\n", dirPath, relays)
 
-	// Fetch events
+	// fetch events
 	events := make([]*nostr.Event, 0)
 	for ie := range r.sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
 		Label: "nak-fs",
 	}) {
-		// Make a copy to avoid pointer issues with loop variable
+		// make a copy to avoid pointer issues with loop variable
 		evt := ie.Event
 		events = append(events, &evt)
 		if len(events) >= int(filter.Limit) {
@@ -295,14 +295,14 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 		return
 	}
 
-	// Track oldest timestamp for pagination
+	// track oldest timestamp for pagination
 	var oldestTimestamp nostr.Timestamp
 	if len(events) > 0 {
 		oldestTimestamp = events[len(events)-1].CreatedAt
 	}
 
 	for _, evt := range events {
-		// Create filename based on event
+		// create filename based on event
 		filename := r.eventToFilename(evt)
 		filePath := dirPath + "/" + filename
 
@@ -315,7 +315,7 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 			content = "(empty)"
 		}
 
-		fileNode := &Node{
+		fileNode := &FSNode{
 			ino:   r.nextIno,
 			path:  filePath,
 			name:  filename,
@@ -330,9 +330,9 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 		dir.children[filename] = fileNode
 	}
 
-	// Add "more" file for pagination if we got a full page
+	// add "more" file for pagination if we got a full page
 	if len(events) >= int(filter.Limit) {
-		moreFile := &Node{
+		moreFile := &FSNode{
 			ino:   r.nextIno,
 			path:  dirPath + "/.more",
 			name:  ".more",
@@ -342,7 +342,7 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 			data:  []byte(fmt.Sprintf("Read this file to load more events (until: %d)\n", oldestTimestamp)),
 			size:  int64(len(fmt.Sprintf("Read this file to load more events (until: %d)\n", oldestTimestamp))),
 			loadFunc: func() ([]byte, error) {
-				// When .more is read, fetch next page
+				// when .more is read, fetch next page
 				newFilter := filter
 				newFilter.Until = oldestTimestamp
 				go r.fetchEvents(dirPath, newFilter)
@@ -355,24 +355,24 @@ func (r *NostrRoot) fetchEvents(dirPath string, filter nostr.Filter) {
 	}
 }
 
-func (r *NostrRoot) eventToFilename(evt *nostr.Event) string {
-	// Use event ID first 8 chars + extension based on kind
+func (r *FSRoot) eventToFilename(evt *nostr.Event) string {
+	// use event ID first 8 chars + extension based on kind
 	ext := kindToExtension(evt.Kind)
 
-	// Get hex representation of event ID
+	// get hex representation of event ID
 	// evt.ID.String() may return format like ":1234abcd" so use Hex() or remove colons
 	idHex := evt.ID.Hex()
 	if len(idHex) > 8 {
 		idHex = idHex[:8]
 	}
 
-	// For articles, try to use title
+	// for articles, try to use title
 	if evt.Kind == 30023 || evt.Kind == 30818 {
 		for _, tag := range evt.Tags {
 			if len(tag) >= 2 && tag[0] == "title" {
 				titleStr := tag[1]
 				if titleStr != "" {
-					// Sanitize title for filename
+					// sanitize title for filename
 					name := strings.Map(func(r rune) rune {
 						if r == '/' || r == '\\' || r == ':' || r == '*' || r == '?' || r == '"' || r == '<' || r == '>' || r == '|' {
 							return '-'
@@ -391,35 +391,35 @@ func (r *NostrRoot) eventToFilename(evt *nostr.Event) string {
 	return fmt.Sprintf("%s.%s", idHex, ext)
 }
 
-func (r *NostrRoot) getLog() func(string, ...interface{}) {
+func (r *FSRoot) getLog() func(string, ...interface{}) {
 	if log := r.ctx.Value("log"); log != nil {
 		return log.(func(string, ...interface{}))
 	}
 	return func(string, ...interface{}) {}
 }
 
-func (r *NostrRoot) getNode(path string) *Node {
+func (r *FSRoot) getNode(path string) *FSNode {
 	originalPath := path
 
-	// Normalize path
+	// normalize path
 	if path == "" {
 		path = "/"
 	}
 
-	// Convert Windows backslashes to forward slashes
+	// convert Windows backslashes to forward slashes
 	path = strings.ReplaceAll(path, "\\", "/")
 
-	// Ensure path starts with /
+	// ensure path starts with /
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 
-	// Remove trailing slash except for root
+	// remove trailing slash except for root
 	if path != "/" && strings.HasSuffix(path, "/") {
 		path = strings.TrimSuffix(path, "/")
 	}
 
-	// Debug logging
+	// debug logging
 	if r.ctx.Value("logverbose") != nil {
 		logv := r.ctx.Value("logverbose").(func(string, ...interface{}))
 		logv("getNode: original='%s' normalized='%s'\n", originalPath, path)
@@ -430,7 +430,7 @@ func (r *NostrRoot) getNode(path string) *Node {
 
 	node := r.nodes[path]
 
-	// Debug: if not found, show similar paths
+	// debug: if not found, show similar paths
 	if node == nil && r.ctx.Value("logverbose") != nil {
 		logv := r.ctx.Value("logverbose").(func(string, ...interface{}))
 		logv("getNode: NOT FOUND '%s'\n", path)
@@ -451,11 +451,11 @@ func (r *NostrRoot) getNode(path string) *Node {
 	return node
 }
 
-func (r *NostrRoot) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
+func (r *FSRoot) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 	node := r.getNode(path)
 
-	// If node doesn't exist, try dynamic lookup
-	// But skip for special files starting with @ or .
+	// if node doesn't exist, try dynamic lookup
+	// but skip for special files starting with @ or .
 	if node == nil {
 		basename := filepath.Base(path)
 		if !strings.HasPrefix(basename, "@") && !strings.HasPrefix(basename, ".") {
@@ -480,14 +480,14 @@ func (r *NostrRoot) Getattr(path string, stat *fuse.Stat_t, fh uint64) int {
 }
 
 // dynamicLookup tries to create nodes on-demand for npub/note/nevent paths
-func (r *NostrRoot) dynamicLookup(path string) bool {
-	// Normalize path
+func (r *FSRoot) dynamicLookup(path string) bool {
+	// normalize path
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
 	}
 
-	// Get the first component after root
+	// get the first component after root
 	parts := strings.Split(strings.TrimPrefix(path, "/"), "/")
 	if len(parts) == 0 {
 		return false
@@ -495,10 +495,10 @@ func (r *NostrRoot) dynamicLookup(path string) bool {
 
 	name := parts[0]
 
-	// Try to decode as nostr pointer
+	// try to decode as nostr pointer
 	pointer, err := nip19.ToPointer(name)
 	if err != nil {
-		// Try NIP-05
+		// try NIP-05
 		if strings.Contains(name, "@") && !strings.HasPrefix(name, "@") {
 			ctx, cancel := context.WithTimeout(r.ctx, time.Second*5)
 			defer cancel()
@@ -515,19 +515,19 @@ func (r *NostrRoot) dynamicLookup(path string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if already exists
+	// check if already exists
 	if _, exists := r.nodes["/"+name]; exists {
 		return true
 	}
 
 	switch p := pointer.(type) {
 	case nostr.ProfilePointer:
-		// Create npub directory dynamically
+		// create npub directory dynamically
 		r.createNpubDirLocked(name, p.PublicKey, nil)
 		return true
 
 	case nostr.EventPointer:
-		// Create event directory dynamically
+		// create event directory dynamically
 		return r.createEventDirLocked(name, p)
 
 	default:
@@ -535,30 +535,30 @@ func (r *NostrRoot) dynamicLookup(path string) bool {
 	}
 }
 
-func (r *NostrRoot) createNpubDirLocked(npub string, pubkey nostr.PubKey, signer nostr.Signer) {
+func (r *FSRoot) createNpubDirLocked(npub string, pubkey nostr.PubKey, signer nostr.Signer) {
 	dirPath := "/" + npub
 
-	// Check if already exists
+	// check if already exists
 	if _, exists := r.nodes[dirPath]; exists {
 		return
 	}
 
-	dirNode := &Node{
+	dirNode := &FSNode{
 		ino:      r.nextIno,
 		path:     dirPath,
 		name:     npub,
 		isDir:    true,
 		mode:     fuse.S_IFDIR | 0755,
 		mtime:    time.Now(),
-		children: make(map[string]*Node),
+		children: make(map[string]*FSNode),
 	}
 	r.nextIno++
 	r.nodes[dirPath] = dirNode
 	r.nodes["/"].children[npub] = dirNode
 
-	// Add pubkey file
+	// add pubkey file
 	pubkeyData := []byte(pubkey.Hex() + "\n")
-	pubkeyNode := &Node{
+	pubkeyNode := &FSNode{
 		ino:   r.nextIno,
 		path:  dirPath + "/pubkey",
 		name:  "pubkey",
@@ -572,78 +572,78 @@ func (r *NostrRoot) createNpubDirLocked(npub string, pubkey nostr.PubKey, signer
 	r.nodes[dirPath+"/pubkey"] = pubkeyNode
 	dirNode.children["pubkey"] = pubkeyNode
 
-	// Fetch metadata asynchronously
+	// fetch metadata asynchronously
 	go r.fetchMetadata(dirPath, pubkey)
 
-	// Add notes directory
+	// add notes directory
 	r.createViewDirLocked(dirPath, "notes", nostr.Filter{
 		Kinds:   []nostr.Kind{1},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add articles directory
+	// add articles directory
 	r.createViewDirLocked(dirPath, "articles", nostr.Filter{
 		Kinds:   []nostr.Kind{30023},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add comments directory
+	// add comments directory
 	r.createViewDirLocked(dirPath, "comments", nostr.Filter{
 		Kinds:   []nostr.Kind{1111},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add highlights directory
+	// add highlights directory
 	r.createViewDirLocked(dirPath, "highlights", nostr.Filter{
 		Kinds:   []nostr.Kind{9802},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add photos directory
+	// add photos directory
 	r.createViewDirLocked(dirPath, "photos", nostr.Filter{
 		Kinds:   []nostr.Kind{20},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add videos directory
+	// add videos directory
 	r.createViewDirLocked(dirPath, "videos", nostr.Filter{
 		Kinds:   []nostr.Kind{21, 22},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Add wikis directory
+	// add wikis directory
 	r.createViewDirLocked(dirPath, "wikis", nostr.Filter{
 		Kinds:   []nostr.Kind{30818},
 		Authors: []nostr.PubKey{pubkey},
 		Limit:   50,
 	})
 
-	// Fetch profile picture asynchronously
+	// fetch profile picture asynchronously
 	go r.fetchProfilePicture(dirPath, pubkey)
 }
 
-func (r *NostrRoot) createViewDirLocked(parentPath, name string, filter nostr.Filter) {
+func (r *FSRoot) createViewDirLocked(parentPath, name string, filter nostr.Filter) {
 	dirPath := parentPath + "/" + name
 
-	// Check if already exists
+	// check if already exists
 	if _, exists := r.nodes[dirPath]; exists {
 		return
 	}
 
-	dirNode := &Node{
+	dirNode := &FSNode{
 		ino:      r.nextIno,
 		path:     dirPath,
 		name:     name,
 		isDir:    true,
 		mode:     fuse.S_IFDIR | 0755,
 		mtime:    time.Now(),
-		children: make(map[string]*Node),
+		children: make(map[string]*FSNode),
 	}
 	r.nextIno++
 
@@ -652,14 +652,14 @@ func (r *NostrRoot) createViewDirLocked(parentPath, name string, filter nostr.Fi
 		parent.children[name] = dirNode
 	}
 
-	// Fetch events asynchronously
+	// fetch events asynchronously
 	go r.fetchEvents(dirPath, filter)
 }
 
-func (r *NostrRoot) createEventDirLocked(name string, pointer nostr.EventPointer) bool {
+func (r *FSRoot) createEventDirLocked(name string, pointer nostr.EventPointer) bool {
 	dirPath := "/" + name
 
-	// Fetch the event
+	// fetch the event
 	ctx, cancel := context.WithTimeout(r.ctx, time.Second*10)
 	defer cancel()
 
@@ -676,7 +676,7 @@ func (r *NostrRoot) createEventDirLocked(name string, pointer nostr.EventPointer
 	for ie := range r.sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
 		Label: "nak-fs-event",
 	}) {
-		// Make a copy to avoid pointer issues
+		// make a copy to avoid pointer issues
 		evtCopy := ie.Event
 		evt = &evtCopy
 		break
@@ -686,24 +686,24 @@ func (r *NostrRoot) createEventDirLocked(name string, pointer nostr.EventPointer
 		return false
 	}
 
-	// Create event directory
-	dirNode := &Node{
+	// create event directory
+	dirNode := &FSNode{
 		ino:      r.nextIno,
 		path:     dirPath,
 		name:     name,
 		isDir:    true,
 		mode:     fuse.S_IFDIR | 0755,
 		mtime:    time.Unix(int64(evt.CreatedAt), 0),
-		children: make(map[string]*Node),
+		children: make(map[string]*FSNode),
 	}
 	r.nextIno++
 	r.nodes[dirPath] = dirNode
 	r.nodes["/"].children[name] = dirNode
 
-	// Add content file
+	// add content file
 	ext := kindToExtension(evt.Kind)
 	contentPath := dirPath + "/content." + ext
-	contentNode := &Node{
+	contentNode := &FSNode{
 		ino:   r.nextIno,
 		path:  contentPath,
 		name:  "content." + ext,
@@ -717,10 +717,10 @@ func (r *NostrRoot) createEventDirLocked(name string, pointer nostr.EventPointer
 	r.nodes[contentPath] = contentNode
 	dirNode.children["content."+ext] = contentNode
 
-	// Add event.json
+	// add event.json
 	eventJSON, _ := json.MarshalIndent(evt, "", "  ")
 	eventJSONPath := dirPath + "/event.json"
-	eventJSONNode := &Node{
+	eventJSONNode := &FSNode{
 		ino:   r.nextIno,
 		path:  eventJSONPath,
 		name:  "event.json",
@@ -737,11 +737,11 @@ func (r *NostrRoot) createEventDirLocked(name string, pointer nostr.EventPointer
 	return true
 }
 
-func (r *NostrRoot) Readdir(path string,
+func (r *FSRoot) Readdir(path string,
 	fill func(name string, stat *fuse.Stat_t, ofst int64) bool,
 	ofst int64,
-	fh uint64) int {
-
+	fh uint64,
+) int {
 	node := r.getNode(path)
 	if node == nil || !node.isDir {
 		return -fuse.ENOENT
@@ -768,8 +768,8 @@ func (r *NostrRoot) Readdir(path string,
 	return 0
 }
 
-func (r *NostrRoot) Open(path string, flags int) (int, uint64) {
-	// Log the open attempt
+func (r *FSRoot) Open(path string, flags int) (int, uint64) {
+	// log the open attempt
 	if r.ctx.Value("logverbose") != nil {
 		logv := r.ctx.Value("logverbose").(func(string, ...interface{}))
 		logv("Open: path='%s' flags=%d\n", path, flags)
@@ -783,7 +783,7 @@ func (r *NostrRoot) Open(path string, flags int) (int, uint64) {
 		return -fuse.EISDIR, ^uint64(0)
 	}
 
-	// Load data if needed
+	// load data if needed
 	if node.loadFunc != nil && !node.loaded {
 		r.mu.Lock()
 		if !node.loaded {
@@ -799,7 +799,7 @@ func (r *NostrRoot) Open(path string, flags int) (int, uint64) {
 	return 0, node.ino
 }
 
-func (r *NostrRoot) Read(path string, buff []byte, ofst int64, fh uint64) int {
+func (r *FSRoot) Read(path string, buff []byte, ofst int64, fh uint64) int {
 	node := r.getNode(path)
 	if node == nil || node.isDir {
 		return -fuse.ENOENT
@@ -818,7 +818,7 @@ func (r *NostrRoot) Read(path string, buff []byte, ofst int64, fh uint64) int {
 	return n
 }
 
-func (r *NostrRoot) Opendir(path string) (int, uint64) {
+func (r *FSRoot) Opendir(path string) (int, uint64) {
 	node := r.getNode(path)
 	if node == nil {
 		return -fuse.ENOENT, ^uint64(0)
@@ -829,17 +829,17 @@ func (r *NostrRoot) Opendir(path string) (int, uint64) {
 	return 0, node.ino
 }
 
-func (r *NostrRoot) Release(path string, fh uint64) int {
+func (r *FSRoot) Release(path string, fh uint64) int {
 	return 0
 }
 
-func (r *NostrRoot) Releasedir(path string, fh uint64) int {
+func (r *FSRoot) Releasedir(path string, fh uint64) int {
 	return 0
 }
 
 // Create creates a new file
-func (r *NostrRoot) Create(path string, flags int, mode uint32) (int, uint64) {
-	// Parse path
+func (r *FSRoot) Create(path string, flags int, mode uint32) (int, uint64) {
+	// parse path
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -851,19 +851,19 @@ func (r *NostrRoot) Create(path string, flags int, mode uint32) (int, uint64) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if parent directory exists
+	// check if parent directory exists
 	parent, ok := r.nodes[dir]
 	if !ok || !parent.isDir {
 		return -fuse.ENOENT, ^uint64(0)
 	}
 
-	// Check if file already exists
+	// check if file already exists
 	if _, exists := r.nodes[path]; exists {
 		return -fuse.EEXIST, ^uint64(0)
 	}
 
-	// Create new file node
-	fileNode := &Node{
+	// create new file node
+	fileNode := &FSNode{
 		ino:   r.nextIno,
 		path:  path,
 		name:  name,
@@ -882,7 +882,7 @@ func (r *NostrRoot) Create(path string, flags int, mode uint32) (int, uint64) {
 }
 
 // Truncate truncates a file
-func (r *NostrRoot) Truncate(path string, size int64, fh uint64) int {
+func (r *FSRoot) Truncate(path string, size int64, fh uint64) int {
 	node := r.getNode(path)
 	if node == nil {
 		return -fuse.ENOENT
@@ -899,7 +899,7 @@ func (r *NostrRoot) Truncate(path string, size int64, fh uint64) int {
 	} else if size < int64(len(node.data)) {
 		node.data = node.data[:size]
 	} else {
-		// Extend with zeros
+		// extend with zeros
 		newData := make([]byte, size)
 		copy(newData, node.data)
 		node.data = newData
@@ -911,7 +911,7 @@ func (r *NostrRoot) Truncate(path string, size int64, fh uint64) int {
 }
 
 // Write writes data to a file
-func (r *NostrRoot) Write(path string, buff []byte, ofst int64, fh uint64) int {
+func (r *FSRoot) Write(path string, buff []byte, ofst int64, fh uint64) int {
 	node := r.getNode(path)
 	if node == nil {
 		return -fuse.ENOENT
@@ -925,7 +925,7 @@ func (r *NostrRoot) Write(path string, buff []byte, ofst int64, fh uint64) int {
 
 	endofst := ofst + int64(len(buff))
 
-	// Extend data if necessary
+	// extend data if necessary
 	if endofst > int64(len(node.data)) {
 		newData := make([]byte, endofst)
 		copy(newData, node.data)
@@ -936,14 +936,14 @@ func (r *NostrRoot) Write(path string, buff []byte, ofst int64, fh uint64) int {
 	node.size = int64(len(node.data))
 	node.mtime = time.Now()
 
-	// Check if this is a note that should be auto-published
+	// check if this is a note that should be auto-published
 	if r.signer != nil && strings.Contains(path, "/notes/") && !strings.HasPrefix(filepath.Base(path), ".") {
-		// Cancel existing timer if any
+		// cancel existing timer if any
 		if timer, exists := r.pendingNotes[path]; exists {
 			timer.Stop()
 		}
 
-		// Schedule auto-publish
+		// schedule auto-publish
 		timeout := r.opts.AutoPublishNotesTimeout
 		if timeout > 0 && timeout < time.Hour*24*365 {
 			r.pendingNotes[path] = time.AfterFunc(timeout, func() {
@@ -955,7 +955,7 @@ func (r *NostrRoot) Write(path string, buff []byte, ofst int64, fh uint64) int {
 	return n
 }
 
-func (r *NostrRoot) publishNote(path string) {
+func (r *FSRoot) publishNote(path string) {
 	r.mu.Lock()
 	node, ok := r.nodes[path]
 	if !ok {
@@ -973,7 +973,7 @@ func (r *NostrRoot) publishNote(path string) {
 	log := r.getLog()
 	log("- auto-publishing note from %s\n", path)
 
-	// Create and sign event
+	// create and sign event
 	evt := &nostr.Event{
 		CreatedAt: nostr.Now(),
 		Kind:      1,
@@ -986,7 +986,7 @@ func (r *NostrRoot) publishNote(path string) {
 		return
 	}
 
-	// Publish to relays
+	// publish to relays
 	ctx, cancel := context.WithTimeout(r.ctx, time.Second*10)
 	defer cancel()
 
@@ -1005,7 +1005,7 @@ func (r *NostrRoot) publishNote(path string) {
 
 	log("- published note %s to %d relays\n", evt.ID.Hex()[:8], len(relays))
 
-	// Update filename to include event ID
+	// update filename to include event ID
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
@@ -1015,7 +1015,7 @@ func (r *NostrRoot) publishNote(path string) {
 	newName := evt.ID.Hex()[:8] + ext
 	newPath := dir + "/" + newName
 
-	// Rename node
+	// rename node
 	if _, exists := r.nodes[newPath]; !exists {
 		node.path = newPath
 		node.name = newName
@@ -1032,7 +1032,7 @@ func (r *NostrRoot) publishNote(path string) {
 }
 
 // Unlink deletes a file
-func (r *NostrRoot) Unlink(path string) int {
+func (r *FSRoot) Unlink(path string) int {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -1044,7 +1044,7 @@ func (r *NostrRoot) Unlink(path string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if file exists
+	// check if file exists
 	node, ok := r.nodes[path]
 	if !ok {
 		return -fuse.ENOENT
@@ -1053,19 +1053,19 @@ func (r *NostrRoot) Unlink(path string) int {
 		return -fuse.EISDIR
 	}
 
-	// Remove from parent
+	// remove from parent
 	if parent, ok := r.nodes[dir]; ok {
 		delete(parent.children, name)
 	}
 
-	// Remove from nodes map
+	// remove from nodes map
 	delete(r.nodes, path)
 
 	return 0
 }
 
 // Mkdir creates a new directory
-func (r *NostrRoot) Mkdir(path string, mode uint32) int {
+func (r *FSRoot) Mkdir(path string, mode uint32) int {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -1077,26 +1077,26 @@ func (r *NostrRoot) Mkdir(path string, mode uint32) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if parent directory exists
+	// check if parent directory exists
 	parent, ok := r.nodes[dir]
 	if !ok || !parent.isDir {
 		return -fuse.ENOENT
 	}
 
-	// Check if directory already exists
+	// check if directory already exists
 	if _, exists := r.nodes[path]; exists {
 		return -fuse.EEXIST
 	}
 
-	// Create new directory node
-	dirNode := &Node{
+	// create new directory node
+	dirNode := &FSNode{
 		ino:      r.nextIno,
 		path:     path,
 		name:     name,
 		isDir:    true,
 		mode:     fuse.S_IFDIR | 0755,
 		mtime:    time.Now(),
-		children: make(map[string]*Node),
+		children: make(map[string]*FSNode),
 	}
 	r.nextIno++
 
@@ -1107,7 +1107,7 @@ func (r *NostrRoot) Mkdir(path string, mode uint32) int {
 }
 
 // Rmdir removes a directory
-func (r *NostrRoot) Rmdir(path string) int {
+func (r *FSRoot) Rmdir(path string) int {
 	path = strings.ReplaceAll(path, "\\", "/")
 	if !strings.HasPrefix(path, "/") {
 		path = "/" + path
@@ -1123,7 +1123,7 @@ func (r *NostrRoot) Rmdir(path string) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
-	// Check if directory exists
+	// check if directory exists
 	node, ok := r.nodes[path]
 	if !ok {
 		return -fuse.ENOENT
@@ -1132,24 +1132,24 @@ func (r *NostrRoot) Rmdir(path string) int {
 		return -fuse.ENOTDIR
 	}
 
-	// Check if directory is empty
+	// check if directory is empty
 	if len(node.children) > 0 {
 		return -fuse.ENOTEMPTY
 	}
 
-	// Remove from parent
+	// remove from parent
 	if parent, ok := r.nodes[dir]; ok {
 		delete(parent.children, name)
 	}
 
-	// Remove from nodes map
+	// remove from nodes map
 	delete(r.nodes, path)
 
 	return 0
 }
 
 // Utimens updates file timestamps
-func (r *NostrRoot) Utimens(path string, tmsp []fuse.Timespec) int {
+func (r *FSRoot) Utimens(path string, tmsp []fuse.Timespec) int {
 	node := r.getNode(path)
 	if node == nil {
 		return -fuse.ENOENT
@@ -1163,4 +1163,15 @@ func (r *NostrRoot) Utimens(path string, tmsp []fuse.Timespec) int {
 	}
 
 	return 0
+}
+
+func kindToExtension(kind nostr.Kind) string {
+	switch kind {
+	case 30023:
+		return "md"
+	case 30818:
+		return "djot"
+	default:
+		return "txt"
+	}
 }
