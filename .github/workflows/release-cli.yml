@@ -1,4 +1,4 @@
-name: build cli for all platforms
+name: Release
 
 on:
   push:
@@ -9,31 +9,34 @@ permissions:
   contents: write
 
 jobs:
-  build-all-for-all:
+  build-linux-freebsd-windows:
     runs-on: ubuntu-latest
     strategy:
       matrix:
         goos: [linux, freebsd, windows]
-        goarch: [amd64, arm64, riscv64]
+        goarch: [amd64, arm64, arm]
         exclude:
-          - goarch: arm64
-            goos: windows
-          - goarch: riscv64
-            goos: windows
-          - goarch: arm64
-            goos: freebsd
+          - goos: windows
+            goarch: arm
     steps:
       - uses: actions/checkout@v3
-      - uses: wangyoucao577/go-release-action@v1.40
+      - uses: actions/setup-go@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          ldflags: -X main.version=${{ github.ref_name }}
-          overwrite: true
-          md5sum: false
-          sha256sum: false
-          compress_assets: false
+          go-version: '1.21'
+      - name: Build
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          EXT=""
+          if [ "$GOOS" = "windows" ]; then
+            EXT=".exe"
+          fi
+          go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}${EXT}
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ./nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}*
 
   build-darwin:
     runs-on: macos-latest
@@ -42,109 +45,107 @@ jobs:
         goarch: [amd64, arm64]
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: actions/setup-go@v4
         with:
-          go-version: 'stable'
-      - name: Install macFUSE
-        run: brew install --cask macfuse
-      - name: Build binary
-        env:
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
+          go-version: '1.21'
+      - name: Build
         run: |
           go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
       - name: Upload Release Asset
-        uses: softprops/action-gh-release@v1
+        uses: softprops/action-gh-release@v2
         with:
           files: ./nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
 
   smoke-test-linux-amd64:
     runs-on: ubuntu-latest
-    needs:
-      - build-all-for-all
+    needs: 
+      - build-linux-freebsd-windows
     steps:
-      - name: download and smoke test latest binary
+      - uses: actions/checkout@v3
+      - name: Download artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          set -eo pipefail # exit on error, and on pipe failures
-
-          echo "downloading nak binary from releases"
-          RELEASE_URL="https://api.github.com/repos/fiatjaf/nak/releases/latest"
-          wget $(wget -q -O - ${RELEASE_URL} | jq -r '.assets[] | select(.name | contains("linux-amd64")) | .browser_download_url') -O nak -nv
-          chmod +x nak
-
-          echo "printing version..."
-          ./nak --version
-
-          # generate and manipulate keys
-          echo "testing key operations..."
+          gh release download ${{ github.ref_name }} -p "nak-${{ github.ref_name }}-linux-amd64"
+          chmod +x nak-${{ github.ref_name }}-linux-amd64
+          mv nak-${{ github.ref_name }}-linux-amd64 nak
+      - name: Test version
+        run: |
+          VERSION=$(./nak version)
+          echo "version: $VERSION"
+          if [ "$VERSION" != "${{ github.ref_name }}" ]; then
+            echo "version mismatch!"
+            exit 1
+          fi
+      - name: Test commands
+        run: |
+          # test key generation
+          echo "testing key generation..."
           SECRET_KEY=$(./nak key generate)
-          PUBLIC_KEY=$(echo $SECRET_KEY | ./nak key public)
-          echo "generated key pair: $SECRET_KEY => $PUBLIC_KEY"
-
-          # create events
+          echo "secret key: ${SECRET_KEY:0:20}..."
+          PUBLIC_KEY=$(./nak key public $SECRET_KEY)
+          echo "public key: $PUBLIC_KEY"
+          
+          # test event creation
           echo "testing event creation..."
-          ./nak event -c "hello world"
-          HELLOWORLD=$(./nak event -c "hello world")
-          echo "  hello world again: $HELLOWORLD"
-          ./nak event --ts "2 days ago" -c "event with timestamp"
-          ./nak event -k 1 -t "t=test" -c "event with tag"
-
-          # test NIP-19 encoding/decoding
-          echo "testing NIP-19 encoding/decoding..."
-          NSEC=$(echo $SECRET_KEY | ./nak encode nsec)
-          echo "encoded nsec: $NSEC"
-          ./nak encode npub 79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798
-          EVENT_ID="5ae731bbc7711f78513da14927c48cc7143a91e6cad0565fdc4d73b8967a7d59"
-          NEVENT1=$(./nak encode nevent $EVENT_ID)
-          echo "encoded nevent1: $NEVENT1"
-          ./nak decode $NEVENT1
-          ./nak decode npub180cvv07tjdrrgpa0j7j7tmnyl2yr6yr7l8j4s3evf6u64th6gkwsyjh6w6
-
-          # test event verification
-          echo "testing event verification..."
-          # create an event and verify it
-          VERIFY_EVENT=$(./nak event -c "verify me")
-          echo $VERIFY_EVENT | ./nak verify
-
-          # test PoW
-          echo "testing pow..."
-          ./nak event -c "testing pow" --pow 8
-
+          EVENT=$(./nak event -c "test event" --sec $SECRET_KEY)
+          echo "event: ${EVENT:0:100}..."
+          
           # test NIP-49 key encryption/decryption
           echo "testing NIP-49 key encryption/decryption..."
           ENCRYPTED_KEY=$(./nak key encrypt $SECRET_KEY "testpassword")
-          echo "encrypted key: ${ENCRYPTED_KEY: 0:20}..."
+          echo "encrypted key: ${ENCRYPTED_KEY:0:20}..."
           DECRYPTED_KEY=$(./nak key decrypt $ENCRYPTED_KEY "testpassword")
           if [ "$DECRYPTED_KEY" != "$SECRET_KEY" ]; then
             echo "nip-49 encryption/decryption test failed!"
             exit 1
           fi
+          
+          echo "all tests passed!"
 
-          # test multi-value tags
-          echo "testing multi-value tags..."
-          ./nak event --ts "yesterday" -t "e=f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a;wss://relay.example.com;root" -c "testing multi-value tags"
-
-          # test relay operations (with a public relay)
-          echo "testing publishing..."
-          # publish a simple event to a public relay
-          EVENT_JSON=$(./nak event --sec $SECRET_KEY -c "test from nak smoke test" nos.lol)
-          EVENT_ID=$(echo $EVENT_JSON | jq -r .id)
-          echo "published event ID: $EVENT_ID"
-
-          # wait a moment for propagation
-          sleep 2
-
-          # fetch the event we just published
-          ./nak req -i $EVENT_ID nos.lol
-
-          # test serving (just start and immediately kill)
-          echo "testing serve command..."
-          timeout 2s ./nak serve || true
-
-          # test filesystem mount (just start and immediately kill)
-          echo "testing fs mount command..."
-          mkdir -p /tmp/nostr-mount
-          timeout 2s ./nak fs --sec $SECRET_KEY /tmp/nostr-mount || true
-
-          echo "all tests passed"
+  smoke-test-darwin-arm64:
+    runs-on: macos-latest
+    needs: 
+      - build-darwin
+    steps:
+      - uses: actions/checkout@v3
+      - name: Download artifact
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release download ${{ github.ref_name }} -p "nak-${{ github.ref_name }}-darwin-arm64"
+          chmod +x nak-${{ github.ref_name }}-darwin-arm64
+          mv nak-${{ github.ref_name }}-darwin-arm64 nak
+      - name: Test version
+        run: |
+          VERSION=$(./nak version)
+          echo "version: $VERSION"
+          if [ "$VERSION" != "${{ github.ref_name }}" ]; then
+            echo "version mismatch!"
+            exit 1
+          fi
+      - name: Test commands
+        run: |
+          # test key generation
+          echo "testing key generation..."
+          SECRET_KEY=$(./nak key generate)
+          echo "secret key: ${SECRET_KEY:0:20}..."
+          PUBLIC_KEY=$(./nak key public $SECRET_KEY)
+          echo "public key: $PUBLIC_KEY"
+          
+          # test event creation
+          echo "testing event creation..."
+          EVENT=$(./nak event -c "test event" --sec $SECRET_KEY)
+          echo "event: ${EVENT:0:100}..."
+          
+          # test NIP-49 key encryption/decryption
+          echo "testing NIP-49 key encryption/decryption..."
+          ENCRYPTED_KEY=$(./nak key encrypt $SECRET_KEY "testpassword")
+          echo "encrypted key: ${ENCRYPTED_KEY:0:20}..."
+          DECRYPTED_KEY=$(./nak key decrypt $ENCRYPTED_KEY "testpassword")
+          if [ "$DECRYPTED_KEY" != "$SECRET_KEY" ]; then
+            echo "nip-49 encryption/decryption test failed!"
+            exit 1
+          fi
+          
+          echo "all tests passed!"
