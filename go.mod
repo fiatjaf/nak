@@ -3,7 +3,6 @@ module github.com/fiatjaf/nak
 go 1.25
 
 require (
-	fiatjaf.com/lib v0.3.1
 	fiatjaf.com/nostr v0.0.0-20251230181913-e52ffa631bd6
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bep/debounce v1.2.1
@@ -12,9 +11,8 @@ require (
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fatih/color v1.16.0
-
 	github.com/json-iterator/go v1.1.12
-	github.com/liamg/magic v0.0.1
+	github.com/liamg/magic v0.0.1 // indirect
 	github.com/mailru/easyjson v0.9.1
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
