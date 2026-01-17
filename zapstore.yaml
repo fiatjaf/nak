@@ -1,0 +1,7 @@
+repository: https://github.com/fiatjaf/nak
+assets:
+  - nak-v\d+\.\d+\.\d+-darwin-arm64
+  - nak-v\d+\.\d+\.\d+-linux-amd64
+  - nak-v\d+\.\d+\.\d+-linux-arm64
+remote_metadata:
+  - github
