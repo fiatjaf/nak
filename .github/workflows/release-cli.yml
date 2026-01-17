@@ -24,20 +24,24 @@ jobs:
             goos: freebsd
     steps:
       - uses: actions/checkout@v3
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: 'stable'
       - name: Install FUSE dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y libfuse-dev
-      - uses: wangyoucao577/go-release-action@v1.40
+      - name: Build binary
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+        run: |
+          go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
+      - name: Upload Release Asset
+        uses: softprops/action-gh-release@v1
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          goos: ${{ matrix.goos }}
-          goarch: ${{ matrix.goarch }}
-          ldflags: -X main.version=${{ github.ref_name }}
-          overwrite: true
-          md5sum: false
-          sha256sum: false
-          compress_assets: false
+          files: ./nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
 
   build-darwin:
     runs-on: macos-latest
