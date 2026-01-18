@@ -12,7 +12,7 @@ require (
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fatih/color v1.16.0
 	github.com/json-iterator/go v1.1.12
-	github.com/liamg/magic v0.0.1 // indirect
+	github.com/liamg/magic v0.0.1
 	github.com/mailru/easyjson v0.9.1
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
@@ -26,6 +26,11 @@ require (
 	golang.org/x/exp v0.0.0-20251113190631-e25ba8c21ef6
 	golang.org/x/sync v0.18.0
 	golang.org/x/term v0.32.0
+)
+
+require (
+	fiatjaf.com/lib v0.3.2
+	github.com/hanwen/go-fuse/v2 v2.9.0
 )
 
 require (
