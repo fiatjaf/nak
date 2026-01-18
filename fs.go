@@ -13,8 +13,10 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
+	"github.com/fiatjaf/nak/nostrfs"
+	"github.com/hanwen/go-fuse/v2/fs"
+	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/urfave/cli/v3"
-	"github.com/winfsp/cgofuse/fuse"
 )
 
 var fsCmd = &cli.Command{
@@ -62,7 +64,7 @@ var fsCmd = &cli.Command{
 			apat = time.Hour * 24 * 365 * 3
 		}
 
-		root := NewFSRoot(
+		root := nostrfs.NewNostrRoot(
 			context.WithValue(
 				context.WithValue(
 					ctx,
@@ -73,7 +75,7 @@ var fsCmd = &cli.Command{
 			sys,
 			kr,
 			mountpoint,
-			FSOptions{
+			nostrfs.Options{
 				AutoPublishNotesTimeout:    apnt,
 				AutoPublishArticlesTimeout: apat,
 			},
@@ -81,22 +83,21 @@ var fsCmd = &cli.Command{
 
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
-
-		// create cgofuse host
-		host := fuse.NewFileSystemHost(root)
-		host.SetCapReaddirPlus(true)
-		host.SetUseIno(true)
-
-		// mount the filesystem
-		mountArgs := []string{"-s", mountpoint}
-		if isVerbose {
-			mountArgs = append([]string{"-d"}, mountArgs...)
+		timeout := time.Second * 120
+		server, err := fs.Mount(mountpoint, root, &fs.Options{
+			MountOptions: fuse.MountOptions{
+				Debug:          isVerbose,
+				Name:           "nak",
+				FsName:         "nak",
+				RememberInodes: true,
+			},
+			AttrTimeout:  &timeout,
+			EntryTimeout: &timeout,
+			Logger:       nostr.DebugLogger,
+		})
+		if err != nil {
+			return fmt.Errorf("mount failed: %w", err)
 		}
-
-		go func() {
-			host.Mount("", mountArgs)
-		}()
-
 		log("ok.\n")
 
 		// setup signal handling for clean unmount
@@ -106,12 +107,17 @@ var fsCmd = &cli.Command{
 		go func() {
 			<-ch
 			log("- unmounting... ")
-			// cgofuse doesn't have explicit unmount, it unmounts on process exit
-			log("ok\n")
-			chErr <- nil
+			err := server.Unmount()
+			if err != nil {
+				chErr <- fmt.Errorf("unmount failed: %w", err)
+			} else {
+				log("ok\n")
+				chErr <- nil
+			}
 		}()
 
-		// wait for signals
+		// serve the filesystem until unmounted
+		server.Wait()
 		return <-chErr
 	},
 }
