@@ -181,7 +181,7 @@ aside from those, there is also:
 				var fetchedRepo *nip34.Repository
 				if existingConfig.Identifier == "" {
 					log("  searching for existing events... ")
-					repo, _, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
+					repo, _, _, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
 					if err == nil && repo.Event.ID != nostr.ZeroID {
 						fetchedRepo = &repo
 						log("found one from %s.\n", repo.Event.CreatedAt.Time().Format(time.DateOnly))
@@ -371,7 +371,7 @@ aside from those, there is also:
 				}
 
 				// fetch repository metadata and state
-				repo, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+				repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
 				if err != nil {
 					return err
 				}
@@ -782,6 +782,82 @@ aside from those, there is also:
 				return err
 			},
 		},
+		{
+			Name:  "status",
+			Usage: "show repository status and synchronization information",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				// read local config
+				localConfig, err := readNip34ConfigFile("")
+				if err != nil {
+					return fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
+				}
+
+				// parse owner
+				owner, err := parsePubKey(localConfig.Owner)
+				if err != nil {
+					return fmt.Errorf("invalid owner public key: %w", err)
+				}
+
+				repo := localConfig.ToRepository()
+				stdout("\n" + color.CyanString("metadata:"))
+				stdout("  identifier:", color.CyanString(repo.ID))
+				stdout("  name:", color.CyanString(repo.Name))
+				stdout("  owner:", color.CyanString(nip19.EncodeNpub(repo.Event.PubKey)))
+				stdout("  description:", color.CyanString(repo.Description))
+				stdout("  web urls:")
+				for _, url := range repo.Web {
+					stdout("   ", url)
+				}
+				stdout("  earliest unique commit:", color.CyanString(repo.EarliestUniqueCommitID))
+
+				// fetch repository announcement and state from relays
+				_, _, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+				if err != nil {
+					// create a local repo object for display purposes
+					log("failed to fetch repository announcement from relays: %s\n", err)
+				}
+
+				if state == nil {
+					stdout(color.YellowString("\n repository state not published."))
+				}
+
+				stateHEAD, _ := state.Branches[state.HEAD]
+
+				stdout("\n" + color.CyanString("grasp status:"))
+				for _, server := range localConfig.GraspServers {
+					url := graspServerHost(server)
+					line := "    " + url
+
+					upToDate := upToDateRelays != nil && slices.ContainsFunc(upToDateRelays, func(s string) bool { return graspServerHost(s) == url })
+					if upToDate {
+						line += " " + color.GreenString("announcement up-to-date")
+					} else {
+						line += " " + color.YellowString("announcement outdated")
+					}
+
+					if state != nil {
+						remoteName := gitRemoteName(url)
+						refSpec := fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)
+						lsRemoteCmd := exec.Command("git", "rev-parse", "--verify", refSpec)
+						commitOutput, err := lsRemoteCmd.Output()
+						if err != nil {
+							line += " " + color.YellowString("repository not pushed.")
+						} else {
+							commit := strings.TrimSpace(string(commitOutput))
+							if commit == stateHEAD {
+								line += " " + color.GreenString("repository synced with state.")
+							} else {
+								line += " " + color.YellowString("mismatched HEAD state=%s, pushed=%s.", state.HEAD, commit)
+							}
+						}
+					}
+
+					stdout(line)
+				}
+
+				return nil
+			},
+		},
 	},
 }
 
@@ -869,7 +945,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 	}
 
 	// fetch repository announcement and state from relays
-	repo, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+	repo, upToDateAnnouncementEvent, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
 	notUpToDate := func(graspServer string) bool {
 		return !slices.Contains(upToDateRelays, nostr.NormalizeURL(graspServer))
 	}
@@ -889,33 +965,40 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			}
 			log("some grasp servers (%v) are not up-to-date, will publish to them\n", relays)
 		}
-		// create a local repository object from config and publish it
-		localRepo := localConfig.ToRepository()
-
-		if signer != nil {
-			signerPk, err := signer.GetPublicKey(ctx)
-			if err != nil {
-				return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
-			}
-			if signerPk != owner {
-				return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
-			} else {
-				event := localRepo.ToEvent()
-				if err := signer.SignEvent(ctx, &event); err != nil {
-					return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+		var event nostr.Event
+		if upToDateAnnouncementEvent != nil {
+			// publish the latest event to the other relays
+			event = *upToDateAnnouncementEvent
+			repo = nip34.ParseRepository(event)
+		} else {
+			// create a local repository object from config and publish it
+			localRepo := localConfig.ToRepository()
+			if signer != nil {
+				signerPk, err := signer.GetPublicKey(ctx)
+				if err != nil {
+					return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
 				}
-
-				for res := range sys.Pool.PublishMany(ctx, relays, event) {
-					if res.Error != nil {
-						log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-					} else {
-						log("> published to %s\n", color.GreenString(res.RelayURL))
+				if signerPk != owner {
+					return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
+				} else {
+					event = localRepo.ToEvent()
+					if err := signer.SignEvent(ctx, &event); err != nil {
+						return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 					}
 				}
-				repo = localRepo
+			} else {
+				return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
 			}
-		} else {
-			return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
+
+			repo = localRepo
+		}
+
+		for res := range sys.Pool.PublishMany(ctx, relays, *upToDateAnnouncementEvent) {
+			if res.Error != nil {
+				log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+			} else {
+				log("> published to %s\n", color.GreenString(res.RelayURL))
+			}
 		}
 	} else {
 		if err != nil {
@@ -951,6 +1034,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 						} else {
 							log("local configuration is newer, publishing updated repository announcement...\n")
 							announcementEvent := localRepo.ToEvent()
+							announcementEvent.CreatedAt = nostr.Timestamp(configModTime.Unix())
 							if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
 								return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 							}
@@ -1155,7 +1239,7 @@ func fetchRepositoryAndState(
 	pubkey nostr.PubKey,
 	identifier string,
 	relayHints []string,
-) (repo nip34.Repository, upToDateRelays []string, state *nip34.RepositoryState, err error) {
+) (repo nip34.Repository, upToDateAnnouncementEvent *nostr.Event, upToDateRelays []string, state *nip34.RepositoryState, err error) {
 	// fetch repository announcement (30617)
 	relays := appendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
@@ -1176,13 +1260,15 @@ func fetchRepositoryAndState(
 
 			// reset this list as the previous was for relays with the older version
 			upToDateRelays = []string{ie.Relay.URL}
+
+			upToDateAnnouncementEvent = &ie.Event
 		} else if ie.Event.CreatedAt == repo.CreatedAt {
 			// we discard this because it's the same, but this relay is up-to-date
 			upToDateRelays = append(upToDateRelays, ie.Relay.URL)
 		}
 	}
 	if repo.Event.ID == nostr.ZeroID {
-		return repo, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+		return repo, nil, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
 	}
 
 	// fetch repository state (30618)
@@ -1212,10 +1298,10 @@ func fetchRepositoryAndState(
 		}
 	}
 	if stateErr != nil {
-		return repo, upToDateRelays, state, stateErr
+		return repo, upToDateAnnouncementEvent, upToDateRelays, state, stateErr
 	}
 
-	return repo, upToDateRelays, state, nil
+	return repo, upToDateAnnouncementEvent, upToDateRelays, state, nil
 }
 
 type StateErr struct{ string }

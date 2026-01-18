@@ -427,6 +427,7 @@ gitnostr.com... ok.
 ```shell
 ~> nak git clone
 ~> nak git init
+~> nak git status
 ~> nak git sync
 ~> nak git fetch
 ~> nak git pull
