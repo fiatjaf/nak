@@ -4,123 +4,49 @@ on:
   push:
     tags:
       - '*'
-  pull_request:
-    branches: [ main, master ]
 
 permissions:
   contents: write
 
 jobs:
+  make-release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/create-release@latest
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: ${{ github.ref }}
+          release_name: ${{ github.ref }}
   build-all-for-all:
     runs-on: ubuntu-latest
+    needs:
+      - make-release
     strategy:
-      fail-fast: false
       matrix:
-        goos: [linux, freebsd, windows]
+        goos: [linux, freebsd, darwin, windows]
         goarch: [amd64, arm64, riscv64]
         exclude:
-           - goarch: arm64
-             goos: windows
-           - goarch: riscv64
-             goos: windows
-           - goarch: arm64
-             goos: freebsd
-           - goarch: riscv64
-             goos: freebsd
+          - goarch: arm64
+            goos: windows
+          - goarch: riscv64
+            goos: windows
+          - goarch: riscv64
+            goos: darwin
+          - goarch: arm64
+            goos: freebsd
     steps:
       - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v4
+      - uses: wangyoucao577/go-release-action@v1.40
         with:
-          go-version: 'stable'
-      - name: Install FUSE dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y libfuse-dev
-      - name: Install cross-compilation tools for ARM64
-        if: matrix.goarch == 'arm64' && matrix.goos == 'linux'
-        run: |
-          sudo apt-get install -y gcc-aarch64-linux-gnu
-      - name: Install cross-compilation tools for RISC-V
-        if: matrix.goarch == 'riscv64' && matrix.goos == 'linux'
-        run: |
-          sudo apt-get install -y gcc-riscv64-linux-gnu
-      - name: Install FreeBSD SDK
-        if: matrix.goos == 'freebsd'
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y clang lld binutils-riscv64-unknown-elf 2>/dev/null || true
-          mkdir -p /tmp/freebsd-sdk
-          cd /tmp/freebsd-sdk
-          # Determine download path based on architecture
-          case "${{ matrix.goarch }}" in
-            arm64) DLPATH="arm64" ;;
-            riscv64) DLPATH="riscv" ;;
-            *) DLPATH="amd64" ;;
-          esac
-          wget -q "https://download.freebsd.org/releases/${DLPATH}/14.3-RELEASE/base.txz" && tar -xf base.txz
-          # Download and extract libfuse source
-          mkdir -p libfuse && cd libfuse
-          wget -q https://github.com/libfuse/libfuse/releases/download/fuse-2.9.9/fuse-2.9.9.tar.gz
-          tar -xzf fuse-2.9.9.tar.gz --strip-components=1
-          mkdir -p /tmp/freebsd-sdk/usr/include
-          cp include/fuse.h /tmp/freebsd-sdk/usr/include/
-          cp include/fuse_*.h /tmp/freebsd-sdk/usr/include/ 2>/dev/null || true
-          cd /tmp/freebsd-sdk
-      - name: Set cross-compiler
-        id: set-cc
-        run: |
-          if [ "${{ matrix.goarch }}" = "arm64" ] && [ "${{ matrix.goos }}" = "linux" ]; then
-            echo "CC=aarch64-linux-gnu-gcc" >> $GITHUB_ENV
-          elif [ "${{ matrix.goarch }}" = "riscv64" ] && [ "${{ matrix.goos }}" = "linux" ]; then
-            echo "CC=riscv64-linux-gnu-gcc" >> $GITHUB_ENV
-          elif [ "${{ matrix.goos }}" = "freebsd" ]; then
-            TRIPLE="x86_64-unknown-freebsd14.3"
-            [ "${{ matrix.goarch }}" = "arm64" ] && TRIPLE="aarch64-unknown-freebsd14.3"
-            [ "${{ matrix.goarch }}" = "riscv64" ] && TRIPLE="riscv64-unknown-freebsd14.3"
-            echo "CC=clang --target=$TRIPLE --sysroot=/tmp/freebsd-sdk" >> $GITHUB_ENV
-            echo "CGO_CFLAGS=-isystem /tmp/freebsd-sdk/usr/include --target=$TRIPLE" >> $GITHUB_ENV
-            echo "CGO_LDFLAGS=-L/tmp/freebsd-sdk/usr/lib -L/tmp/freebsd-sdk/lib -L/tmp/freebsd-sdk/usr/lib64 --target=$TRIPLE" >> $GITHUB_ENV
-          fi
-      - name: Build binary
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: ${{ matrix.goos == 'windows' && '0' || '1' }}
-        run: |
-          go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
-      - name: Upload Release Asset
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ./nak-${{ github.ref_name }}-${{ matrix.goos }}-${{ matrix.goarch }}
-
-  build-darwin:
-    runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        goarch: [amd64, arm64]
-    steps:
-      - uses: actions/checkout@v3
-      - name: Set up Go
-        uses: actions/setup-go@v4
-        with:
-          go-version: 'stable'
-      - name: Install macFUSE
-        run: brew install --cask macfuse
-      - name: Build binary
-        env:
-          GOOS: darwin
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: '1'
-        run: |
-          go build -ldflags "-X main.version=${{ github.ref_name }}" -o nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
-      - name: Upload Release Asset
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v1
-        with:
-          files: ./nak-${{ github.ref_name }}-darwin-${{ matrix.goarch }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          goos: ${{ matrix.goos }}
+          goarch: ${{ matrix.goarch }}
+          ldflags: -X main.version=${{ github.ref_name }}
+          overwrite: true
+          md5sum: false
+          sha256sum: false
+          compress_assets: false
 
   smoke-test-linux-amd64:
     runs-on: ubuntu-latest
