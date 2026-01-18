@@ -3,15 +3,10 @@ package main
 import (
 	"bytes"
 	"context"
-	"crypto/sha256"
-	"encoding/base64"
-	"encoding/hex"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 
-	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb0/blossom"
 	"github.com/urfave/cli/v3"
@@ -234,47 +229,56 @@ if any of the files are not found the command will fail, otherwise it will succe
 			},
 		},
 		{
-			Name:                      "mirror",
-			Usage:                     "mirrors blobs from source server to target server",
-			Description:               `lists all blobs from the source server and mirrors them to the target server using BUD-04. requires --sec to sign the authorization event.`,
+			Name:  "mirror",
+			Usage: "mirrors a from a server to another",
+			Description: `examples:
+  mirroring a single blob:
+    nak blossom mirror https://nostr.download/5672be22e6da91c12b929a0f46b9e74de8b5366b9b19a645ff949c24052f9ad4 -s blossom.band
+
+  mirroring all blobs from a certain pubkey from one server to the other:
+    nak blossom list 78ce6faa72264387284e647ba6938995735ec8c7d5c5a65737e55130f026307d -s nostr.download | nak blossom mirror -s blossom.band`,
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				targetClient, err := getBlossomClient(ctx, c)
+				client, err := getBlossomClient(ctx, c)
 				if err != nil {
 					return err
 				}
 
-				// Create client for source server
-				sourceServer := c.Args().First()
-				keyer, _, err := gatherKeyerFromArguments(ctx, c)
-				if err != nil {
-					return err
-				}
-				sourceClient := blossom.NewClient(sourceServer, keyer)
-
-				// Get list of blobs from source server
-				bds, err := sourceClient.List(ctx)
-				if err != nil {
-					return fmt.Errorf("failed to list blobs from source server: %w", err)
-				}
-
-				// Mirror each blob to target server
-				hasError := false
-				for _, bd := range bds {
-					mirrored, err := mirrorBlob(ctx, targetClient, bd.URL)
+				var bd blossom.BlobDescriptor
+				if input := c.Args().First(); input != "" {
+					blobURL := input
+					if err := json.Unmarshal([]byte(input), &bd); err == nil {
+						blobURL = bd.URL
+					}
+					bd, err := client.MirrorBlob(ctx, blobURL)
 					if err != nil {
-						fmt.Fprintf(os.Stderr, "failed to mirror %s: %s\n", bd.SHA256, err)
-						hasError = true
-						continue
+						return err
+					}
+					out, _ := json.Marshal(bd)
+					stdout(out)
+					return nil
+				} else {
+					for input := range getJsonsOrBlank() {
+						if input == "{}" {
+							continue
+						}
+
+						blobURL := input
+						if err := json.Unmarshal([]byte(input), &bd); err == nil {
+							blobURL = bd.URL
+						}
+						bd, err := client.MirrorBlob(ctx, blobURL)
+						if err != nil {
+							ctx = lineProcessingError(ctx, "failed to mirror '%s': %w", blobURL, err)
+							continue
+						}
+						out, _ := json.Marshal(bd)
+						stdout(out)
 					}
 
-					j, _ := json.Marshal(mirrored)
-					stdout(string(j))
+					exitIfLineProcessingError(ctx)
 				}
 
-				if hasError {
-					os.Exit(3)
-				}
 				return nil
 			},
 		},
@@ -287,83 +291,4 @@ func getBlossomClient(ctx context.Context, c *cli.Command) (*blossom.Client, err
 		return nil, err
 	}
 	return blossom.NewClient(c.String("server"), keyer), nil
-}
-
-// mirrorBlob mirrors a blob from a URL to the mediaserver using BUD-04
-func mirrorBlob(ctx context.Context, client *blossom.Client, url string) (*blossom.BlobDescriptor, error) {
-	resp, err := http.Get(url)
-	if err != nil {
-		return nil, fmt.Errorf("failed to download blob from URL: %w", err)
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("failed to download blob: HTTP %d", resp.StatusCode)
-	}
-
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read blob content: %w", err)
-	}
-
-	hash := sha256.Sum256(data)
-	hashHex := hex.EncodeToString(hash[:])
-
-	signer := client.GetSigner()
-	pubkey, _ := signer.GetPublicKey(ctx)
-
-	evt := nostr.Event{
-		Kind:      24242,
-		CreatedAt: nostr.Now(),
-		Tags: nostr.Tags{
-			{"t", "upload"},
-			{"x", hashHex},
-			{"expiration", fmt.Sprintf("%d", nostr.Now()+60)},
-		},
-		Content: "blossom stuff",
-		PubKey:  pubkey,
-	}
-
-	if err := signer.SignEvent(ctx, &evt); err != nil {
-		return nil, fmt.Errorf("failed to sign authorization event: %w", err)
-	}
-
-	evtj, err := json.Marshal(evt)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal authorization event: %w", err)
-	}
-	auth := base64.StdEncoding.EncodeToString(evtj)
-
-	mediaserver := client.GetMediaServer()
-	mirrorURL := mediaserver + "mirror"
-
-	requestBody := map[string]string{"url": url}
-	requestJSON, _ := json.Marshal(requestBody)
-
-	req, err := http.NewRequestWithContext(ctx, "PUT", mirrorURL, bytes.NewReader(requestJSON))
-	if err != nil {
-		return nil, fmt.Errorf("failed to create mirror request: %w", err)
-	}
-
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Nostr "+auth)
-
-	httpClient := &http.Client{}
-	mirrorResp, err := httpClient.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send mirror request: %w", err)
-	}
-	defer mirrorResp.Body.Close()
-
-	if mirrorResp.StatusCode < 200 || mirrorResp.StatusCode >= 300 {
-		body, _ := io.ReadAll(mirrorResp.Body)
-		return nil, fmt.Errorf("mirror request failed with HTTP %d: %s", mirrorResp.StatusCode, string(body))
-	}
-
-	var bd blossom.BlobDescriptor
-	if err := json.NewDecoder(mirrorResp.Body).Decode(&bd); err != nil {
-		return nil, fmt.Errorf("failed to decode blob descriptor: %w", err)
-	}
-
-	return &bd, nil
 }

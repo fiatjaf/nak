@@ -138,7 +138,7 @@ example:
 				relayUrls,
 				forcePreAuthSigner,
 				nostr.PoolOptions{
-					AuthHandler: func(ctx context.Context, authEvent *nostr.Event) error {
+					AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
 						return authSigner(ctx, c, func(s string, args ...any) {
 							if strings.HasPrefix(s, "authenticating as") {
 								cleanUrl, _ := strings.CutPrefix(

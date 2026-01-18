@@ -145,7 +145,7 @@ example:
 		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
 			relays = connectToAllRelays(ctx, c, relayUrls, nil,
 				nostr.PoolOptions{
-					AuthHandler: func(ctx context.Context, authEvent *nostr.Event) error {
+					AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
 						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
 					},
 				},
