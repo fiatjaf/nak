@@ -20,21 +20,7 @@ var group = &cli.Command{
 	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <relay>'<identifier>" where host.tld is the relay and identifier is the group identifier.`,
 	DisableSliceFlagSeparator: true,
 	ArgsUsage:                 "<subcommand> <relay>'<identifier> [flags]",
-	Flags: []cli.Flag{
-		&cli.StringFlag{
-			Name:     "sec",
-			Usage:    "secret key to sign events, as nsec, ncryptsec or hex, or a bunker URL",
-			Category: CATEGORY_SIGNER,
-		},
-	},
-	DefaultCommand: "info",
-	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-		if c.Args().Len() < 1 {
-			return ctx, fmt.Errorf("missing group identifier, try `nak group info <relay>'<identifier>`")
-		}
-
-		return parseGroupIdentifier(ctx, c)
-	},
+	Flags:                     defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name:        "info",
@@ -42,8 +28,10 @@ var group = &cli.Command{
 			Description: "displays basic group metadata.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				group := nip29.Group{}
 				for ie := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
@@ -89,8 +77,10 @@ var group = &cli.Command{
 			Description: "view group membership information.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				group := nip29.Group{
 					Members: make(map[nostr.PubKey][]*nip29.Role),
@@ -141,8 +131,10 @@ var group = &cli.Command{
 			Description: "view and manage group admin permissions.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				group := nip29.Group{
 					Members: make(map[nostr.PubKey][]*nip29.Role),
@@ -193,8 +185,10 @@ var group = &cli.Command{
 			Description: "configure custom roles and permissions within the group.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				group := nip29.Group{
 					Roles: make([]*nip29.Role, 0),
@@ -222,8 +216,10 @@ var group = &cli.Command{
 			Description: "interact with group chat functionality.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				r, err := sys.Pool.EnsureRelay(relay)
 				if err != nil {
@@ -295,6 +291,42 @@ var group = &cli.Command{
 					}
 				}
 			},
+			Commands: []*cli.Command{
+				{
+					Name:      "send",
+					Usage:     "sends a message to the chat",
+					ArgsUsage: "<message>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						relay, identifier, err := parseGroupIdentifier(c)
+						if err != nil {
+							return err
+						}
+
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return err
+						}
+
+						msg := nostr.Event{
+							Kind:      9,
+							CreatedAt: nostr.Now(),
+							Content:   strings.Join(c.Args().Tail(), " "),
+							Tags: nostr.Tags{
+								{"h", identifier},
+							},
+						}
+						if err := kr.SignEvent(ctx, &msg); err != nil {
+							return fmt.Errorf("failed to sign message: %w", err)
+						}
+
+						if r, err := sys.Pool.EnsureRelay(relay); err != nil {
+							return err
+						} else {
+							return r.Publish(ctx, msg)
+						}
+					},
+				},
+			},
 		},
 		{
 			Name:        "forum",
@@ -302,8 +334,10 @@ var group = &cli.Command{
 			Description: "access group forum functionality.",
 			ArgsUsage:   "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay := ctx.Value("relay").(string)
-				identifier := ctx.Value("identifier").(string)
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
 				for evt := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
 					Kinds: []nostr.Kind{11},
@@ -334,24 +368,16 @@ func cond(b bool, ifYes string, ifNo string) string {
 	return ifNo
 }
 
-func parseGroupIdentifier(ctx context.Context, c *cli.Command) (context.Context, error) {
-	args := c.Args().Slice()
-	if len(args) < 1 {
-		return ctx, fmt.Errorf("missing group identifier in format <relay>'<identifier>")
-	}
-
-	groupArg := args[len(args)-1]
+func parseGroupIdentifier(c *cli.Command) (relay string, identifier string, err error) {
+	groupArg := c.Args().First()
 	if !strings.Contains(groupArg, "'") {
-		return ctx, fmt.Errorf("invalid group identifier format, expected <relay>'<identifier>")
+		return "", "", fmt.Errorf("invalid group identifier format, expected <relay>'<identifier>")
 	}
 
 	parts := strings.SplitN(groupArg, "'", 2)
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return ctx, fmt.Errorf("invalid group identifier format, expected <relay>'<identifier>")
+		return "", "", fmt.Errorf("invalid group identifier format, expected <relay>'<identifier>")
 	}
 
-	ctx = context.WithValue(ctx, "relay", parts[0])
-	ctx = context.WithValue(ctx, "identifier", parts[1])
-
-	return ctx, nil
+	return strings.TrimSuffix(parts[0], "/"), parts[1], nil
 }
