@@ -50,6 +50,7 @@ var app = &cli.Command{
 		fsCmd,
 		publish,
 		git,
+		group,
 		nip,
 		syncCmd,
 		spell,
