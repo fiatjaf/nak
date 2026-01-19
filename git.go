@@ -824,15 +824,18 @@ aside from those, there is also:
 				stateHEAD, _ := state.Branches[state.HEAD]
 
 				stdout("\n" + color.CyanString("grasp status:"))
-				for _, server := range localConfig.GraspServers {
+				rows := make([][3]string, len(localConfig.GraspServers))
+				for s, server := range localConfig.GraspServers {
+					row := [3]string{}
+
 					url := graspServerHost(server)
-					line := "    " + url
+					row[0] = url
 
 					upToDate := upToDateRelays != nil && slices.ContainsFunc(upToDateRelays, func(s string) bool { return graspServerHost(s) == url })
 					if upToDate {
-						line += " " + color.GreenString("announcement up-to-date")
+						row[1] = color.GreenString("announcement up-to-date")
 					} else {
-						line += " " + color.YellowString("announcement outdated")
+						row[1] = color.YellowString("announcement outdated")
 					}
 
 					if state != nil {
@@ -841,17 +844,30 @@ aside from those, there is also:
 						lsRemoteCmd := exec.Command("git", "rev-parse", "--verify", refSpec)
 						commitOutput, err := lsRemoteCmd.Output()
 						if err != nil {
-							line += " " + color.YellowString("repository not pushed.")
+							row[2] = color.YellowString("repository not pushed")
 						} else {
 							commit := strings.TrimSpace(string(commitOutput))
 							if commit == stateHEAD {
-								line += " " + color.GreenString("repository synced with state.")
+								row[2] = color.GreenString("repository synced with state")
 							} else {
-								line += " " + color.YellowString("mismatched HEAD state=%s, pushed=%s.", state.HEAD, commit)
+								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", state.HEAD, commit)
 							}
 						}
 					}
 
+					rows[s] = row
+				}
+
+				maxCol := [3]int{}
+				for i := range maxCol {
+					for _, row := range rows {
+						if len(row[i]) > maxCol[i] {
+							maxCol[i] = len(row[i])
+						}
+					}
+				}
+				for _, row := range rows {
+					line := "  " + row[0] + strings.Repeat(" ", maxCol[0]-len(row[0])) + "   " + strings.Repeat(" ", maxCol[1]-len(row[1])) + row[1] + "   " + strings.Repeat(" ", maxCol[2]-len(row[2])) + row[2]
 					stdout(line)
 				}
 
