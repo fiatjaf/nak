@@ -295,7 +295,7 @@ var group = &cli.Command{
 				{
 					Name:      "send",
 					Usage:     "sends a message to the chat",
-					ArgsUsage: "<message>",
+					ArgsUsage: "<relay>'<identifier> <message>",
 					Action: func(ctx context.Context, c *cli.Command) error {
 						relay, identifier, err := parseGroupIdentifier(c)
 						if err != nil {
@@ -358,7 +358,210 @@ var group = &cli.Command{
 				return nil
 			},
 		},
+		{
+			Name:      "put-user",
+			Usage:     "add a user to the group with optional roles",
+			ArgsUsage: "<relay>'<identifier>",
+			Flags: []cli.Flag{
+				&PubKeyFlag{
+					Name:     "pubkey",
+					Required: true,
+				},
+				&cli.StringSliceFlag{
+					Name: "role",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9000, func(evt *nostr.Event, args []string) error {
+					pubkey := getPubKey(c, "pubkey")
+					tag := nostr.Tag{"p", pubkey.Hex()}
+					tag = append(tag, c.StringSlice("role")...)
+					evt.Tags = append(evt.Tags, tag)
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "remove-user",
+			Usage:     "remove a user from the group",
+			ArgsUsage: "<relay>'<identifier> <pubkey>",
+			Flags: []cli.Flag{
+				&PubKeyFlag{
+					Name:     "pubkey",
+					Required: true,
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9001, func(evt *nostr.Event, args []string) error {
+					pubkey := getPubKey(c, "pubkey")
+					evt.Tags = append(evt.Tags, nostr.Tag{"p", pubkey.Hex()})
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "edit-metadata",
+			Usage:     "edits the group metadata",
+			ArgsUsage: "<relay>'<identifier>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name: "name",
+				},
+				&cli.StringFlag{
+					Name: "about",
+				},
+				&cli.StringFlag{
+					Name: "picture",
+				},
+				&cli.BoolFlag{
+					Name: "restricted",
+				},
+				&cli.BoolFlag{
+					Name: "unrestricted",
+				},
+				&cli.BoolFlag{
+					Name: "closed",
+				},
+				&cli.BoolFlag{
+					Name: "open",
+				},
+				&cli.BoolFlag{
+					Name: "hidden",
+				},
+				&cli.BoolFlag{
+					Name: "visible",
+				},
+				&cli.BoolFlag{
+					Name: "private",
+				},
+				&cli.BoolFlag{
+					Name: "public",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
+					if name := c.String("name"); name != "" {
+						evt.Tags = append(evt.Tags, nostr.Tag{"name", name})
+					}
+					if picture := c.String("picture"); picture != "" {
+						evt.Tags = append(evt.Tags, nostr.Tag{"picture", picture})
+					}
+					if about := c.String("about"); about != "" {
+						evt.Tags = append(evt.Tags, nostr.Tag{"about", about})
+					}
+					if c.Bool("restricted") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"restricted"})
+					} else if c.Bool("unrestricted") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"unrestricted"})
+					}
+					if c.Bool("closed") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"closed"})
+					} else if c.Bool("open") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"open"})
+					}
+					if c.Bool("hidden") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"hidden"})
+					} else if c.Bool("visible") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"visible"})
+					}
+					if c.Bool("private") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"private"})
+					} else if c.Bool("public") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"public"})
+					}
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "delete-event",
+			Usage:     "delete an event from the group",
+			ArgsUsage: "<relay>'<identifier>",
+			Flags: []cli.Flag{
+				&IDFlag{
+					Name:     "event",
+					Required: true,
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9005, func(evt *nostr.Event, args []string) error {
+					id := getID(c, "event")
+					evt.Tags = append(evt.Tags, nostr.Tag{"e", id.Hex()})
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "delete-group",
+			Usage:     "deletes the group",
+			ArgsUsage: "<relay>'<identifier>",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9008, func(evt *nostr.Event, args []string) error {
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "create-invite",
+			Usage:     "creates an invite code",
+			ArgsUsage: "<relay>'<identifier>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:     "code",
+					Required: true,
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return createModerationEvent(ctx, c, 9009, func(evt *nostr.Event, args []string) error {
+					evt.Tags = append(evt.Tags, nostr.Tag{"code", c.String("code")})
+					return nil
+				})
+			},
+		},
 	},
+}
+
+func createModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind, setupFunc func(*nostr.Event, []string) error) error {
+	args := c.Args().Slice()
+	if len(args) < 1 {
+		return fmt.Errorf("requires group identifier")
+	}
+
+	relay, identifier, err := parseGroupIdentifier(c)
+	if err != nil {
+		return err
+	}
+
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return err
+	}
+
+	evt := nostr.Event{
+		Kind:      kind,
+		CreatedAt: nostr.Now(),
+		Content:   "",
+		Tags: nostr.Tags{
+			{"h", identifier},
+		},
+	}
+
+	if err := setupFunc(&evt, args); err != nil {
+		return err
+	}
+
+	if err := kr.SignEvent(ctx, &evt); err != nil {
+		return fmt.Errorf("failed to sign event: %w", err)
+	}
+
+	stdout(evt.String())
+
+	r, err := sys.Pool.EnsureRelay(relay)
+	if err != nil {
+		return err
+	}
+
+	return r.Publish(ctx, evt)
 }
 
 func cond(b bool, ifYes string, ifNo string) string {
