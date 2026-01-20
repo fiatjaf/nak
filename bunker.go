@@ -110,6 +110,12 @@ var bunker = &cli.Command{
 			}
 		}
 
+		go func() {
+			for uri := range onSocketConnect(ctx, c) {
+				log("received nostrconnect URI: %s\n", uri)
+			}
+		}()
+
 		// default case: persist() is nil
 		var persist func()
 
@@ -410,19 +416,18 @@ var bunker = &cli.Command{
 			Name:      "connect",
 			Usage:     "use the client-initiated NostrConnect flow of NIP46",
 			ArgsUsage: "<nostrconnect-uri>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:  "profile",
+					Usage: "profile name of the bunker to connect to",
+				},
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				if c.Args().Len() != 1 {
 					return fmt.Errorf("must be called with a nostrconnect://... uri")
 				}
 
-				uri, err := url.Parse(c.Args().First())
-				if err != nil || uri.Scheme != "nostrconnect" {
-					return fmt.Errorf("invalid uri")
-				}
-
-				// TODO
-
-				return fmt.Errorf("this is not implemented yet")
+				return sendToSocket(c, c.Args().First())
 			},
 		},
 	},
