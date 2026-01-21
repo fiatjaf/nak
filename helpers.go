@@ -536,21 +536,25 @@ func decodeTagValue(value string) string {
 }
 
 var colors = struct {
-	reset    func(...any) (int, error)
-	italic   func(...any) string
-	italicf  func(string, ...any) string
-	bold     func(...any) string
-	boldf    func(string, ...any) string
-	error    func(...any) string
-	errorf   func(string, ...any) string
-	success  func(...any) string
-	successf func(string, ...any) string
+	reset      func(...any) (int, error)
+	italic     func(...any) string
+	italicf    func(string, ...any) string
+	bold       func(...any) string
+	boldf      func(string, ...any) string
+	underline  func(...any) string
+	underlinef func(string, ...any) string
+	error      func(...any) string
+	errorf     func(string, ...any) string
+	success    func(...any) string
+	successf   func(string, ...any) string
 }{
 	color.New(color.Reset).Print,
 	color.New(color.Italic).Sprint,
 	color.New(color.Italic).Sprintf,
 	color.New(color.Bold).Sprint,
 	color.New(color.Bold).Sprintf,
+	color.New(color.Underline).Sprint,
+	color.New(color.Underline).Sprintf,
 	color.New(color.Bold, color.FgHiRed).Sprint,
 	color.New(color.Bold, color.FgHiRed).Sprintf,
 	color.New(color.Bold, color.FgHiGreen).Sprint,

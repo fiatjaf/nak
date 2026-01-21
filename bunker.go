@@ -5,12 +5,12 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"net"
 	"net/url"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
-	"sync"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -73,13 +73,7 @@ var bunker = &cli.Command{
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		// read config from file
-		config := struct {
-			AuthorizedKeys []nostr.PubKey      `json:"authorized-keys"`
-			Secret         plainOrEncryptedKey `json:"sec"`
-			Relays         []string            `json:"relays"`
-		}{
-			AuthorizedKeys: make([]nostr.PubKey, 0, 3),
-		}
+		config := BunkerConfig{}
 		baseRelaysUrls := appendUnique(c.Args().Slice(), c.StringSlice("relay")...)
 		for i, url := range baseRelaysUrls {
 			baseRelaysUrls[i] = nostr.NormalizeURL(url)
@@ -109,12 +103,6 @@ var bunker = &cli.Command{
 				}
 			}
 		}
-
-		go func() {
-			for uri := range onSocketConnect(ctx, c) {
-				log("received nostrconnect URI: %s\n", uri)
-			}
-		}()
 
 		// default case: persist() is nil
 		var persist func()
@@ -148,6 +136,15 @@ var bunker = &cli.Command{
 				if err := json.Unmarshal(b, &config); err != nil {
 					return err
 				}
+				// convert from deprecated field
+				if len(config.AuthorizedKeys) > 0 {
+					config.Clients = make([]BunkerConfigClient, len(config.AuthorizedKeys))
+					for i := range config.AuthorizedKeys {
+						config.Clients[i] = BunkerConfigClient{PubKey: config.AuthorizedKeys[i]}
+					}
+					config.AuthorizedKeys = nil
+					persist()
+				}
 			} else if !os.IsNotExist(err) {
 				return err
 			}
@@ -156,7 +153,11 @@ var bunker = &cli.Command{
 				config.Relays[i] = nostr.NormalizeURL(url)
 			}
 			config.Relays = appendUnique(config.Relays, baseRelaysUrls...)
-			config.AuthorizedKeys = appendUnique(config.AuthorizedKeys, baseAuthorizedKeys...)
+			for _, bak := range baseAuthorizedKeys {
+				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool { return c.PubKey == bak }) {
+					config.Clients = append(config.Clients, BunkerConfigClient{PubKey: bak})
+				}
+			}
 
 			if config.Secret.Plain == nil && config.Secret.Encrypted == nil {
 				// we don't have any secret key stored, so just use whatever was given via flags
@@ -173,7 +174,9 @@ var bunker = &cli.Command{
 		} else {
 			config.Secret = baseSecret
 			config.Relays = baseRelaysUrls
-			config.AuthorizedKeys = baseAuthorizedKeys
+			for _, bak := range baseAuthorizedKeys {
+				config.Clients = append(config.Clients, BunkerConfigClient{PubKey: bak})
+			}
 		}
 
 		// if we got here without any keys set (no flags, first time using a profile), use the default
@@ -211,8 +214,17 @@ var bunker = &cli.Command{
 
 		// try to connect to the relays here
 		qs := url.Values{}
-		relayURLs := make([]string, 0, len(config.Relays))
-		relays := connectToAllRelays(ctx, c, config.Relays, nil, nostr.PoolOptions{})
+		allRelays := make([]string, len(config.Relays), len(config.Relays)+5)
+		copy(allRelays, config.Relays)
+		for _, c := range config.Clients {
+			for _, url := range c.CustomRelays {
+				if !slices.ContainsFunc(allRelays, func(u string) bool { return u == url }) {
+					allRelays = append(allRelays, url)
+				}
+			}
+		}
+		relayURLs := make([]string, 0, len(allRelays))
+		relays := connectToAllRelays(ctx, c, allRelays, nil, nostr.PoolOptions{})
 		if len(relays) == 0 {
 			log("failed to connect to any of the given relays.\n")
 			os.Exit(3)
@@ -242,10 +254,22 @@ var bunker = &cli.Command{
 			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
 
 			authorizedKeysStr := ""
-			if len(config.AuthorizedKeys) != 0 {
-				authorizedKeysStr = "\n  authorized keys:"
-				for _, pubkey := range config.AuthorizedKeys {
-					authorizedKeysStr += "\n    - " + colors.italic(pubkey.Hex())
+			if len(config.Clients) != 0 {
+				authorizedKeysStr = "\n  authorized clients:"
+				for _, c := range config.Clients {
+					authorizedKeysStr += "\n    - " + colors.italic(c.PubKey.Hex())
+					name := ""
+					if c.Name != "" {
+						name = c.Name
+						if c.URL != "" {
+							name += " " + colors.underline(c.URL)
+						}
+					} else if c.URL != "" {
+						name = colors.underline(c.URL)
+					}
+					if name != "" {
+						authorizedKeysStr += " (" + name + ")"
+					}
 				}
 			}
 
@@ -255,8 +279,8 @@ var bunker = &cli.Command{
 			}
 
 			preauthorizedFlags := ""
-			for _, k := range config.AuthorizedKeys {
-				preauthorizedFlags += " -k " + k.Hex()
+			for _, c := range config.Clients {
+				preauthorizedFlags += " -k " + c.PubKey.Hex()
 			}
 			for _, s := range authorizedSecrets {
 				preauthorizedFlags += " -s " + s
@@ -320,28 +344,84 @@ var bunker = &cli.Command{
 			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
 			Since:     nostr.Now(),
 			LimitZero: true,
-		}, nostr.SubscriptionOptions{
-			Label: "nak-bunker",
-		})
+		}, nostr.SubscriptionOptions{Label: "nak-bunker"})
 
 		signer := nip46.NewStaticKeySigner(sec)
-		handlerWg := sync.WaitGroup{}
-		printLock := sync.Mutex{}
+
+		// unix socket nostrconnect:// handling
+		go func() {
+			for uri := range onSocketConnect(ctx, c) {
+				clientPublicKey, err := nostr.PubKeyFromHex(uri.Host)
+				if err != nil {
+					continue
+				}
+				log("- got nostrconnect:// request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(clientPublicKey), uri.String())
+
+				relays := uri.Query()["relay"]
+
+				// pre-authorize this client since the user has explicitly added it
+				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool {
+					return c.PubKey == clientPublicKey
+				}) {
+					config.Clients = append(config.Clients, BunkerConfigClient{
+						PubKey:       clientPublicKey,
+						Name:         uri.Query().Get("name"),
+						URL:          uri.Query().Get("url"),
+						Icon:         uri.Query().Get("icon"),
+						CustomRelays: relays,
+					})
+				}
+
+				if persist != nil {
+					persist()
+				}
+
+				resp, eventResponse, err := signer.HandleNostrConnectURI(ctx, uri)
+				if err != nil {
+					log("* failed to handle: %s\n", err)
+					continue
+				}
+
+				go func() {
+					for event := range sys.Pool.SubscribeMany(ctx, relays, nostr.Filter{
+						Kinds:     []nostr.Kind{nostr.KindNostrConnect},
+						Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
+						Since:     nostr.Now(),
+						LimitZero: true,
+					}, nostr.SubscriptionOptions{Label: "nak-bunker"}) {
+						events <- event
+					}
+				}()
+
+				time.Sleep(time.Millisecond * 25)
+				jresp, _ := json.MarshalIndent(resp, "", "  ")
+				log("~ responding with %s\n", string(jresp))
+				for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
+					if res.Error == nil {
+						log("* sent response through %s\n", res.Relay.URL)
+					} else {
+						log("* failed to send response: %s\n", err)
+					}
+				}
+			}
+		}()
 
 		// just a gimmick
 		var cancelPreviousBunkerInfoPrint context.CancelFunc
 		_, cancel := context.WithCancel(ctx)
 		cancelPreviousBunkerInfoPrint = cancel
 
-		// asking user for authorization
 		signer.AuthorizeRequest = func(harmless bool, from nostr.PubKey, secret string) bool {
-			if slices.Contains(config.AuthorizedKeys, from) || slices.Contains(authorizedSecrets, secret) {
+			if slices.ContainsFunc(config.Clients, func(b BunkerConfigClient) bool { return b.PubKey == from }) {
+				return true
+			}
+			if slices.Contains(authorizedSecrets, secret) {
 				return true
 			}
 
 			if secret == newSecret {
 				// store this key
-				config.AuthorizedKeys = appendUnique(config.AuthorizedKeys, from)
+				config.Clients = append(config.Clients, BunkerConfigClient{PubKey: from})
 				// discard this and generate a new secret
 				newSecret = randString(12)
 				// print bunker info again after this
@@ -364,34 +444,35 @@ var bunker = &cli.Command{
 			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
 
 			// handle the NIP-46 request event
+			from := ie.Event.PubKey
 			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
 			if err != nil {
-				log("< failed to handle request from %s: %s\n", ie.Event.PubKey, err.Error())
+				log("< failed to handle request from %s: %s\n", from, err.Error())
 				continue
 			}
 
 			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(ie.Event.PubKey.Hex()), string(jreq))
+			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
 			jresp, _ := json.MarshalIndent(resp, "", "  ")
 			log("~ responding with %s\n", string(jresp))
 
-			handlerWg.Add(len(relayURLs))
-			for _, relayURL := range relayURLs {
-				go func(relayURL string) {
-					defer handlerWg.Done()
-					if relay, _ := sys.Pool.EnsureRelay(relayURL); relay != nil {
-						err := relay.Publish(ctx, eventResponse)
-						printLock.Lock()
-						if err == nil {
-							log("* sent response through %s\n", relay.URL)
-						} else {
-							log("* failed to send response: %s\n", err)
-						}
-						printLock.Unlock()
-					}
-				}(relayURL)
+			// use custom relays if they are defined for this client
+			// (normally if the initial connection came from a nostrconnect:// URL)
+			relays := relayURLs
+			for _, c := range config.Clients {
+				if c.PubKey == from && len(c.CustomRelays) > 0 {
+					relays = c.CustomRelays
+					break
+				}
 			}
-			handlerWg.Wait()
+
+			for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
+				if res.Error == nil {
+					log("* sent response through %s\n", res.Relay.URL)
+				} else {
+					log("* failed to send response: %s\n", err)
+				}
+			}
 
 			// just after handling one request we trigger this
 			go func() {
@@ -431,6 +512,23 @@ var bunker = &cli.Command{
 			},
 		},
 	},
+}
+
+type BunkerConfig struct {
+	Clients []BunkerConfigClient `json:"clients"`
+	Secret  plainOrEncryptedKey  `json:"sec"`
+	Relays  []string             `json:"relays"`
+
+	// deprecated
+	AuthorizedKeys []nostr.PubKey `json:"authorized-keys,omitempty"`
+}
+
+type BunkerConfigClient struct {
+	PubKey       nostr.PubKey `json:"pubkey"`
+	Name         string       `json:"name,omitempty"`
+	URL          string       `json:"url,omitempty"`
+	Icon         string       `json:"icon,omitempty"`
+	CustomRelays []string     `json:"custom_relays,omitempty"`
 }
 
 type plainOrEncryptedKey struct {
@@ -499,4 +597,64 @@ func (a plainOrEncryptedKey) equals(b plainOrEncryptedKey) bool {
 	}
 
 	return true
+}
+
+func onSocketConnect(ctx context.Context, c *cli.Command) chan *url.URL {
+	res := make(chan *url.URL)
+
+	listener, err := net.Listen("tcp", ":22222")
+	if err != nil {
+		log(color.RedString("failed to listen on TCP port 22222: %w\n", err))
+		return res
+	}
+
+	go func() {
+		defer listener.Close()
+
+		for {
+			conn, err := listener.Accept()
+			if err != nil {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					continue
+				}
+			}
+
+			go func(conn net.Conn) {
+				defer conn.Close()
+				buf := make([]byte, 4096)
+
+				for {
+					conn.SetReadDeadline(time.Now().Add(5 * time.Second))
+					n, err := conn.Read(buf)
+					if err != nil {
+						break
+					}
+
+					uri, err := url.Parse(string(buf[:n]))
+					if err == nil && uri.Scheme == "nostrconnect" {
+						res <- uri
+					}
+				}
+			}(conn)
+		}
+	}()
+
+	return res
+}
+
+func sendToSocket(c *cli.Command, value string) error {
+	conn, err := net.DialTimeout("tcp", "127.0.0.1:22222", 5*time.Second)
+	if err != nil {
+		return fmt.Errorf("failed to connect to bunker TCP socket at 127.0.0.1:22222: %w", err)
+	}
+	defer conn.Close()
+
+	_, err = conn.Write([]byte(value))
+	if err != nil {
+		return fmt.Errorf("failed to send uri to bunker: %w", err)
+	}
+	return nil
 }
