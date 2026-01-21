@@ -850,7 +850,7 @@ aside from those, there is also:
 							if commit == stateHEAD {
 								row[2] = color.GreenString("repository synced with state")
 							} else {
-								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", state.HEAD, commit)
+								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", stateHEAD[0:5], commit[0:5])
 							}
 						}
 					}
