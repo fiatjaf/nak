@@ -398,9 +398,9 @@ var bunker = &cli.Command{
 				log("~ responding with %s\n", string(jresp))
 				for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
 					if res.Error == nil {
-						log("* sent response through %s\n", res.Relay.URL)
+						log("* sent through %s\n", res.Relay.URL)
 					} else {
-						log("* failed to send response: %s\n", err)
+						log("* failed to send through %s: %s\n", res.RelayURL, res.Error)
 					}
 				}
 			}
@@ -470,7 +470,7 @@ var bunker = &cli.Command{
 				if res.Error == nil {
 					log("* sent response through %s\n", res.Relay.URL)
 				} else {
-					log("* failed to send response: %s\n", err)
+					log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
 				}
 			}
 
@@ -508,7 +508,11 @@ var bunker = &cli.Command{
 					return fmt.Errorf("must be called with a nostrconnect://... uri")
 				}
 
-				return sendToSocket(c, c.Args().First())
+				if err := sendToSocket(c, c.Args().First()); err != nil {
+					return fmt.Errorf("failed to connect to running bunker: %w", err)
+				}
+
+				return nil
 			},
 		},
 	},
@@ -599,17 +603,41 @@ func (a plainOrEncryptedKey) equals(b plainOrEncryptedKey) bool {
 	return true
 }
 
+func getSocketPath(c *cli.Command) string {
+	profile := "default"
+	if c.IsSet("profile") {
+		profile = c.String("profile")
+	}
+	return filepath.Join(c.String("config-path"), "bunkerconn", profile)
+}
+
 func onSocketConnect(ctx context.Context, c *cli.Command) chan *url.URL {
 	res := make(chan *url.URL)
+	socketPath := getSocketPath(c)
 
-	listener, err := net.Listen("tcp", ":22222")
+	// ensure directory exists
+	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
+		log(color.RedString("failed to create socket directory: %w\n", err))
+		return res
+	}
+
+	// delete existing socket file if it exists
+	if _, err := os.Stat(socketPath); err == nil {
+		if err := os.Remove(socketPath); err != nil {
+			log(color.RedString("failed to remove existing socket file: %w\n", err))
+			return res
+		}
+	}
+
+	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
-		log(color.RedString("failed to listen on TCP port 22222: %w\n", err))
+		log(color.RedString("failed to listen on unix socket %s: %w\n", socketPath, err))
 		return res
 	}
 
 	go func() {
 		defer listener.Close()
+		defer os.Remove(socketPath) // cleanup socket file on exit
 
 		for {
 			conn, err := listener.Accept()
@@ -646,9 +674,11 @@ func onSocketConnect(ctx context.Context, c *cli.Command) chan *url.URL {
 }
 
 func sendToSocket(c *cli.Command, value string) error {
-	conn, err := net.DialTimeout("tcp", "127.0.0.1:22222", 5*time.Second)
+	socketPath := getSocketPath(c)
+
+	conn, err := net.DialTimeout("unix", socketPath, 5*time.Second)
 	if err != nil {
-		return fmt.Errorf("failed to connect to bunker TCP socket at 127.0.0.1:22222: %w", err)
+		return fmt.Errorf("failed to connect to bunker unix socket at %s: %w", socketPath, err)
 	}
 	defer conn.Close()
 
