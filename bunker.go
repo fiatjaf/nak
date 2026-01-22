@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"net"
 	"net/url"
@@ -356,7 +357,7 @@ var bunker = &cli.Command{
 				if err != nil {
 					continue
 				}
-				log("- got nostrconnect:// request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(clientPublicKey), uri.String())
+				log("- got nostrconnect:// request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(clientPublicKey.Hex()), uri.String())
 
 				relays := uri.Query()["relay"]
 
@@ -448,7 +449,11 @@ var bunker = &cli.Command{
 			from := ie.Event.PubKey
 			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
 			if err != nil {
-				log("< failed to handle request from %s: %s\n", from, err.Error())
+				if errors.Is(err, nip46.AlreadyHandled) {
+					continue
+				}
+
+				log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
 				continue
 			}
 
