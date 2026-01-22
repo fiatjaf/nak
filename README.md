@@ -40,7 +40,7 @@ publishing to wss://relay.damus.io... success.
 "Activando modo zen…\n\n#GM #Nostr #Hispano"
 ```
 
-### decode a nip19 note1 code, add a relay hint, encode it back to nevent1
+### decode a NIP-19 note1 code, add a relay hint, encode it back to nevent1
 ```shell
 ~> nak decode note1ttnnrw78wy0hs5fa59yj03yvcu2r4y0xetg9vh7uf4em39n604vsyp37f2 | jq -r .id | nak encode nevent -r nostr.zbd.gg
 nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw3ezu7nzvshxwec8zw8h7
@@ -206,6 +206,18 @@ or give it a named profile:
 ~> nak bunker --profile myself ...
 ```
 
+### send a `nostrconnect://` client URI to a running bunker
+
+```shell
+~> nak bunker connect 'nostrconnect://...'
+```
+
+or, if you're using a persisted profile
+
+```shell
+~> nak bunker connect --profile default 'nostrconnect://...'
+```
+
 ### generate a NIP-70 protected event with a date set to two weeks ago and some multi-value tags
 ```shell
 ~> nak event --ts 'two weeks ago' -t '-' -t 'e=f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a;wss://relay.whatever.com;root;a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208' -t 'p=a9e0f110f636f3191644110c19a33448daf09d7cda9708a769e91b7e91340208;wss://p-relay.com' -c 'I know the future'
@@ -233,7 +245,7 @@ or give it a named profile:
   • events stored: 4, subscriptions opened: 1
 ```
 
-### enable negentropy (nip77) support in your development relay
+### enable negentropy (NIP-77) support in your development relay
 ```shell
 ~> nak serve --negentropy
 ```
@@ -447,4 +459,12 @@ gitnostr.com... ok.
 ~> nak key generate | pee 'nak encode nsec' 'nak key public | nak encode npub'
 1a851afaa70a26faa82c5b4422ce967c07e278efc56a1413b9719b662f86551a
 8031621a54b2502f5bd4dbb87c971c0a69675d252a64d69e22224f3aee6dd2b2
+```
+
+### interact with a NIP-29 group
+```shell
+~> nak group info "<relay>'<id>"
+~> nak group admin "<relay>'<id>"
+~> nak group chat "<relay>'<id>"
+~> nak group chat send "<relay>'<id>" "<message>"
 ```
