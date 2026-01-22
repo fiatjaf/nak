@@ -347,6 +347,7 @@ var bunker = &cli.Command{
 		}, nostr.SubscriptionOptions{Label: "nak-bunker"})
 
 		signer := nip46.NewStaticKeySigner(sec)
+		signer.DefaultRelays = config.Relays
 
 		// unix socket nostrconnect:// handling
 		go func() {
