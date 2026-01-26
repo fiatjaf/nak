@@ -1,9 +1,15 @@
 # nak, the nostr army knife
 
-install with `go install github.com/fiatjaf/nak@latest` or
+Install with this one-liner:
+
+```sh
+curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
+```
+
+Or install with `go install github.com/fiatjaf/nak@latest` or
 [download a binary](https://github.com/fiatjaf/nak/releases).
 
-or get the source with `git clone https://github.com/fiatjaf/nak` then install with `go install` or run with docker using `docker build -t nak . && docker run nak event`.
+You can also get the source with `git clone https://github.com/fiatjaf/nak` then install with `go install` or run with docker using `docker build -t nak . && docker run nak event`.
 
 ## what can you do with it?
 
