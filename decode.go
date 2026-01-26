@@ -86,7 +86,7 @@ var decode = &cli.Command{
 				continue
 			}
 
-			ctx = lineProcessingError(ctx, "couldn't decode input '%s'", input)
+			ctx = lineProcessingError(ctx, "couldn't decode input '%s': %s", input, err)
 		}
 
 		exitIfLineProcessingError(ctx)
