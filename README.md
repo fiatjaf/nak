@@ -1,15 +1,19 @@
 # nak, the nostr army knife
 
-Install with this one-liner:
+install with this one-liner:
 
 ```sh
 curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
 ```
 
-Or install with `go install github.com/fiatjaf/nak@latest` or
-[download a binary](https://github.com/fiatjaf/nak/releases).
-
-You can also get the source with `git clone https://github.com/fiatjaf/nak` then install with `go install` or run with docker using `docker build -t nak . && docker run nak event`.
+- or install with `go install github.com/fiatjaf/nak@latest` if you have [Go](https://pkg.go.dev) set up.
+- or [download a binary](https://github.com/fiatjaf/nak/releases) manually.
+- or get the source with `git clone https://github.com/fiatjaf/nak` then
+  - install with `go install`;
+  - or run with docker using `docker build -t nak . && docker run nak event`.
+- or install with `brew install nak` if you use **macOS Homebrew**.
+- or install with `paru -S nak-bin` or `yay -S nak-bin` if you are on **Arch Linux**.
+- or install with `nix-env --install ripgrep` if you use **Nix**.
 
 ## what can you do with it?
 
