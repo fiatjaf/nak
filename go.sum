@@ -1,7 +1,7 @@
 fiatjaf.com/lib v0.3.2 h1:RBS41z70d8Rp8e2nemQsbPY1NLLnEGShiY2c+Bom3+Q=
 fiatjaf.com/lib v0.3.2/go.mod h1:UlHaZvPHj25PtKLh9GjZkUHRmQ2xZ8Jkoa4VRaLeeQ8=
-fiatjaf.com/nostr v0.0.0-20260122014616-241959d1e3f4 h1:1KAEp9ktrnm7pB/o2QrdRT3dJyXYwei8N9RRRppiMFY=
-fiatjaf.com/nostr v0.0.0-20260122014616-241959d1e3f4/go.mod h1:ue7yw0zHfZj23Ml2kVSdBx0ENEaZiuvGxs/8VEN93FU=
+fiatjaf.com/nostr v0.0.0-20260126202222-ca3730e50817 h1:Zp6rPetvwYFOLD+36RtmWmns2C0CLbtphD3DLu3cxCo=
+fiatjaf.com/nostr v0.0.0-20260126202222-ca3730e50817/go.mod h1:ue7yw0zHfZj23Ml2kVSdBx0ENEaZiuvGxs/8VEN93FU=
 github.com/AlecAivazis/survey/v2 v2.3.7 h1:6I/u8FvytdGsgonrYsVn2t8t4QiRnh6QSTqkkhIiSjQ=
 github.com/AlecAivazis/survey/v2 v2.3.7/go.mod h1:xUTIdE4KCOIjsBAE1JYsUPoCqYdZ1reCfTwbto0Fduo=
 github.com/FastFilter/xorfilter v0.2.1 h1:lbdeLG9BdpquK64ZsleBS8B4xO/QW1IM0gMzF7KaBKc=
