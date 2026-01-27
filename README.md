@@ -6,14 +6,14 @@ install with this one-liner:
 curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
 ```
 
-- or install with `go install github.com/fiatjaf/nak@latest` if you have [Go](https://pkg.go.dev) set up.
+- or install with `go install github.com/fiatjaf/nak@latest` if you have **Go** set up.
 - or [download a binary](https://github.com/fiatjaf/nak/releases) manually.
 - or get the source with `git clone https://github.com/fiatjaf/nak` then
   - install with `go install`;
   - or run with docker using `docker build -t nak . && docker run nak event`.
 - or install with `brew install nak` if you use **macOS Homebrew**.
 - or install with `paru -S nak-bin` or `yay -S nak-bin` if you are on **Arch Linux**.
-- or install with `nix-env --install ripgrep` if you use **Nix**.
+- or install with `nix-env --install nak` if you use **Nix**.
 
 ## what can you do with it?
 
