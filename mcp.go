@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip11"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -33,10 +34,10 @@ var mcpServer = &cli.Command{
 		}
 
 		s.AddTool(mcp.NewTool("publish_note",
-			mcp.WithDescription("Publish a short note event to Nostr with the given text content"),
-			mcp.WithString("content", mcp.Description("Arbitrary string to be published"), mcp.Required()),
-			mcp.WithString("relay", mcp.Description("Relay to publish the note to")),
-			mcp.WithString("mention", mcp.Description("Nostr user's public key to be mentioned")),
+			mcp.WithDescription("publish a short note event to Nostr with the given text content"),
+			mcp.WithString("content", mcp.Description("arbitrary string to be published"), mcp.Required()),
+			mcp.WithString("relay", mcp.Description("relay to publish the note to")),
+			mcp.WithString("mention", mcp.Description("nostr user's public key to be mentioned")),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			content := required[string](r, "content")
 			mention, _ := optional[string](r, "mention")
@@ -105,7 +106,7 @@ var mcpServer = &cli.Command{
 		})
 
 		s.AddTool(mcp.NewTool("resolve_nostr_uri",
-			mcp.WithDescription("Resolve URIs prefixed with nostr:, including nostr:nevent1..., nostr:npub1..., nostr:nprofile1... and nostr:naddr1..."),
+			mcp.WithDescription("resolve URIs prefixed with nostr:, including nostr:nevent1..., nostr:npub1..., nostr:nprofile1... and nostr:naddr1..."),
 			mcp.WithString("uri", mcp.Description("URI to be resolved"), mcp.Required()),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			uri := required[string](r, "uri")
@@ -136,23 +137,23 @@ var mcpServer = &cli.Command{
 					WithRelays: false,
 				})
 				if err != nil {
-					return mcp.NewToolResultError("Couldn't find this event anywhere"), nil
+					return mcp.NewToolResultError("couldn't find this event anywhere"), nil
 				}
 
 				return mcp.NewToolResultText(
 					fmt.Sprintf("this is a Nostr event: %s", event),
 				), nil
 			case "naddr":
-				return mcp.NewToolResultError("For now we can't handle this kind of Nostr uri"), nil
+				return mcp.NewToolResultError("for now we can't handle this kind of Nostr uri"), nil
 			default:
-				return mcp.NewToolResultError("We don't know how to handle this Nostr uri"), nil
+				return mcp.NewToolResultError("we don't know how to handle this Nostr uri"), nil
 			}
 		})
 
 		s.AddTool(mcp.NewTool("search_profile",
-			mcp.WithDescription("Search for the public key of a Nostr user given their name"),
-			mcp.WithString("name", mcp.Description("Name to be searched"), mcp.Required()),
-			mcp.WithNumber("limit", mcp.Description("How many results to return")),
+			mcp.WithDescription("search for the public key of a Nostr user given their name"),
+			mcp.WithString("name", mcp.Description("name to be searched"), mcp.Required()),
+			mcp.WithNumber("limit", mcp.Description("how many results to return")),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			name := required[string](r, "name")
 			limit, _ := optional[float64](r, "limit")
@@ -163,7 +164,7 @@ var mcpServer = &cli.Command{
 			}
 
 			res := strings.Builder{}
-			res.WriteString("Search results: ")
+			res.WriteString("search results: ")
 			l := 0
 			for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine"}, filter, nostr.SubscriptionOptions{
 				Label: "nak-mcp-search",
@@ -178,14 +179,14 @@ var mcpServer = &cli.Command{
 				}
 			}
 			if l == 0 {
-				return mcp.NewToolResultError("Couldn't find anyone with that name."), nil
+				return mcp.NewToolResultError("couldn't find anyone with that name."), nil
 			}
 			return mcp.NewToolResultText(res.String()), nil
 		})
 
 		s.AddTool(mcp.NewTool("get_outbox_relay_for_pubkey",
-			mcp.WithDescription("Get the best relay from where to read notes from a specific Nostr user"),
-			mcp.WithString("pubkey", mcp.Description("Public key of Nostr user we want to know the relay from where to read"), mcp.Required()),
+			mcp.WithDescription("get the best relay from where to read notes from a specific Nostr user"),
+			mcp.WithString("pubkey", mcp.Description("public key of Nostr user we want to know the relay from where to read"), mcp.Required()),
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			pubkey, err := nostr.PubKeyFromHex(required[string](r, "pubkey"))
 			if err != nil {
@@ -197,7 +198,7 @@ var mcpServer = &cli.Command{
 		})
 
 		s.AddTool(mcp.NewTool("read_events_from_relay",
-			mcp.WithDescription("Makes a REQ query to one relay using the specified parameters, this can be used to fetch notes from a profile"),
+			mcp.WithDescription("makes a REQ query to one relay using the specified parameters, this can be used to fetch notes from a profile"),
 			mcp.WithString("relay", mcp.Description("relay URL to send the query to"), mcp.Required()),
 			mcp.WithNumber("kind", mcp.Description("event kind number to include in the 'kinds' field"), mcp.Required()),
 			mcp.WithNumber("limit", mcp.Description("maximum number of events to query"), mcp.Required()),
@@ -233,6 +234,77 @@ var mcpServer = &cli.Command{
 				result.WriteString(ie.Content)
 				result.WriteString("'")
 				result.WriteString("\n---\n")
+			}
+
+			return mcp.NewToolResultText(result.String()), nil
+		})
+
+		s.AddTool(mcp.NewTool("search_events",
+			mcp.WithDescription("search for Nostr events. specifying the author makes it so we'll try to use their relays instead of generic ones."),
+			mcp.WithString("search", mcp.Description("search query string"), mcp.Required()),
+			mcp.WithString("author", mcp.Description("author public key to filter by")),
+			mcp.WithNumber("kind", mcp.Description("event kind to filter by")),
+			mcp.WithNumber("limit", mcp.Description("maximum number of results to return")),
+		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+			search := required[string](r, "search")
+			author, hasAuthor := optional[string](r, "author")
+			kind, hasKind := optional[float64](r, "kind")
+			limit, _ := optional[float64](r, "limit")
+			if limit == 0 {
+				limit = 50
+			}
+
+			filter := nostr.Filter{Search: search, Limit: int(limit)}
+			if hasKind {
+				filter.Kinds = []nostr.Kind{nostr.Kind(int(kind))}
+			}
+
+			var relays []string
+
+			if hasAuthor {
+				if pk, err := nostr.PubKeyFromHex(author); err != nil {
+					return mcp.NewToolResultError("the author given isn't a valid public key, it must be 32 bytes hex. Got error: " + err.Error()), nil
+				} else {
+					filter.Authors = append(filter.Authors, pk)
+				}
+
+				pk, _ := nostr.PubKeyFromHex(author)
+				writeRelays := sys.FetchOutboxRelays(ctx, pk, 5)
+
+				for _, relayURL := range writeRelays {
+					if info, err := nip11.Fetch(ctx, relayURL); err == nil {
+						for _, nip := range info.SupportedNIPs {
+							if nipInt, ok := nip.(float64); ok && nipInt == 50 {
+								relays = append(relays, relayURL)
+								break
+							}
+						}
+					}
+				}
+			}
+
+			if len(relays) == 0 {
+				relays = []string{"relay.nostr.band", "nostr.polyserv.xyz/", "search.nos.today/"}
+			}
+
+			result := strings.Builder{}
+			result.WriteString(fmt.Sprintf("search results for '%s':\n\n", search))
+
+			l := 0
+			for event := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
+				Label: "nak-mcp-search",
+			}) {
+				l++
+				result.WriteString(fmt.Sprintf("result %d\nID: %s\nKind: %d\nAuthor: %s\nContent: %s\n---\n",
+					l, event.ID, event.Kind, event.PubKey.Hex(), event.Content))
+
+				if l >= int(limit) {
+					break
+				}
+			}
+
+			if l == 0 {
+				return mcp.NewToolResultError("no events found matching the search criteria."), nil
 			}
 
 			return mcp.NewToolResultText(result.String()), nil
