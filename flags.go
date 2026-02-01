@@ -105,10 +105,10 @@ func (t *naturalTimeValue) Set(value string) error {
 			DefaultTimezone: time.Local,
 			CurrentTime:     time.Now(),
 		}, value)
-		ts = date.Time
 		if err != nil {
 			return err
 		}
+		ts = date.Time
 	}
 
 	if t.timestamp != nil {
