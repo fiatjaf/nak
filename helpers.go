@@ -261,7 +261,7 @@ func connectToSingleRelay(
 			for range 5 {
 				if err := relay.Auth(ctx, func(ctx context.Context, authEvent *nostr.Event) error {
 					challengeTag := authEvent.Tags.Find("challenge")
-					if challengeTag[1] == "" {
+					if challengeTag == nil || len(challengeTag) < 2 || challengeTag[1] == "" {
 						return fmt.Errorf("auth not received yet *****") // what a giant hack
 					}
 					return preAuthSigner(ctx, c, logthis, authEvent)
