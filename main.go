@@ -127,9 +127,7 @@ func main() {
 	// a megahack to enable this curl command proxy
 	if len(os.Args) > 2 && os.Args[1] == "curl" {
 		if err := realCurl(); err != nil {
-			if err != nil {
-				log(color.YellowString(err.Error()) + "\n")
-			}
+			log(color.YellowString(err.Error()) + "\n")
 			colors.reset()
 			os.Exit(1)
 		}
@@ -137,9 +135,7 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		if err != nil {
-			log("%s\n", color.RedString(err.Error()))
-		}
+		log("%s\n", color.RedString(err.Error()))
 		colors.reset()
 		os.Exit(1)
 	}
