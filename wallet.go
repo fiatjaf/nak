@@ -139,7 +139,11 @@ var wallet = &cli.Command{
 				}
 
 				for _, url := range w.Mints {
-					stdout(strings.Split(url, "://")[1])
+					if _, host, ok := strings.Cut(url, "://"); ok {
+						stdout(host)
+					} else {
+						stdout(url)
+					}
 				}
 
 				closew()
@@ -195,7 +199,11 @@ var wallet = &cli.Command{
 				}
 
 				for _, token := range w.Tokens {
-					stdout(token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
+					_, mintHost, _ := strings.Cut(token.Mint, "://")
+					if mintHost == "" {
+						mintHost = token.Mint
+					}
+					stdout(token.ID(), token.Proofs.Amount(), mintHost)
 				}
 
 				closew()
@@ -221,7 +229,11 @@ var wallet = &cli.Command{
 						for _, token := range w.Tokens {
 							if slices.Contains(ids, token.ID()) {
 								w.DropToken(ctx, token.ID())
-								log("dropped %s %d %s\n", token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
+								_, mintHost, _ := strings.Cut(token.Mint, "://")
+								if mintHost == "" {
+									mintHost = token.Mint
+								}
+								log("dropped %s %d %s\n", token.ID(), token.Proofs.Amount(), mintHost)
 							}
 						}
 
