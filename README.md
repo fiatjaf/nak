@@ -187,7 +187,31 @@ listening at [wss://relay.damus.io wss://nos.lol wss://relay.nsecbunker.com]:
   bunker: bunker://f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a?relay=wss%3A%2F%2Frelay.damus.io&relay=wss%3A%2F%2Fnos.lol&relay=wss%3A%2F%2Frelay.nsecbunker.com&secret=XuuiMbcLwuwL
 ```
 
-you can also display a QR code for the bunker URI by adding the `--qrcode` flag:
+#### Bunker subcommands
+
+Bunker has a few subcommands that you can use to manage it, type  `help` to see them all:
+```shell
+~> ./nak bunker relay.nsec.app
+wss://relay.nsec.app... ok.
+listening at [wss://relay.nsec.app]:
+  pubkey: f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a
+  npub: npub17kv3rdtpcd7fpvq7newz24eswwqgxhyr8xt4daxk9kqkwgn7gg9q4gy8vf
+  to restart: nak bunker  relay.nsec.app
+  bunker: bunker://f59911b561c37c90b01e9e5c2557307380835c83399756f4d62d8167227e420a?relay=wss%3A%2F%2Frelay.nsec.app&secret=cAMoUOddVMla
+
+--------------- Bunker Command Interface ---------------
+Type 'help' for available commands or 'exit' to quit.
+--------------------------------------------------------
+help
+Available Commands:
+  help, h, ? - Show this help message
+  info, i - Display current bunker information
+  qr - Generate and display QR code for the bunker URI
+  connect, c <nostrconnect://uri> - Connect to a remote client using nostrconnect:// URI
+  exit, quit, q - Shutdown the bunker
+```
+
+You can also display a QR code for the bunker URI by adding the `--qrcode` flag:
 
 ```shell
 ~> nak bunker --qrcode --sec ncryptsec1... relay.damus.io
