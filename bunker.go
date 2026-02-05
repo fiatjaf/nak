@@ -418,6 +418,13 @@ var bunker = &cli.Command{
 				return true
 			}
 			if slices.Contains(authorizedSecrets, secret) {
+				// add client to authorized list for subsequent requests
+				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool { return c.PubKey == from }) {
+					config.Clients = append(config.Clients, BunkerConfigClient{PubKey: from})
+					if persist != nil {
+						persist()
+					}
+				}
 				return true
 			}
 
