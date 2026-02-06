@@ -158,29 +158,40 @@ var mcpServer = &cli.Command{
 			name := required[string](r, "name")
 			limit, _ := optional[float64](r, "limit")
 
-			filter := nostr.Filter{Search: name, Kinds: []nostr.Kind{0}}
-			if limit > 0 {
-				filter.Limit = int(limit)
-			}
-
 			res := strings.Builder{}
+			res.Grow(500)
 			res.WriteString("search results: ")
-			l := 0
-			for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine"}, filter, nostr.SubscriptionOptions{
-				Label: "nak-mcp-search",
-			}) {
-				l++
-				pm, _ := sdk.ParseMetadata(result.Event)
-				res.WriteString(fmt.Sprintf("\n\nResult %d\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
-					l, pm.ShortName(), pm.PubKey.Hex(), pm.About))
 
-				if l >= int(limit) {
-					break
+			// check if input is already a valid pubkey
+			if pubkey, err := nostr.PubKeyFromHex(name); err == nil {
+				pm := sys.FetchProfileMetadata(ctx, pubkey)
+				res.WriteString(fmt.Sprintf("\n\nResult 1\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
+					pm.ShortName(), pm.PubKey.Hex(), pm.About))
+			} else {
+				// otherwise try to search
+				filter := nostr.Filter{Search: name, Kinds: []nostr.Kind{0}}
+				if limit > 0 {
+					filter.Limit = int(limit)
+				}
+
+				l := 0
+				for result := range sys.Pool.FetchMany(ctx, []string{"relay.nostr.band", "nostr.wine", "search.nos.social"}, filter, nostr.SubscriptionOptions{
+					Label: "nak-mcp-search",
+				}) {
+					l++
+					pm, _ := sdk.ParseMetadata(result.Event)
+					res.WriteString(fmt.Sprintf("\n\nResult %d\nUser name: \"%s\"\nPublic key: \"%s\"\nDescription: \"%s\"\n",
+						l, pm.ShortName(), pm.PubKey.Hex(), pm.About))
+
+					if l >= int(limit) {
+						break
+					}
+				}
+				if l == 0 {
+					return mcp.NewToolResultError("couldn't find anyone with that name."), nil
 				}
 			}
-			if l == 0 {
-				return mcp.NewToolResultError("couldn't find anyone with that name."), nil
-			}
+
 			return mcp.NewToolResultText(res.String()), nil
 		})
 
