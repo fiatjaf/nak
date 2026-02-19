@@ -2,7 +2,7 @@
 FROM golang:1.25-alpine AS builder
 
 # install git and ca-certificates (needed for fetching dependencies)
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates gcc musl-dev lmdb-dev
 
 # set working directory
 WORKDIR /app
