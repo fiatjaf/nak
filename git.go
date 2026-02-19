@@ -1465,23 +1465,20 @@ func parseRepositoryAddress(
 		return ptr.PublicKey, ptr.Identifier, ptr.Relays, nil
 	}
 
-	// format 2: nostr://<npub>/<relay_hostname>/<identifier> (ngit-style)
+	// format 2: nostr://<npub_or_nip05>/<relay_hostname>/<identifier> (ngit-style)
 	if strings.HasPrefix(address, "nostr://") {
 		parts := strings.Split(address, "/")
 		if len(parts) != 5 {
 			return nostr.PubKey{}, "", nil, fmt.Errorf(
-				"invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", address,
+				"invalid nostr URL format, expected nostr://<npub|nip05>/<relay_hostname>/<identifier>, got: %s", address,
 			)
 		}
 
-		prefix, data, err := nip19.Decode(parts[2])
+		owner, err = parsePubKey(parts[2])
 		if err != nil {
-			return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner public key: %w", err)
+			return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
 		}
-		if prefix != "npub" {
-			return nostr.PubKey{}, "", nil, fmt.Errorf("expected npub in URL")
-		}
-		owner = data.(nostr.PubKey)
+
 		relayHost := parts[3]
 		identifier = parts[4]
 
