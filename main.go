@@ -54,6 +54,7 @@ var app = &cli.Command{
 		nip,
 		syncCmd,
 		spell,
+		profile,
 	},
 	Version: version,
 	Flags: []cli.Flag{
