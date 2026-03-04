@@ -1009,7 +1009,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			repo = localRepo
 		}
 
-		for res := range sys.Pool.PublishMany(ctx, relays, *upToDateAnnouncementEvent) {
+		for res := range sys.Pool.PublishMany(ctx, relays, event) {
 			if res.Error != nil {
 				log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
 			} else {
