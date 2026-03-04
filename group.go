@@ -234,7 +234,6 @@ var group = &cli.Command{
 				if err != nil {
 					return err
 				}
-				defer sub.Close()
 
 				eosed := false
 				messages := make([]struct {
