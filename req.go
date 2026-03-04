@@ -367,16 +367,18 @@ func performReq(
 readevents:
 	for {
 		select {
-		case ie, ok := <-results:
-			if !ok {
+		case ie, stillOpen := <-results:
+			if !stillOpen {
 				break readevents
 			}
 			stdout(ie.Event)
-		case closed := <-closeds:
-			if closed.HandledAuth {
-				logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
-			} else {
-				log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+		case closed, stillOpen := <-closeds:
+			if stillOpen {
+				if closed.HandledAuth {
+					logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+				} else {
+					log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+				}
 			}
 		case <-ctx.Done():
 			break readevents
