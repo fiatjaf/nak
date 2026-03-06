@@ -783,6 +783,286 @@ aside from those, there is also:
 			},
 		},
 		{
+			Name:      "patch",
+			Usage:     "patch-related operations",
+			ArgsUsage: "[id-prefix]",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				prefix := strings.TrimSpace(c.Args().First())
+				repo, err := readGitRepositoryFromConfig()
+				if err != nil {
+					return err
+				}
+
+				patches, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+				if err != nil {
+					return err
+				}
+
+				statuses, err := fetchIssueStatus(ctx, repo, patches)
+				if err != nil {
+					return err
+				}
+
+				evt, err := findEventByPrefix(patches, prefix)
+				if err != nil {
+					return err
+				}
+
+				printGitDiscussionMetadata(evt, statusLabelForEvent(evt.ID, statuses, false))
+				return showTextWithGitPager(evt.Content)
+			},
+			Commands: []*cli.Command{
+				{
+					Name:  "send",
+					Usage: "edit and send a patch event (kind 1617)",
+					Flags: defaultKeyFlags,
+					Action: func(ctx context.Context, c *cli.Command) error {
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						if c.Args().Len() != 1 {
+							return fmt.Errorf("must specify a commit to send as a patch, 'HEAD^' for the latest")
+						}
+
+						patchData, err := exec.Command("git", "format-patch", "--stdout", "--histogram", c.Args().First()).Output()
+						if err != nil {
+							stderr := ""
+							if ee, ok := err.(*exec.ExitError); ok {
+								stderr = strings.TrimSpace(string(ee.Stderr))
+							}
+							if stderr != "" {
+								return fmt.Errorf("git format-patch failed: %s", stderr)
+							}
+							return fmt.Errorf("git format-patch failed: %w", err)
+						}
+
+						if len(patchData) == 0 {
+							return fmt.Errorf("git format-patch returned empty output")
+						}
+						if len(patchData) > 10*1024 {
+							return fmt.Errorf("patch too large: %d bytes (limit is 10240 bytes)", len(patchData))
+						}
+
+						content, err := editContentWithDefaultEditor("nak-git-patch-*.patch", string(patchData))
+						if err != nil {
+							return err
+						}
+
+						if strings.TrimSpace(content) == "" {
+							return fmt.Errorf("empty patch content, aborting")
+						}
+						if len(content) > 10_000 {
+							return fmt.Errorf("patch too large: %d bytes (limit is 10000 bytes)", len(content))
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1617,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+							},
+							Content: content,
+						}
+						if repo.EarliestUniqueCommitID != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"r", repo.EarliestUniqueCommitID})
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign patch event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this patch event"); err != nil {
+							return err
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:  "list",
+					Usage: "list patches found in repository relays",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						events, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+						if err != nil {
+							return err
+						}
+
+						statuses, err := fetchIssueStatus(ctx, repo, events)
+						if err != nil {
+							return err
+						}
+
+						if len(events) == 0 {
+							log("no patches found\n")
+							return nil
+						}
+
+						for _, evt := range events {
+							id := evt.ID.Hex()
+
+							status := statusLabelForEvent(evt.ID, statuses, false)
+							stdout(id[:8], colorizeGitStatus(status))
+						}
+
+						return nil
+					},
+				},
+				{
+					Name:      "apply",
+					Usage:     "apply a patch to current branch",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing patch id prefix")
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						patches, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+						if err != nil {
+							return err
+						}
+
+						evt, err := findEventByPrefix(patches, prefix)
+						if err != nil {
+							return err
+						}
+
+						if err := applyPatchContentToCurrentBranch(evt.Content); err != nil {
+							return err
+						}
+
+						log("applied patch %s\n", color.GreenString(evt.ID.Hex()[:8]))
+						return nil
+					},
+				},
+			},
+		},
+		{
+			Name:      "issue",
+			Usage:     "issue-related operations",
+			ArgsUsage: "[id-prefix]",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				prefix := strings.TrimSpace(c.Args().First())
+				repo, err := readGitRepositoryFromConfig()
+				if err != nil {
+					return err
+				}
+
+				issues, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1621})
+				if err != nil {
+					return err
+				}
+
+				statuses, err := fetchIssueStatus(ctx, repo, issues)
+				if err != nil {
+					return err
+				}
+
+				evt, err := findEventByPrefix(issues, prefix)
+				if err != nil {
+					return err
+				}
+
+				printGitDiscussionMetadata(evt, statusLabelForEvent(evt.ID, statuses, true))
+				return showTextWithGitPager(evt.Content)
+			},
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "edit and send an issue event (kind 1621)",
+					Flags: defaultKeyFlags,
+					Action: func(ctx context.Context, c *cli.Command) error {
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						content, err := editContentWithDefaultEditor("nak-git-issue-*.md", "")
+						if err != nil {
+							return err
+						}
+						if strings.TrimSpace(content) == "" {
+							return fmt.Errorf("empty issue content, aborting")
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1621,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+							},
+							Content: content,
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign issue event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this issue event"); err != nil {
+							return err
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:  "list",
+					Usage: "list issues found in repository relays",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						events, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1621})
+						if err != nil {
+							return err
+						}
+
+						statuses, err := fetchIssueStatus(ctx, repo, events)
+						if err != nil {
+							return err
+						}
+
+						if len(events) == 0 {
+							stdout("no issues found")
+							return nil
+						}
+
+						for _, evt := range events {
+							id := evt.ID.Hex()
+							status := statusLabelForEvent(evt.ID, statuses, true)
+							stdout(id[:8], colorizeGitStatus(status))
+						}
+
+						return nil
+					},
+				},
+			},
+		},
+		{
 			Name:  "status",
 			Usage: "show repository status and synchronization information",
 			Action: func(ctx context.Context, c *cli.Command) error {
@@ -811,7 +1091,8 @@ aside from those, there is also:
 				stdout("  earliest unique commit:", color.CyanString(repo.EarliestUniqueCommitID))
 
 				// fetch repository announcement and state from relays
-				_, _, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+				_, _, upToDateRelays, state, err := fetchRepositoryAndState(
+					ctx, owner, localConfig.Identifier, localConfig.GraspServers)
 				if err != nil {
 					// create a local repo object for display purposes
 					log("failed to fetch repository announcement from relays: %s\n", err)
@@ -945,6 +1226,307 @@ func promptForStringList(
 	}
 
 	return selected, nil
+}
+
+func readGitRepositoryFromConfig() (nip34.Repository, error) {
+	localConfig, err := readNip34ConfigFile("")
+	if err != nil {
+		return nip34.Repository{}, err
+	}
+
+	repo := localConfig.ToRepository()
+	if len(repo.Relays) == 0 {
+		return nip34.Repository{}, fmt.Errorf("no relays configured in nip34.json")
+	}
+
+	return repo, nil
+}
+
+func editContentWithDefaultEditor(pattern string, initialContent string) (string, error) {
+	tmp, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(initialContent); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "vi"
+	}
+
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("failed to parse editor command '%s'", editor)
+	}
+
+	args := append(parts[1:], tmp.Name())
+	cmd := exec.Command(parts[0], args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("editor command failed: %w", err)
+	}
+
+	data, err := os.ReadFile(tmp.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to read edited temp file: %w", err)
+	}
+
+	return string(data), nil
+}
+
+func confirmGitEventToBeSent(evt nostr.Event, relays []string, question string) error {
+	pretty, err := json.MarshalIndent(evt, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode event for preview: %w", err)
+	}
+
+	stdout(string(pretty))
+	stdout("relays:", strings.Join(relays, " "))
+
+	if !askConfirmation(question + "? ") {
+		return fmt.Errorf("aborted")
+	}
+
+	return nil
+}
+
+func publishGitEventToRepoRelays(ctx context.Context, evt nostr.Event, relays []string) error {
+	successes := make([]string, 0, len(relays))
+
+	for res := range sys.Pool.PublishMany(ctx, relays, evt) {
+		if res.Error != nil {
+			log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+		} else {
+			log("> published to %s\n", color.GreenString(res.Relay.URL))
+			successes = append(successes, res.Relay.URL)
+		}
+	}
+
+	if len(successes) == 0 {
+		return fmt.Errorf("failed to publish event to any relay")
+	}
+
+	nevent := nip19.EncodeNevent(evt.ID, successes, nostr.ZeroPK)
+	log("event: %s\n", color.CyanString(nevent))
+	return nil
+}
+
+func fetchGitRepoDiscussionEvents(ctx context.Context, repo nip34.Repository, kinds []nostr.Kind) ([]nostr.Event, error) {
+	addr := fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)
+
+	seen := make(map[nostr.ID]nostr.Event, 64)
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds: kinds,
+		Tags: nostr.TagMap{
+			"a": []string{addr},
+		},
+		Limit: 500,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		seen[ie.Event.ID] = ie.Event
+	}
+
+	events := make([]nostr.Event, 0, len(seen))
+	for _, evt := range seen {
+		events = append(events, evt)
+	}
+
+	slices.SortFunc(events, func(a, b nostr.Event) int {
+		if a.CreatedAt > b.CreatedAt {
+			return -1
+		}
+		if a.CreatedAt < b.CreatedAt {
+			return 1
+		}
+		return strings.Compare(a.ID.Hex(), b.ID.Hex())
+	})
+
+	return events, nil
+}
+
+func fetchIssueStatus(
+	ctx context.Context,
+	repo nip34.Repository,
+	issues []nostr.Event,
+) (map[nostr.ID]nostr.Event, error) {
+	latest := make(map[nostr.ID]nostr.Event)
+	maintainers := repo.Maintainers
+	if !slices.Contains(maintainers, repo.PubKey) {
+		maintainers = append(maintainers, repo.PubKey)
+	}
+	eTags := make([]string, len(issues))
+	for i, iss := range issues {
+		eTags[i] = iss.ID.Hex()
+	}
+
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds:   []nostr.Kind{1630, 1631, 1632, 1633},
+		Tags:    nostr.TagMap{"e": eTags},
+		Authors: maintainers,
+		Limit:   500,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		targetHex := ""
+		for _, tag := range ie.Event.Tags {
+			if len(tag) < 2 || tag[0] != "e" {
+				continue
+			}
+			if targetHex == "" {
+				targetHex = tag[1]
+			}
+			if len(tag) >= 4 && tag[3] == "root" {
+				targetHex = tag[1]
+				break
+			}
+		}
+		if targetHex == "" {
+			continue
+		}
+		targetID, err := nostr.IDFromHex(targetHex)
+		if err != nil {
+			continue
+		}
+		if prev, ok := latest[targetID]; !ok || ie.Event.CreatedAt > prev.CreatedAt {
+			latest[targetID] = ie.Event
+		}
+	}
+
+	return latest, nil
+}
+
+func findEventByPrefix(events []nostr.Event, prefix string) (nostr.Event, error) {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		return nostr.Event{}, fmt.Errorf("missing event id prefix")
+	}
+
+	matchCount := 0
+	matched := nostr.Event{}
+	for _, evt := range events {
+		if strings.HasPrefix(evt.ID.Hex(), prefix) {
+			matched = evt
+			matchCount++
+		}
+	}
+
+	if matchCount == 0 {
+		return nostr.Event{}, fmt.Errorf("no event found with id prefix '%s'", prefix)
+	}
+	if matchCount > 1 {
+		return nostr.Event{}, fmt.Errorf("id prefix '%s' is ambiguous", prefix)
+	}
+
+	return matched, nil
+}
+
+func printGitDiscussionMetadata(evt nostr.Event, status string) {
+	stdout("id:", evt.ID.Hex())
+	stdout("kind:", evt.Kind.Num())
+	stdout("author:", nip19.EncodeNpub(evt.PubKey))
+	stdout("created:", evt.CreatedAt.Time().Format(time.RFC3339))
+	stdout("status:", status)
+	if subject := evt.Tags.Find("subject"); subject != nil && len(subject) >= 2 {
+		stdout("subject:", subject[1])
+	}
+}
+
+func statusLabelForEvent(id nostr.ID, statuses map[nostr.ID]nostr.Event, isIssue bool) string {
+	statusEvt, ok := statuses[id]
+	if !ok {
+		return "open"
+	}
+
+	switch statusEvt.Kind {
+	case 1630:
+		return "open"
+	case 1631:
+		if isIssue {
+			return "resolved"
+		}
+		return "applied/merged"
+	case 1632:
+		return "closed"
+	case 1633:
+		return "draft"
+	default:
+		return "open"
+	}
+}
+
+func colorizeGitStatus(status string) string {
+	switch status {
+	case "open":
+		return color.YellowString(status)
+	case "resolved", "applied/merged":
+		return color.GreenString(status)
+	case "closed":
+		return color.RedString(status)
+	case "draft":
+		return color.BlueString(status)
+	default:
+		return status
+	}
+}
+
+func showTextWithGitPager(text string) error {
+	pagerData, err := exec.Command("git", "var", "GIT_PAGER").Output()
+	if err != nil {
+		stdout(text)
+		return nil
+	}
+
+	pager := strings.TrimSpace(string(pagerData))
+	if pager == "" || pager == "cat" {
+		stdout(text)
+		return nil
+	}
+
+	cmd := exec.Command("sh", "-c", pager)
+	cmd.Stdin = strings.NewReader(text)
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		stdout(text)
+	}
+
+	return nil
+}
+
+func applyPatchContentToCurrentBranch(content string) error {
+	tmp, err := os.CreateTemp("", "nak-git-apply-*.patch")
+	if err != nil {
+		return fmt.Errorf("failed to create temp patch file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(content); err != nil {
+		tmp.Close()
+		return fmt.Errorf("failed to write patch content: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close patch file: %w", err)
+	}
+
+	cmd := exec.Command("git", "am", "--3way", tmp.Name())
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("failed to apply patch with git am: %w (if needed, run 'git am --abort')", err)
+	}
+
+	return nil
 }
 
 func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.RepositoryState, error) {
