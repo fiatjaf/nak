@@ -2,12 +2,17 @@ package main
 
 import (
 	"context"
+	"encoding/base64"
+	stdjson "encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strings"
 	"sync"
 	"time"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip11"
 	"fiatjaf.com/nostr/nip29"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -33,15 +38,9 @@ var group = &cli.Command{
 					return err
 				}
 
-				group := nip29.Group{}
-				for ie := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
-					Kinds: []nostr.Kind{nostr.KindSimpleGroupMetadata},
-					Tags:  nostr.TagMap{"d": []string{identifier}},
-				}, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
-					if err := group.MergeInMetadataEvent(&ie.Event); err != nil {
-						return err
-					}
-					break
+				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				if err != nil {
+					return err
 				}
 
 				stdout("address:", color.HiBlueString(strings.SplitN(nostr.NormalizeURL(relay), "/", 3)[2]+"'"+identifier))
@@ -67,6 +66,16 @@ var group = &cli.Command{
 					color.HiBlueString("%s", cond(group.Private, "yes", "no"))+
 						", "+
 						cond(group.Private, "group content is not accessible to non-members", "group content is public"),
+				)
+				stdout("livekit:",
+					color.HiBlueString("%s", cond(group.Livekit, "yes", "no"))+
+						", "+
+						cond(group.Livekit, "group supports live audio/video with livekit", "group has no advertised live audio/video support"),
+				)
+				stdout("no-text:",
+					color.HiBlueString("%s", cond(group.NoText, "yes", "no"))+
+						", "+
+						cond(group.NoText, "group is intended for live audio/video only", "text messages are expected to be supported"),
 				)
 				return nil
 			},
@@ -328,6 +337,35 @@ var group = &cli.Command{
 			},
 		},
 		{
+			Name:        "talk",
+			Usage:       "get livekit connection details",
+			Description: "requests a livekit jwt for this group and prints the livekit server url.",
+			ArgsUsage:   "<relay>'<identifier>",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
+
+				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				if err != nil {
+					return err
+				}
+				if !group.Livekit {
+					return fmt.Errorf("group doesn't advertise livekit support")
+				}
+
+				serverURL, jwt, err := requestLivekitJWT(ctx, c, relay, identifier)
+				if err != nil {
+					return err
+				}
+
+				stdout("livekit:", color.HiBlueString(serverURL))
+				stdout("jwt:", color.HiBlueString(jwt))
+				return nil
+			},
+		},
+		{
 			Name:        "forum",
 			Usage:       "read group forum posts",
 			Description: "access group forum functionality.",
@@ -436,8 +474,31 @@ var group = &cli.Command{
 				&cli.BoolFlag{
 					Name: "public",
 				},
+				&cli.BoolFlag{
+					Name: "livekit",
+				},
+				&cli.BoolFlag{
+					Name: "no-livekit",
+				},
+				&cli.BoolFlag{
+					Name: "no-text",
+				},
+				&cli.BoolFlag{
+					Name: "text",
+				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
+				if c.Bool("livekit") || c.Bool("no-livekit") || c.Bool("no-text") || c.Bool("text") {
+					relay, _, err := parseGroupIdentifier(c)
+					if err != nil {
+						return err
+					}
+
+					if err := checkRelayLivekitMetadataSupport(ctx, relay); err != nil {
+						return err
+					}
+				}
+
 				return createModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
 					if name := c.String("name"); name != "" {
 						evt.Tags = append(evt.Tags, nostr.Tag{"name", name})
@@ -467,6 +528,16 @@ var group = &cli.Command{
 						evt.Tags = append(evt.Tags, nostr.Tag{"private"})
 					} else if c.Bool("public") {
 						evt.Tags = append(evt.Tags, nostr.Tag{"public"})
+					}
+					if c.Bool("livekit") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"livekit"})
+					} else if c.Bool("no-livekit") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"no-livekit"})
+					}
+					if c.Bool("no-text") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"no-text"})
+					} else if c.Bool("text") {
+						evt.Tags = append(evt.Tags, nostr.Tag{"text"})
 					}
 					return nil
 				})
@@ -582,4 +653,115 @@ func parseGroupIdentifier(c *cli.Command) (relay string, identifier string, err 
 	}
 
 	return strings.TrimSuffix(parts[0], "/"), parts[1], nil
+}
+
+func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (nip29.Group, error) {
+	group := nip29.Group{}
+
+	filter := nostr.Filter{
+		Kinds: []nostr.Kind{nostr.KindSimpleGroupMetadata},
+		Tags:  nostr.TagMap{"d": []string{identifier}},
+	}
+
+	if info, err := nip11.Fetch(ctx, relay); err == nil {
+		if info.Self != nil {
+			filter.Authors = append(filter.Authors, *info.Self)
+		} else if info.PubKey != nil {
+			filter.Authors = append(filter.Authors, *info.PubKey)
+		}
+	}
+
+	for ie := range sys.Pool.FetchMany(ctx, []string{relay}, filter, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
+		if err := group.MergeInMetadataEvent(&ie.Event); err != nil {
+			return group, err
+		}
+
+		break
+	}
+
+	return group, nil
+}
+
+func checkRelayLivekitMetadataSupport(ctx context.Context, relay string) error {
+	url := "http" + nostr.NormalizeURL(relay)[2:] + "/.well-known/nip29/livekit"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create livekit support request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("failed to check relay livekit support: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusNoContent {
+		return fmt.Errorf("relay doesn't advertise livekit support at %s (expected 204, got %d)", url, resp.StatusCode)
+	}
+
+	return nil
+}
+
+func requestLivekitJWT(ctx context.Context, c *cli.Command, relay string, identifier string) (serverURL string, jwt string, err error) {
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return "", "", err
+	}
+
+	url := "http" + nostr.NormalizeURL(relay)[2:] + "/.well-known/nip29/livekit/" + identifier
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return "", "", fmt.Errorf("failed to create livekit token request: %w", err)
+	}
+
+	tokenEvent := nostr.Event{
+		Kind:      27235,
+		CreatedAt: nostr.Now(),
+		Tags: nostr.Tags{
+			{"u", url},
+			{"method", "GET"},
+		},
+	}
+	if err := kr.SignEvent(ctx, &tokenEvent); err != nil {
+		return "", "", fmt.Errorf("failed to sign livekit auth token: %w", err)
+	}
+
+	evtj, _ := stdjson.Marshal(tokenEvent)
+	req.Header.Set("Authorization", "Nostr "+base64.StdEncoding.EncodeToString(evtj))
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", "", fmt.Errorf("livekit token request failed: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", "", fmt.Errorf("failed reading livekit token response: %w", err)
+	}
+
+	if resp.StatusCode >= 300 {
+		msg := strings.TrimSpace(string(body))
+		if msg != "" {
+			return "", "", fmt.Errorf("livekit token request failed with status %d: %s", resp.StatusCode, msg)
+		}
+		return "", "", fmt.Errorf("livekit token request failed with status %d", resp.StatusCode)
+	}
+
+	response := struct {
+		ServerURL        string `json:"server_url"`
+		ParticipantToken string `json:"participant_token"`
+	}{}
+	if err := stdjson.Unmarshal(body, &response); err != nil {
+		return "", "", fmt.Errorf("invalid livekit token response: %w", err)
+	}
+
+	serverURL = response.ServerURL
+	jwt = response.ParticipantToken
+
+	if serverURL == "" || jwt == "" {
+		return "", "", fmt.Errorf("livekit token response missing url or jwt")
+	}
+
+	return serverURL, jwt, nil
 }
