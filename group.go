@@ -362,6 +362,9 @@ var group = &cli.Command{
 
 				stdout("livekit:", color.HiBlueString(serverURL))
 				stdout("jwt:", color.HiBlueString(jwt))
+				stdout("join:", color.HiBlueString(
+					fmt.Sprintf("https://meet.livekit.io/custom?liveKitUrl=%s&token=%s", serverURL, jwt)),
+				)
 				return nil
 			},
 		},
