@@ -3,15 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip22"
 	"fiatjaf.com/nostr/nip34"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
@@ -27,6 +31,7 @@ aside from those, there is also:
   - 'nak git init' for setting up nip34 repository metadata; and
   - 'nak git sync' for getting the latest metadata update from nostr relays (called automatically by other commands)
 `,
+	Flags: defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name:  "init",
@@ -347,7 +352,6 @@ aside from those, there is also:
 		{
 			Name:  "sync",
 			Usage: "sync repository with relays",
-			Flags: defaultKeyFlags,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				kr, _, _ := gatherKeyerFromArguments(ctx, c)
 				_, _, err := gitSync(ctx, kr)
@@ -459,7 +463,7 @@ aside from those, there is also:
 		{
 			Name:  "push",
 			Usage: "push git changes",
-			Flags: append(defaultKeyFlags,
+			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:    "force",
 					Aliases: []string{"f"},
@@ -469,7 +473,7 @@ aside from those, there is also:
 					Name:  "tags",
 					Usage: "push all refs under refs/tags",
 				},
-			),
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				// setup signer
 				kr, _, err := gatherKeyerFromArguments(ctx, c)
@@ -793,7 +797,7 @@ aside from those, there is also:
 					return err
 				}
 
-				patches, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+				patches, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
 				if err != nil {
 					return err
 				}
@@ -808,14 +812,14 @@ aside from those, there is also:
 					return err
 				}
 
-				printGitDiscussionMetadata(evt, statusLabelForEvent(evt.ID, statuses, false))
+				appender := &lineAppender{}
+				printGitDiscussionMetadata(ctx, appender, evt, statusLabelForEvent(evt.ID, statuses, false), false)
 				return showTextWithGitPager(evt.Content)
 			},
 			Commands: []*cli.Command{
 				{
 					Name:  "send",
 					Usage: "edit and send a patch event (kind 1617)",
-					Flags: defaultKeyFlags,
 					Action: func(ctx context.Context, c *cli.Command) error {
 						kr, _, err := gatherKeyerFromArguments(ctx, c)
 						if err != nil {
@@ -850,7 +854,7 @@ aside from those, there is also:
 							return fmt.Errorf("patch too large: %d bytes (limit is 10240 bytes)", len(patchData))
 						}
 
-						content, err := editContentWithDefaultEditor("nak-git-patch-*.patch", string(patchData))
+						content, err := editWithDefaultEditor("nak-git-patch-*.patch", string(patchData))
 						if err != nil {
 							return err
 						}
@@ -860,6 +864,17 @@ aside from those, there is also:
 						}
 						if len(content) > 10_000 {
 							return fmt.Errorf("patch too large: %d bytes (limit is 10000 bytes)", len(content))
+						}
+
+						cmd := exec.Command("git", "apply", "--check", "--3way", "--whitespace=nowarn", "-")
+						cmd.Stdin = strings.NewReader(content)
+
+						if out, err := cmd.CombinedOutput(); err != nil {
+							msg := strings.TrimSpace(string(out))
+							if msg == "" {
+								return fmt.Errorf("edited patch is not applicable")
+							}
+							return fmt.Errorf("edited patch is not applicable: %s", msg)
 						}
 
 						evt := nostr.Event{
@@ -888,13 +903,27 @@ aside from those, there is also:
 				{
 					Name:  "list",
 					Usage: "list patches found in repository relays",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "applied",
+							Usage: "list only applied/merged patches",
+						},
+						&cli.BoolFlag{
+							Name:  "closed",
+							Usage: "list only closed patches",
+						},
+						&cli.BoolFlag{
+							Name:  "all",
+							Usage: "list all patches, including applied and closed",
+						},
+					},
 					Action: func(ctx context.Context, c *cli.Command) error {
 						repo, err := readGitRepositoryFromConfig()
 						if err != nil {
 							return err
 						}
 
-						events, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+						events, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
 						if err != nil {
 							return err
 						}
@@ -909,11 +938,53 @@ aside from those, there is also:
 							return nil
 						}
 
+						showApplied := c.Bool("applied")
+						showClosed := c.Bool("closed")
+						showAll := c.Bool("all")
+
+						// preload metadata from everybody
+						wg := sync.WaitGroup{}
+						for _, evt := range events {
+							wg.Go(func() {
+								sys.FetchProfileMetadata(ctx, evt.PubKey)
+							})
+						}
+						wg.Wait()
+
+						// now render
 						for _, evt := range events {
 							id := evt.ID.Hex()
 
 							status := statusLabelForEvent(evt.ID, statuses, false)
-							stdout(id[:8], colorizeGitStatus(status))
+							if !showAll {
+								if showApplied || showClosed {
+									isApplied := status == "applied/merged"
+									isClosed := status == "closed"
+									if !(showApplied && isApplied || showClosed && isClosed) {
+										continue
+									}
+								} else if status == "applied/merged" || status == "closed" {
+									continue
+								}
+							}
+
+							date := evt.CreatedAt.Time().Format(time.DateOnly)
+							subject := patchSubjectPreview(evt.Content, 72)
+							statusDisplayText := status
+							if status == "applied/merged" {
+								statusDisplayText = "applied"
+							}
+							statusDisplay := colorizeGitStatus(statusDisplayText)
+
+							if status == "applied/merged" {
+								if statusEvt, ok := statuses[evt.ID]; ok {
+									if commit := patchAppliedCommitPreview(statusEvt); commit != "" {
+										statusDisplay = statusDisplay + color.HiBlackString(" (%s)", commit)
+									}
+								}
+							}
+
+							stdout(color.CyanString(id[:6]), statusDisplay, color.HiBlackString(date), color.HiBlueString(authorPreview(ctx, evt.PubKey)), color.HiWhiteString(subject))
 						}
 
 						return nil
@@ -923,6 +994,12 @@ aside from those, there is also:
 					Name:      "apply",
 					Usage:     "apply a patch to current branch",
 					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "without-key",
+							Usage: "apply patch without requiring a signer and skip status publication",
+						},
+					},
 					Action: func(ctx context.Context, c *cli.Command) error {
 						prefix := strings.TrimSpace(c.Args().First())
 						if prefix == "" {
@@ -934,7 +1011,25 @@ aside from those, there is also:
 							return err
 						}
 
-						patches, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1617})
+						var kr nostr.Keyer
+						signerPubkey := nostr.ZeroPK
+						if !c.Bool("without-key") {
+							kr, _, err = gatherKeyerFromArguments(ctx, c)
+							if err != nil {
+								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
+							}
+
+							signerPubkey, err = kr.GetPublicKey(ctx)
+							if err != nil {
+								return fmt.Errorf("failed to get signer public key: %w", err)
+							}
+
+							if signerPubkey != repo.Event.PubKey && !slices.Contains(repo.Maintainers, signerPubkey) {
+								kr = nil
+							}
+						}
+
+						patches, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
 						if err != nil {
 							return err
 						}
@@ -944,11 +1039,73 @@ aside from those, there is also:
 							return err
 						}
 
-						if err := applyPatchContentToCurrentBranch(evt.Content); err != nil {
-							return err
+						previousHead := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							previousHead = strings.TrimSpace(string(output))
 						}
 
-						log("applied patch %s\n", color.GreenString(evt.ID.Hex()[:8]))
+						// apply patch
+						cmd := exec.Command("git", "am", "--3way")
+						cmd.Stdin = strings.NewReader(evt.Content)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						if err := cmd.Run(); err != nil {
+							return fmt.Errorf("failed to apply patch with git am: %w (if needed, run 'git am --abort')", err)
+						}
+
+						log("applied patch %s\n", color.GreenString(evt.ID.Hex()[:6]))
+
+						appliedCommits := []string{}
+						if previousHead != "" {
+							if output, err := exec.Command("git", "rev-list", "--reverse", previousHead+"..HEAD").Output(); err == nil {
+								for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+									commit := strings.TrimSpace(line)
+									if commit != "" {
+										appliedCommits = append(appliedCommits, commit)
+									}
+								}
+							}
+						}
+						if len(appliedCommits) == 0 {
+							if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+								commit := strings.TrimSpace(string(output))
+								if commit != "" {
+									appliedCommits = append(appliedCommits, commit)
+								}
+							}
+						}
+
+						if kr != nil {
+							statusEvt := nostr.Event{
+								CreatedAt: nostr.Now(),
+								Kind:      1631,
+								Tags: nostr.Tags{
+									nostr.Tag{"e", evt.ID.Hex()},
+									nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+									nostr.Tag{"p", evt.PubKey.Hex()},
+								},
+								Content: "applied",
+							}
+
+							if signerPubkey != repo.Event.PubKey {
+								statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"p", repo.Event.PubKey.Hex()})
+							}
+
+							if len(appliedCommits) > 0 {
+								tag := nostr.Tag{"applied-as-commits"}
+								tag = append(tag, appliedCommits...)
+								statusEvt.Tags = append(statusEvt.Tags, tag)
+							}
+
+							if err := kr.SignEvent(ctx, &statusEvt); err != nil {
+								return fmt.Errorf("patch applied, but failed to sign applied status event: %w", err)
+							}
+
+							if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
+								return fmt.Errorf("patch applied, but failed to publish applied status event: %w", err)
+							}
+						}
+
 						return nil
 					},
 				},
@@ -965,7 +1122,7 @@ aside from those, there is also:
 					return err
 				}
 
-				issues, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1621})
+				issues, err := fetchGitRepoRelatedEvents(ctx, repo, 1621)
 				if err != nil {
 					return err
 				}
@@ -980,14 +1137,27 @@ aside from those, there is also:
 					return err
 				}
 
-				printGitDiscussionMetadata(evt, statusLabelForEvent(evt.ID, statuses, true))
-				return showTextWithGitPager(evt.Content)
+				printGitDiscussionMetadata(ctx, os.Stdout, evt, statusLabelForEvent(evt.ID, statuses, true), true)
+				stdout("")
+				stdout(evt.Content)
+
+				comments, err := fetchIssueComments(ctx, repo, evt.ID)
+				if err != nil {
+					return err
+				}
+
+				if len(comments) > 0 {
+					stdout("")
+					stdout(color.CyanString("comments:"))
+					printIssueCommentsThreaded(ctx, os.Stdout, comments, evt.ID, true)
+				}
+
+				return nil
 			},
 			Commands: []*cli.Command{
 				{
 					Name:  "create",
 					Usage: "edit and send an issue event (kind 1621)",
-					Flags: defaultKeyFlags,
 					Action: func(ctx context.Context, c *cli.Command) error {
 						kr, _, err := gatherKeyerFromArguments(ctx, c)
 						if err != nil {
@@ -999,12 +1169,22 @@ aside from those, there is also:
 							return err
 						}
 
-						content, err := editContentWithDefaultEditor("nak-git-issue-*.md", "")
+						content, err := editWithDefaultEditor("nak-git-issue-*.md", strings.TrimSpace(`
+# the first line will be used as the issue subject
+everything is broken
+
+# the remaining lines will be the body
+please fix
+
+# lines starting with '#' are ignored
+`))
 						if err != nil {
 							return err
 						}
-						if strings.TrimSpace(content) == "" {
-							return fmt.Errorf("empty issue content, aborting")
+
+						subject, body, err := parseIssueCreateContent(content)
+						if err != nil {
+							return err
 						}
 
 						evt := nostr.Event{
@@ -1013,14 +1193,92 @@ aside from those, there is also:
 							Tags: nostr.Tags{
 								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
 								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+								nostr.Tag{"subject", subject},
 							},
-							Content: content,
+							Content: body,
 						}
 						if err := kr.SignEvent(ctx, &evt); err != nil {
 							return fmt.Errorf("failed to sign issue event: %w", err)
 						}
 
-						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this issue event"); err != nil {
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "create this issue"); err != nil {
+							return err
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:      "reply",
+					Usage:     "reply to an issue with a NIP-22 comment event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing issue id prefix")
+						}
+
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						issues, err := fetchGitRepoRelatedEvents(ctx, repo, 1621)
+						if err != nil {
+							return err
+						}
+
+						issueEvt, err := findEventByPrefix(issues, prefix)
+						if err != nil {
+							return err
+						}
+
+						comments, err := fetchIssueComments(ctx, repo, issueEvt.ID)
+						if err != nil {
+							return err
+						}
+
+						edited, err := editWithDefaultEditor("nak-git-issue-reply-*.md",
+							gitIssueReplyEditorTemplate(ctx, issueEvt, comments))
+						if err != nil {
+							return err
+						}
+
+						replyb := strings.Builder{}
+						for _, line := range strings.Split(edited, "\n") {
+							line = strings.TrimSpace(line)
+							if strings.HasPrefix(line, "#") || strings.HasPrefix(line, ">") {
+								continue
+							}
+							replyb.WriteString(line)
+							replyb.WriteByte('\n')
+						}
+
+						content := strings.TrimSpace(replyb.String())
+						if content == "" {
+							return fmt.Errorf("empty reply content, aborting")
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1111,
+							Tags: nostr.Tags{
+								nostr.Tag{"E", issueEvt.ID.Hex(), issueEvt.Relay.URL},
+								nostr.Tag{"e", issueEvt.ID.Hex(), issueEvt.Relay.URL},
+								nostr.Tag{"P", issueEvt.PubKey.Hex()},
+								nostr.Tag{"p", issueEvt.PubKey.Hex()},
+							},
+							Content: content,
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign issue reply event: %w", err)
+						}
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this issue reply"); err != nil {
 							return err
 						}
 
@@ -1036,7 +1294,7 @@ aside from those, there is also:
 							return err
 						}
 
-						events, err := fetchGitRepoDiscussionEvents(ctx, repo, []nostr.Kind{1621})
+						events, err := fetchGitRepoRelatedEvents(ctx, repo, 1621)
 						if err != nil {
 							return err
 						}
@@ -1047,14 +1305,27 @@ aside from those, there is also:
 						}
 
 						if len(events) == 0 {
-							stdout("no issues found")
+							log("no issues found\n")
 							return nil
 						}
+
+						// preload metadata from everybody
+						wg := sync.WaitGroup{}
+						for _, evt := range events {
+							wg.Go(func() {
+								sys.FetchProfileMetadata(ctx, evt.PubKey)
+							})
+						}
+						wg.Wait()
 
 						for _, evt := range events {
 							id := evt.ID.Hex()
 							status := statusLabelForEvent(evt.ID, statuses, true)
-							stdout(id[:8], colorizeGitStatus(status))
+							author := authorPreview(ctx, evt.PubKey)
+
+							subject := issueSubjectPreview(evt, 72)
+							date := evt.CreatedAt.Time().Format(time.DateOnly)
+							stdout(color.CyanString(id[:6]), colorizeGitStatus(status), color.HiBlackString(date), color.HiBlueString(author), color.HiWhiteString(subject))
 						}
 
 						return nil
@@ -1242,51 +1513,6 @@ func readGitRepositoryFromConfig() (nip34.Repository, error) {
 	return repo, nil
 }
 
-func editContentWithDefaultEditor(pattern string, initialContent string) (string, error) {
-	tmp, err := os.CreateTemp("", pattern)
-	if err != nil {
-		return "", fmt.Errorf("failed to create temp file: %w", err)
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := tmp.WriteString(initialContent); err != nil {
-		tmp.Close()
-		return "", fmt.Errorf("failed to write temp file: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return "", fmt.Errorf("failed to close temp file: %w", err)
-	}
-
-	editor := strings.TrimSpace(os.Getenv("VISUAL"))
-	if editor == "" {
-		editor = strings.TrimSpace(os.Getenv("EDITOR"))
-	}
-	if editor == "" {
-		editor = "vi"
-	}
-
-	parts := strings.Fields(editor)
-	if len(parts) == 0 {
-		return "", fmt.Errorf("failed to parse editor command '%s'", editor)
-	}
-
-	args := append(parts[1:], tmp.Name())
-	cmd := exec.Command(parts[0], args...)
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("editor command failed: %w", err)
-	}
-
-	data, err := os.ReadFile(tmp.Name())
-	if err != nil {
-		return "", fmt.Errorf("failed to read edited temp file: %w", err)
-	}
-
-	return string(data), nil
-}
-
 func confirmGitEventToBeSent(evt nostr.Event, relays []string, question string) error {
 	pretty, err := json.MarshalIndent(evt, "", "  ")
 	if err != nil {
@@ -1296,7 +1522,7 @@ func confirmGitEventToBeSent(evt nostr.Event, relays []string, question string) 
 	stdout(string(pretty))
 	stdout("relays:", strings.Join(relays, " "))
 
-	if !askConfirmation(question + "? ") {
+	if !askConfirmation(question + "? [y/n] ") {
 		return fmt.Errorf("aborted")
 	}
 
@@ -1324,42 +1550,29 @@ func publishGitEventToRepoRelays(ctx context.Context, evt nostr.Event, relays []
 	return nil
 }
 
-func fetchGitRepoDiscussionEvents(ctx context.Context, repo nip34.Repository, kinds []nostr.Kind) ([]nostr.Event, error) {
-	addr := fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)
-
-	seen := make(map[nostr.ID]nostr.Event, 64)
+func fetchGitRepoRelatedEvents(
+	ctx context.Context,
+	repo nip34.Repository,
+	kind nostr.Kind,
+) ([]nostr.RelayEvent, error) {
+	events := make([]nostr.RelayEvent, 0, 30)
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
-		Kinds: kinds,
+		Kinds: []nostr.Kind{kind},
 		Tags: nostr.TagMap{
-			"a": []string{addr},
+			"a": []string{fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
 		},
 		Limit: 500,
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
-		seen[ie.Event.ID] = ie.Event
+		events = append(events, ie)
 	}
-
-	events := make([]nostr.Event, 0, len(seen))
-	for _, evt := range seen {
-		events = append(events, evt)
-	}
-
-	slices.SortFunc(events, func(a, b nostr.Event) int {
-		if a.CreatedAt > b.CreatedAt {
-			return -1
-		}
-		if a.CreatedAt < b.CreatedAt {
-			return 1
-		}
-		return strings.Compare(a.ID.Hex(), b.ID.Hex())
-	})
-
+	slices.SortFunc(events, nostr.CompareRelayEvent)
 	return events, nil
 }
 
 func fetchIssueStatus(
 	ctx context.Context,
 	repo nip34.Repository,
-	issues []nostr.Event,
+	issues []nostr.RelayEvent,
 ) (map[nostr.ID]nostr.Event, error) {
 	latest := make(map[nostr.ID]nostr.Event)
 	maintainers := repo.Maintainers
@@ -1405,14 +1618,93 @@ func fetchIssueStatus(
 	return latest, nil
 }
 
-func findEventByPrefix(events []nostr.Event, prefix string) (nostr.Event, error) {
+func fetchIssueComments(ctx context.Context, repo nip34.Repository, issueID nostr.ID) ([]nostr.RelayEvent, error) {
+	comments := make([]nostr.RelayEvent, 0, 15)
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds: []nostr.Kind{1111},
+		Tags: nostr.TagMap{
+			"e": []string{issueID.Hex()},
+		},
+		Limit: 500,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		comments = append(comments, ie)
+	}
+
+	slices.SortFunc(comments, nostr.CompareRelayEvent)
+
+	return comments, nil
+}
+
+func printIssueCommentsThreaded(
+	ctx context.Context,
+	w io.Writer,
+	comments []nostr.RelayEvent,
+	issueID nostr.ID,
+	withColor bool,
+) {
+	byID := make(map[nostr.ID]struct{}, len(comments)+1)
+	byID[issueID] = struct{}{}
+	for _, c := range comments {
+		byID[c.ID] = struct{}{}
+	}
+
+	// preload metadata from everybody
+	wg := sync.WaitGroup{}
+
+	children := make(map[nostr.ID][]nostr.RelayEvent, len(comments)+1)
+	for _, c := range comments {
+		wg.Go(func() {
+			sys.FetchProfileMetadata(ctx, c.PubKey)
+		})
+
+		parent, ok := nip22.GetImmediateParent(c.Event.Tags).(nostr.EventPointer)
+		if !ok {
+			continue
+		}
+		if _, ok := byID[parent.ID]; ok {
+			children[parent.ID] = append(children[parent.ID], c)
+		}
+	}
+
+	for parent := range children {
+		slices.SortFunc(children[parent], nostr.CompareRelayEvent)
+	}
+
+	wg.Wait()
+
+	var render func(parent nostr.ID, depth int)
+	render = func(parent nostr.ID, depth int) {
+		for _, c := range children[parent] {
+			indent := strings.Repeat("  ", depth)
+			id := shortCommitID(c.ID.Hex(), 6)
+			author := authorPreview(ctx, c.PubKey)
+			created := c.CreatedAt.Time().Format(time.DateTime)
+
+			if withColor {
+				fmt.Fprintln(w, indent+color.CyanString(id), color.HiBlueString(author), color.HiBlackString(created))
+			} else {
+				fmt.Fprintln(w, indent+id+" "+author+" "+created)
+			}
+
+			for _, line := range strings.Split(c.Content, "\n") {
+				fmt.Fprintln(w, indent+"  "+line)
+			}
+
+			render(c.ID, depth+1)
+		}
+	}
+
+	render(issueID, 0)
+}
+
+func findEventByPrefix(events []nostr.RelayEvent, prefix string) (nostr.RelayEvent, error) {
 	prefix = strings.ToLower(strings.TrimSpace(prefix))
 	if prefix == "" {
-		return nostr.Event{}, fmt.Errorf("missing event id prefix")
+		return nostr.RelayEvent{}, fmt.Errorf("missing event id prefix")
 	}
 
 	matchCount := 0
-	matched := nostr.Event{}
+	matched := nostr.RelayEvent{}
 	for _, evt := range events {
 		if strings.HasPrefix(evt.ID.Hex(), prefix) {
 			matched = evt
@@ -1421,24 +1713,128 @@ func findEventByPrefix(events []nostr.Event, prefix string) (nostr.Event, error)
 	}
 
 	if matchCount == 0 {
-		return nostr.Event{}, fmt.Errorf("no event found with id prefix '%s'", prefix)
+		return nostr.RelayEvent{}, fmt.Errorf("no event found with id prefix '%s'", prefix)
 	}
 	if matchCount > 1 {
-		return nostr.Event{}, fmt.Errorf("id prefix '%s' is ambiguous", prefix)
+		return nostr.RelayEvent{}, fmt.Errorf("id prefix '%s' is ambiguous", prefix)
 	}
 
 	return matched, nil
 }
 
-func printGitDiscussionMetadata(evt nostr.Event, status string) {
-	stdout("id:", evt.ID.Hex())
-	stdout("kind:", evt.Kind.Num())
-	stdout("author:", nip19.EncodeNpub(evt.PubKey))
-	stdout("created:", evt.CreatedAt.Time().Format(time.RFC3339))
-	stdout("status:", status)
-	if subject := evt.Tags.Find("subject"); subject != nil && len(subject) >= 2 {
-		stdout("subject:", subject[1])
+func printGitDiscussionMetadata(
+	ctx context.Context,
+	w io.Writer,
+	evt nostr.RelayEvent,
+	status string,
+	withColors bool,
+) {
+	label := func(s string) string { return s }
+	value := func(s string) string { return s }
+	statusValue := func(s string) string { return s }
+	if withColors {
+		label = func(s string) string { return color.CyanString(s) }
+		value = func(s string) string { return color.HiWhiteString(s) }
+		statusValue = colorizeGitStatus
 	}
+
+	fmt.Fprintln(w, label("id:"), value(evt.ID.Hex()))
+	fmt.Fprintln(w, label("kind:"), value(fmt.Sprintf("%d", evt.Kind.Num())))
+	fmt.Fprintln(w, label("author:"), value(authorPreview(ctx, evt.PubKey)))
+	fmt.Fprintln(w, label("created:"), value(evt.CreatedAt.Time().Format(time.RFC3339)))
+	if status != "" {
+		fmt.Fprintln(w, label("status:"), statusValue(status))
+	}
+	if subject := evt.Tags.Find("subject"); subject != nil && len(subject) >= 2 {
+		fmt.Fprintln(w, label("subject:"), value(subject[1]))
+	}
+}
+
+var patchPrefixRe = regexp.MustCompile(`(?i)^\[patch[^\]]*\]\s*`)
+
+func patchSubjectPreview(content string, maxChars int) string {
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Subject:") {
+			continue
+		}
+
+		subject := strings.TrimSpace(strings.TrimPrefix(line, "Subject:"))
+		subject = strings.TrimSpace(patchPrefixRe.ReplaceAllString(subject, ""))
+		if subject == "" {
+			return ""
+		}
+
+		if maxChars <= 0 {
+			return subject
+		}
+
+		runes := []rune(subject)
+		if len(runes) <= maxChars {
+			return subject
+		}
+
+		if maxChars <= 3 {
+			return string(runes[:maxChars])
+		}
+
+		return string(runes[:maxChars-3]) + "..."
+	}
+
+	return ""
+}
+
+func issueSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
+	if tag := evt.Tags.Find("subject"); len(tag) >= 2 {
+		subject := strings.TrimSpace(tag[1])
+		if subject != "" {
+			return clampWithEllipsis(subject, maxChars)
+		}
+	}
+
+	for _, line := range strings.Split(evt.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return clampWithEllipsis(line, maxChars)
+		}
+	}
+
+	return ""
+}
+
+func parseIssueCreateContent(content string) (subject string, body string, err error) {
+	lines := strings.Split(content, "\n")
+	var bodyb strings.Builder
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if subject == "" {
+			subject = line
+			continue
+		}
+
+		bodyb.WriteString(line)
+		bodyb.WriteByte('\n')
+	}
+
+	if subject == "" {
+		return "", "", fmt.Errorf("issue subject cannot be empty")
+	}
+
+	body = strings.TrimSpace(bodyb.String())
+	return subject, body, nil
+}
+
+func authorPreview(ctx context.Context, pubkey nostr.PubKey) string {
+	meta := sys.FetchProfileMetadata(ctx, pubkey)
+	if meta.Name != "" {
+		return meta.ShortName() + " (" + meta.NpubShort() + ")"
+	}
+	return meta.NpubShort()
 }
 
 func statusLabelForEvent(id nostr.ID, statuses map[nostr.ID]nostr.Event, isIssue bool) string {
@@ -1462,6 +1858,79 @@ func statusLabelForEvent(id nostr.ID, statuses map[nostr.ID]nostr.Event, isIssue
 	default:
 		return "open"
 	}
+}
+
+func patchAppliedCommitPreview(statusEvt nostr.Event) string {
+	if statusEvt.Kind != 1631 {
+		return ""
+	}
+
+	if tag := statusEvt.Tags.Find("merge-commit"); len(tag) >= 2 {
+		return shortCommitID(tag[1], 5)
+	}
+
+	for _, tag := range statusEvt.Tags {
+		if len(tag) < 2 || tag[0] != "applied-as-commits" {
+			continue
+		}
+
+		for i := 1; i < len(tag); i++ {
+			if commit := shortCommitID(tag[i], 5); commit != "" {
+				return commit
+			}
+		}
+	}
+
+	return ""
+}
+
+func shortCommitID(commit string, n int) string {
+	commit = strings.TrimSpace(commit)
+	if commit == "" || n <= 0 {
+		return ""
+	}
+	if len(commit) <= n {
+		return commit
+	}
+	return commit[:n]
+}
+
+func gitIssueReplyEditorTemplate(ctx context.Context, issue nostr.RelayEvent, comments []nostr.RelayEvent) string {
+	const prefix = "> "
+
+	lines := []string{
+		"# write your reply below",
+		"# lines starting with '#', and quoted context lines starting with '> ', are ignored.",
+		"",
+	}
+
+	appender := &lineAppender{lines, "> "}
+
+	printGitDiscussionMetadata(ctx, appender, issue, "", false)
+
+	for _, line := range strings.Split(issue.Content, "\n") {
+		appender.lines = append(appender.lines, prefix+line)
+	}
+
+	if len(comments) > 0 {
+		appender.lines = append(appender.lines, prefix+"", prefix+"comments:")
+		printIssueCommentsThreaded(ctx, appender, comments, issue.ID, false)
+	}
+
+	return strings.Join(appender.lines, "\n")
+}
+
+type lineAppender struct {
+	lines  []string
+	prefix string
+}
+
+func (l *lineAppender) Write(b []byte) (int, error) {
+	for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
+		line = strings.TrimSpace(line)
+		l.lines = append(l.lines, l.prefix+line)
+	}
+	return len(b), nil
 }
 
 func colorizeGitStatus(status string) string {
@@ -1498,32 +1967,6 @@ func showTextWithGitPager(text string) error {
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
 		stdout(text)
-	}
-
-	return nil
-}
-
-func applyPatchContentToCurrentBranch(content string) error {
-	tmp, err := os.CreateTemp("", "nak-git-apply-*.patch")
-	if err != nil {
-		return fmt.Errorf("failed to create temp patch file: %w", err)
-	}
-	defer os.Remove(tmp.Name())
-
-	if _, err := tmp.WriteString(content); err != nil {
-		tmp.Close()
-		return fmt.Errorf("failed to write patch content: %w", err)
-	}
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("failed to close patch file: %w", err)
-	}
-
-	cmd := exec.Command("git", "am", "--3way", tmp.Name())
-	cmd.Stdin = os.Stdin
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("failed to apply patch with git am: %w (if needed, run 'git am --abort')", err)
 	}
 
 	return nil

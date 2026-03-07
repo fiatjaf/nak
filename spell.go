@@ -82,19 +82,13 @@ var spell = &cli.Command{
 
 				displayName := entry.Name
 				if displayName == "" {
-					displayName = entry.Content
-					if len(displayName) > 28 {
-						displayName = displayName[:27] + "…"
-					}
+					displayName = clampWithEllipsis(entry.Content, 28)
 				}
 				if displayName != "" {
 					displayName = color.HiMagentaString(displayName) + ": "
 				}
 
-				desc := entry.Content
-				if len(desc) > 50 {
-					desc = desc[0:49] + "…"
-				}
+				desc := clampWithEllipsis(entry.Content, 50)
 
 				lastUsed := entry.LastUsed.Format("2006-01-02 15:04")
 				stdout(fmt.Sprintf("  %s %s%s - %s",
@@ -448,20 +442,13 @@ func logSpellDetails(spell nostr.Event) {
 	nameTag := spell.Tags.Find("name")
 	name := ""
 	if nameTag != nil {
-		name = nameTag[1]
-		if len(name) > 28 {
-			name = name[:27] + "…"
-		}
+		name = clampWithEllipsis(nameTag[1], 28)
 	}
 	if name != "" {
 		name = ": " + color.HiMagentaString(name)
 	}
 
-	desc := spell.Content
-	if len(desc) > 50 {
-		desc = desc[0:49] + "…"
-	}
-
+	desc := clampWithEllipsis(spell.Content, 50)
 	idStr := nip19.EncodeNevent(spell.ID, nil, nostr.ZeroPK)
 	identifier := "spell" + idStr[len(idStr)-7:]
 

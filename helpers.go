@@ -11,6 +11,7 @@ import (
 	"net/textproto"
 	"net/url"
 	"os"
+	"os/exec"
 	"runtime"
 	"slices"
 	"strings"
@@ -533,6 +534,58 @@ func decodeTagValue(value string) string {
 		}
 	}
 	return value
+}
+
+func editWithDefaultEditor(pattern string, initialContent string) (string, error) {
+	tmp, err := os.CreateTemp("", pattern)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	defer os.Remove(tmp.Name())
+
+	if _, err := tmp.WriteString(initialContent); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "edit"
+	}
+
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("failed to parse editor command '%s'", editor)
+	}
+
+	args := append(parts[1:], tmp.Name())
+	cmd := exec.Command(parts[0], args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("editor command failed: %w", err)
+	}
+
+	data, err := os.ReadFile(tmp.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to read edited temp file: %w", err)
+	}
+
+	return string(data), nil
+}
+
+func clampWithEllipsis(s string, size int) string {
+	if len(s) <= size {
+		return s
+	}
+	return s[0:size-1] + "…"
 }
 
 var colors = struct {
