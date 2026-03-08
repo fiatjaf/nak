@@ -378,7 +378,7 @@ var group = &cli.Command{
 
 				for evt := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
 					Kinds: []nostr.Kind{11},
-					Tags:  nostr.TagMap{"#h": []string{identifier}},
+					Tags:  nostr.TagMap{"h": []string{identifier}},
 				}, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
 					title := evt.Tags.Find("title")
 					if title != nil {
