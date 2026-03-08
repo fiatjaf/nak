@@ -275,6 +275,9 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						return fmt.Errorf("failed to decrypt rumor: %w", err)
 					}
 
+					rumor.PubKey = seal.PubKey
+					rumor.ID = rumor.GetID()
+
 					// output the unwrapped event (rumor)
 					stdout(rumor.String())
 				}
