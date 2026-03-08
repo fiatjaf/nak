@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
@@ -536,12 +537,23 @@ func decodeTagValue(value string) string {
 	return value
 }
 
-func editWithDefaultEditor(pattern string, initialContent string) (string, error) {
-	tmp, err := os.CreateTemp("", pattern)
+func editWithDefaultEditor(filename string, initialContent string, wipe bool) (string, error) {
+	fullpath := filepath.Join(os.TempDir(), filename)
+
+	if err := os.MkdirAll(filepath.Dir(fullpath), 0700); err != nil {
+		return "", fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	if wipe {
+		if err := os.Remove(fullpath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("failed to remove temp file: %w", err)
+		}
+	}
+
+	tmp, err := os.OpenFile(fullpath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
 	if err != nil {
 		return "", fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer os.Remove(tmp.Name())
 
 	if _, err := tmp.WriteString(initialContent); err != nil {
 		tmp.Close()

@@ -854,7 +854,11 @@ aside from those, there is also:
 							return fmt.Errorf("patch too large: %d bytes (limit is 10240 bytes)", len(patchData))
 						}
 
-						content, err := editWithDefaultEditor("nak-git-patch-*.patch", string(patchData))
+						content, err := editWithDefaultEditor(
+							"nak-git-patch.patch",
+							string(patchData),
+							true,
+						)
 						if err != nil {
 							return err
 						}
@@ -1169,7 +1173,9 @@ aside from those, there is also:
 							return err
 						}
 
-						content, err := editWithDefaultEditor("nak-git-issue-*.md", strings.TrimSpace(`
+						content, err := editWithDefaultEditor(
+							"nak-git-issue/NOTES_EDITMSG",
+							strings.TrimSpace(`
 # the first line will be used as the issue subject
 everything is broken
 
@@ -1177,7 +1183,9 @@ everything is broken
 please fix
 
 # lines starting with '#' are ignored
-`))
+`),
+							true,
+						)
 						if err != nil {
 							return err
 						}
@@ -1243,25 +1251,34 @@ please fix
 							return err
 						}
 
-						edited, err := editWithDefaultEditor("nak-git-issue-reply-*.md",
-							gitIssueReplyEditorTemplate(ctx, issueEvt, comments))
+						edited, err := editWithDefaultEditor(
+							"nak-git-issue-reply/NOTES_EDITMSG",
+							gitIssueReplyEditorTemplate(ctx, issueEvt, comments),
+							true,
+						)
 						if err != nil {
 							return err
 						}
 
-						replyb := strings.Builder{}
-						for _, line := range strings.Split(edited, "\n") {
-							line = strings.TrimSpace(line)
-							if strings.HasPrefix(line, "#") || strings.HasPrefix(line, ">") {
-								continue
-							}
-							replyb.WriteString(line)
-							replyb.WriteByte('\n')
+						content, parentEvt, err := parseIssueReplyContent(issueEvt, comments, edited)
+						if err != nil {
+							return err
 						}
-
-						content := strings.TrimSpace(replyb.String())
 						if content == "" {
 							return fmt.Errorf("empty reply content, aborting")
+						}
+
+						if parentEvt.ID == issueEvt.ID {
+							log("> replying to issue %s (%s)\n",
+								color.CyanString(issueEvt.ID.Hex()[:6]),
+								color.HiWhiteString(issueSubjectPreview(issueEvt, 72)),
+							)
+						} else {
+							log("> replying to comment %s by %s on issue %s\n",
+								color.CyanString(parentEvt.ID.Hex()[:6]),
+								color.HiBlueString(authorPreview(ctx, parentEvt.PubKey)),
+								color.CyanString(issueEvt.ID.Hex()[:6]),
+							)
 						}
 
 						evt := nostr.Event{
@@ -1269,9 +1286,9 @@ please fix
 							Kind:      1111,
 							Tags: nostr.Tags{
 								nostr.Tag{"E", issueEvt.ID.Hex(), issueEvt.Relay.URL},
-								nostr.Tag{"e", issueEvt.ID.Hex(), issueEvt.Relay.URL},
+								nostr.Tag{"e", parentEvt.ID.Hex(), parentEvt.Relay.URL},
 								nostr.Tag{"P", issueEvt.PubKey.Hex()},
-								nostr.Tag{"p", issueEvt.PubKey.Hex()},
+								nostr.Tag{"p", parentEvt.PubKey.Hex()},
 							},
 							Content: content,
 						}
@@ -1623,7 +1640,7 @@ func fetchIssueComments(ctx context.Context, repo nip34.Repository, issueID nost
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds: []nostr.Kind{1111},
 		Tags: nostr.TagMap{
-			"e": []string{issueID.Hex()},
+			"E": []string{issueID.Hex()},
 		},
 		Limit: 500,
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
@@ -1676,19 +1693,19 @@ func printIssueCommentsThreaded(
 	render = func(parent nostr.ID, depth int) {
 		for _, c := range children[parent] {
 			indent := strings.Repeat("  ", depth)
-			id := shortCommitID(c.ID.Hex(), 6)
 			author := authorPreview(ctx, c.PubKey)
 			created := c.CreatedAt.Time().Format(time.DateTime)
 
 			if withColor {
-				fmt.Fprintln(w, indent+color.CyanString(id), color.HiBlueString(author), color.HiBlackString(created))
+				fmt.Fprintln(w, indent+color.CyanString("["+c.ID.Hex()[0:6]+"]"), color.HiBlueString(author), color.HiBlackString(created))
 			} else {
-				fmt.Fprintln(w, indent+id+" "+author+" "+created)
+				fmt.Fprintln(w, indent+"["+c.ID.Hex()[0:6]+"] "+author+" "+created)
 			}
 
 			for _, line := range strings.Split(c.Content, "\n") {
 				fmt.Fprintln(w, indent+"  "+line)
 			}
+			fmt.Fprintln(w, indent+"")
 
 			render(c.ID, depth+1)
 		}
@@ -1747,6 +1764,7 @@ func printGitDiscussionMetadata(
 	}
 	if subject := evt.Tags.Find("subject"); subject != nil && len(subject) >= 2 {
 		fmt.Fprintln(w, label("subject:"), value(subject[1]))
+		fmt.Fprintln(w, "")
 	}
 }
 
@@ -1829,6 +1847,82 @@ func parseIssueCreateContent(content string) (subject string, body string, err e
 	return subject, body, nil
 }
 
+func parseIssueReplyContent(issue nostr.RelayEvent, comments []nostr.RelayEvent, edited string) (string, nostr.RelayEvent, error) {
+	currentParent := issue
+	selectedParent := nostr.ZeroID
+	inComments := false
+
+	replyb := strings.Builder{}
+	for _, line := range strings.Split(edited, "\n") {
+		line = strings.TrimSpace(line)
+
+		if strings.HasPrefix(line, "#") && !strings.HasPrefix(line, "#>") {
+			inComments = false
+			currentParent = issue
+			continue
+		}
+
+		if replyb.Len() == 0 && line == "" {
+			continue
+		}
+
+		if strings.HasPrefix(line, "#>") {
+			quoted := strings.TrimSpace(strings.TrimPrefix(line, "#>"))
+			if strings.EqualFold(quoted, "comments:") {
+				inComments = true
+				currentParent = issue
+				continue
+			}
+
+			// keep track of which comment the reply body shows up below of
+			// so we can assign it as a reply to that specifically
+			fields := strings.Fields(quoted)
+			if inComments && len(fields) > 0 && fields[0][0] == '[' && fields[0][len(fields[0])-1] == ']' {
+				currId := fields[0][1 : len(fields[0])-1]
+				for _, comment := range comments {
+					if strings.HasPrefix(comment.ID.Hex(), currId) {
+						currentParent = comment
+						break
+					}
+				}
+			}
+
+			continue
+		}
+
+		// if we reach here this is a line for the reply input from the user
+		replyb.WriteString(line)
+		replyb.WriteByte('\n')
+
+		if line == "" {
+			continue
+		}
+
+		if selectedParent != nostr.ZeroID && selectedParent != currentParent.ID {
+			return "", nostr.RelayEvent{}, fmt.Errorf("can only reply to one comment or create a top-level comment, got replies to both %s and %s", selectedParent.Hex()[0:6], currentParent.ID.Hex()[0:6])
+		}
+
+		selectedParent = currentParent.ID
+	}
+
+	content := strings.TrimSpace(replyb.String())
+	if content == "" {
+		return "", nostr.RelayEvent{}, fmt.Errorf("empty reply content, aborting")
+	}
+
+	if selectedParent == nostr.ZeroID || selectedParent == issue.ID {
+		return content, issue, nil
+	}
+
+	for _, comment := range comments {
+		if comment.ID == selectedParent {
+			return content, comment, nil
+		}
+	}
+
+	panic("selected reply parent not found (this never happens)")
+}
+
 func authorPreview(ctx context.Context, pubkey nostr.PubKey) string {
 	meta := sys.FetchProfileMetadata(ctx, pubkey)
 	if meta.Name != "" {
@@ -1896,25 +1990,24 @@ func shortCommitID(commit string, n int) string {
 }
 
 func gitIssueReplyEditorTemplate(ctx context.Context, issue nostr.RelayEvent, comments []nostr.RelayEvent) string {
-	const prefix = "> "
-
 	lines := []string{
-		"# write your reply below",
-		"# lines starting with '#', and quoted context lines starting with '> ', are ignored.",
+		"# write your reply here.",
+		"# lines starting with '#' are ignored.",
 		"",
 	}
 
-	appender := &lineAppender{lines, "> "}
+	appender := &lineAppender{lines, "#> "}
 
 	printGitDiscussionMetadata(ctx, appender, issue, "", false)
 
 	for _, line := range strings.Split(issue.Content, "\n") {
-		appender.lines = append(appender.lines, prefix+line)
+		appender.lines = append(appender.lines, "#> "+line)
 	}
 
 	if len(comments) > 0 {
-		appender.lines = append(appender.lines, prefix+"", prefix+"comments:")
+		appender.lines = append(appender.lines, "#> ", "#> comments:")
 		printIssueCommentsThreaded(ctx, appender, comments, issue.ID, false)
+		appender.lines = append(appender.lines, "", "# comment below an existing comment to send yours as a reply to it.")
 	}
 
 	return strings.Join(appender.lines, "\n")
@@ -1927,7 +2020,7 @@ type lineAppender struct {
 
 func (l *lineAppender) Write(b []byte) (int, error) {
 	for _, line := range strings.Split(strings.TrimSuffix(string(b), "\n"), "\n") {
-		line = strings.TrimSpace(line)
+		line = strings.TrimRight(line, " ")
 		l.lines = append(l.lines, l.prefix+line)
 	}
 	return len(b), nil
