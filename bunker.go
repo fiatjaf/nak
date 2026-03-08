@@ -117,16 +117,16 @@ var bunker = &cli.Command{
 
 			persist = func() {
 				if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
-					log(color.RedString("failed to persist: %w\n"), err)
+					log(color.RedString("failed to persist: %s\n"), err)
 					os.Exit(4)
 				}
 				data, err := json.MarshalIndent(config, "", "  ")
 				if err != nil {
-					log(color.RedString("failed to persist: %w\n"), err)
+					log(color.RedString("failed to persist: %s\n"), err)
 					os.Exit(4)
 				}
 				if err := os.WriteFile(path, data, 0600); err != nil {
-					log(color.RedString("failed to persist: %w\n"), err)
+					log(color.RedString("failed to persist: %s\n"), err)
 					os.Exit(4)
 				}
 			}
@@ -630,21 +630,21 @@ func onSocketConnect(ctx context.Context, c *cli.Command) chan *url.URL {
 
 	// ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
-		log(color.RedString("failed to create socket directory: %w\n", err))
+		log(color.RedString("failed to create socket directory: %s\n", err))
 		return res
 	}
 
 	// delete existing socket file if it exists
 	if _, err := os.Stat(socketPath); err == nil {
 		if err := os.Remove(socketPath); err != nil {
-			log(color.RedString("failed to remove existing socket file: %w\n", err))
+			log(color.RedString("failed to remove existing socket file: %s\n", err))
 			return res
 		}
 	}
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
-		log(color.RedString("failed to listen on unix socket %s: %w\n", socketPath, err))
+		log(color.RedString("failed to listen on unix socket %s: %s\n", socketPath, err))
 		return res
 	}
 
