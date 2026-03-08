@@ -371,6 +371,10 @@ var wallet = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Flags: []cli.Flag{
 				&cli.StringFlag{
+					Name:  "target",
+					Usage: "npub, nprofile, nevent or hex pubkey",
+				},
+				&cli.StringFlag{
 					Name:  "mint",
 					Usage: "send from a specific mint",
 				},
@@ -380,9 +384,8 @@ var wallet = &cli.Command{
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				args := c.Args().Slice()
-				if len(args) < 2 {
-					return fmt.Errorf("must be called as `nak wallet nutzap <amount> <target>...")
+				if c.Args().Len() < 1 {
+					return fmt.Errorf("must be called as `nak wallet nutzap <amount> --target <target>...")
 				}
 
 				w, closew, err := prepareWallet(ctx, c)
