@@ -236,6 +236,10 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						return fmt.Errorf("not a seal event (kind %d)", seal.Kind)
 					}
 
+					if !seal.VerifySignature() {
+						return fmt.Errorf("seal signature is invalid")
+					}
+
 					senderEncryptionPublicKeys := []nostr.PubKey{seal.PubKey}
 					if theirEPub, exists := getDecoupledEncryptionPublicKey(ctx, seal.PubKey); exists {
 						senderEncryptionPublicKeys = append(senderEncryptionPublicKeys, seal.PubKey)
