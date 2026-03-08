@@ -28,7 +28,7 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 	relays := sys.FetchOutboxRelays(ctx, pk, 3)
 	w := nip60.LoadWallet(ctx, kr, sys.Pool, relays, nip60.WalletOptions{})
 	if w == nil {
-		return nil, nil, fmt.Errorf("error loading walle")
+		return nil, nil, fmt.Errorf("error loading wallet")
 	}
 
 	w.Processed = func(evt nostr.Event, err error) {
