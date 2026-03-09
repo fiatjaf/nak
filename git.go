@@ -991,6 +991,14 @@ aside from those, there is also:
 					},
 				},
 				{
+					Name:      "close",
+					Usage:     "close a patch by publishing a status event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionClose(ctx, c, 1617, "patch")
+					},
+				},
+				{
 					Name:      "apply",
 					Usage:     "apply a patch to current branch",
 					ArgsUsage: "<id-prefix>",
@@ -1263,6 +1271,14 @@ please fix
 					ArgsUsage: "<id-prefix>",
 					Action: func(ctx context.Context, c *cli.Command) error {
 						return gitDiscussionReply(ctx, c, 1621, "issue", issueSubjectPreview)
+					},
+				},
+				{
+					Name:      "close",
+					Usage:     "close an issue by publishing a status event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionClose(ctx, c, 1621, "issue")
 					},
 				},
 			},
@@ -1680,6 +1696,82 @@ func gitDiscussionReply(
 	return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
 }
 
+func gitDiscussionClose(
+	ctx context.Context,
+	c *cli.Command,
+	discussionKind nostr.Kind,
+	discussionName string,
+) error {
+	prefix := strings.TrimSpace(c.Args().First())
+	if prefix == "" {
+		return fmt.Errorf("missing %s id prefix", discussionName)
+	}
+
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return fmt.Errorf("failed to gather keyer: %w", err)
+	}
+	us, err := kr.GetPublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get our public key: %w", err)
+	}
+
+	repo, err := readGitRepositoryFromConfig()
+	if err != nil {
+		return err
+	}
+
+	discussions, err := fetchGitRepoRelatedEvents(ctx, repo, discussionKind)
+	if err != nil {
+		return err
+	}
+
+	discussionEvt, err := findEventByPrefix(discussions, prefix)
+	if err != nil {
+		return err
+	}
+
+	signerPubkey, err := kr.GetPublicKey(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get signer public key: %w", err)
+	}
+
+	statusEvt := nostr.Event{
+		CreatedAt: nostr.Now(),
+		Kind:      1632,
+		Tags: nostr.Tags{
+			nostr.Tag{"e", discussionEvt.ID.Hex()},
+			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+		},
+		Content: "closed",
+	}
+
+	if discussionEvt.PubKey != us {
+		statusEvt.Tags = append(statusEvt.Tags,
+			nostr.Tag{"p", discussionEvt.PubKey.Hex()},
+		)
+	}
+
+	if signerPubkey != repo.Event.PubKey {
+		statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"p", repo.Event.PubKey.Hex()})
+	}
+
+	if err := kr.SignEvent(ctx, &statusEvt); err != nil {
+		return fmt.Errorf("failed to sign %s closed status event: %w", discussionName, err)
+	}
+
+	if err := confirmGitEventToBeSent(statusEvt, repo.Relays, fmt.Sprintf("close this %s", discussionName)); err != nil {
+		return err
+	}
+
+	if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
+		return fmt.Errorf("failed to publish %s closed status event: %w", discussionName, err)
+	}
+
+	log("closed %s %s\n", discussionName, color.GreenString(discussionEvt.ID.Hex()[:6]))
+	return nil
+}
+
 func printGitDiscussionCommentsThreaded(
 	ctx context.Context,
 	w io.Writer,
@@ -1896,7 +1988,7 @@ func parseGitDiscussionReplyContent(discussion nostr.RelayEvent, comments []nost
 
 		if strings.HasPrefix(line, "#>") {
 			quoted := strings.TrimSpace(strings.TrimPrefix(line, "#>"))
-			if strings.EqualFold(quoted, "comments:") {
+			if quoted == "comments:" {
 				inComments = true
 				currentParent = discussion
 				continue
@@ -1969,9 +2061,6 @@ func statusLabelForEvent(id nostr.ID, statuses map[nostr.ID]nostr.Event, isIssue
 	case 1630:
 		return "open"
 	case 1631:
-		if isIssue {
-			return "resolved"
-		}
 		return "applied/merged"
 	case 1632:
 		return "closed"
