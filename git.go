@@ -492,15 +492,15 @@ aside from those, there is also:
 					return fmt.Errorf("failed to sync: %w", err)
 				}
 
-				// figure out which branches to push
-				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+				currentPk, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "push")
 				if err != nil {
 					return err
 				}
 
-				// check if signer matches owner or is in maintainers
-				if currentPk != repo.Event.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
-					return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
+				// figure out which branches to push
+				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+				if err != nil {
+					return err
 				}
 
 				// get commit for the local branch
@@ -1027,13 +1027,9 @@ aside from those, there is also:
 								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
 							}
 
-							signerPubkey, err = kr.GetPublicKey(ctx)
+							signerPubkey, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "apply patches")
 							if err != nil {
-								return fmt.Errorf("failed to get signer public key: %w", err)
-							}
-
-							if signerPubkey != repo.Event.PubKey && !slices.Contains(repo.Maintainers, signerPubkey) {
-								kr = nil
+								return err
 							}
 						}
 
@@ -1711,10 +1707,6 @@ func gitDiscussionClose(
 	if err != nil {
 		return fmt.Errorf("failed to gather keyer: %w", err)
 	}
-	us, err := kr.GetPublicKey(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get our public key: %w", err)
-	}
 
 	repo, err := readGitRepositoryFromConfig()
 	if err != nil {
@@ -1731,9 +1723,9 @@ func gitDiscussionClose(
 		return err
 	}
 
-	signerPubkey, err := kr.GetPublicKey(ctx)
+	signerPubkey, err := ensureGitRepositoryMaintainer(ctx, kr, repo, "close discussions")
 	if err != nil {
-		return fmt.Errorf("failed to get signer public key: %w", err)
+		return err
 	}
 
 	statusEvt := nostr.Event{
@@ -1746,7 +1738,7 @@ func gitDiscussionClose(
 		Content: "closed",
 	}
 
-	if discussionEvt.PubKey != us {
+	if discussionEvt.PubKey != signerPubkey {
 		statusEvt.Tags = append(statusEvt.Tags,
 			nostr.Tag{"p", discussionEvt.PubKey.Hex()},
 		)
@@ -1770,6 +1762,19 @@ func gitDiscussionClose(
 
 	log("closed %s %s\n", discussionName, color.GreenString(discussionEvt.ID.Hex()[:6]))
 	return nil
+}
+
+func ensureGitRepositoryMaintainer(ctx context.Context, kr nostr.Keyer, repo nip34.Repository, action string) (nostr.PubKey, error) {
+	pubkey, err := kr.GetPublicKey(ctx)
+	if err != nil {
+		return nostr.ZeroPK, fmt.Errorf("failed to get signer public key: %w", err)
+	}
+
+	if pubkey != repo.Event.PubKey && !slices.Contains(repo.Maintainers, pubkey) {
+		return nostr.ZeroPK, fmt.Errorf("current user '%s' is not allowed to %s", nip19.EncodeNpub(pubkey), action)
+	}
+
+	return pubkey, nil
 }
 
 func printGitDiscussionCommentsThreaded(
