@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -68,15 +69,23 @@ var group = &cli.Command{
 						cond(group.Private, "group content is not accessible to non-members", "group content is public"),
 				)
 				stdout("livekit:",
-					color.HiBlueString("%s", cond(group.Livekit, "yes", "no"))+
+					color.HiBlueString("%s", cond(group.LiveKit, "yes", "no"))+
 						", "+
-						cond(group.Livekit, "group supports live audio/video with livekit", "group has no advertised live audio/video support"),
+						cond(group.LiveKit, "group supports live audio/video with livekit", "group has no advertised live audio/video support"),
 				)
-				stdout("no-text:",
-					color.HiBlueString("%s", cond(group.NoText, "yes", "no"))+
-						", "+
-						cond(group.NoText, "group is intended for live audio/video only", "text messages are expected to be supported"),
-				)
+				supportedKinds := "unspecified"
+				if group.SupportedKinds != nil {
+					if len(group.SupportedKinds) == 0 {
+						supportedKinds = "none"
+					} else {
+						kinds := make([]string, 0, len(group.SupportedKinds))
+						for _, kind := range group.SupportedKinds {
+							kinds = append(kinds, strconv.Itoa(int(kind)))
+						}
+						supportedKinds = strings.Join(kinds, ", ")
+					}
+				}
+				stdout("supported-kinds:", color.HiBlueString(supportedKinds))
 				return nil
 			},
 		},
@@ -351,7 +360,7 @@ var group = &cli.Command{
 				if err != nil {
 					return err
 				}
-				if !group.Livekit {
+				if !group.LiveKit {
 					return fmt.Errorf("group doesn't advertise livekit support")
 				}
 
@@ -483,15 +492,14 @@ var group = &cli.Command{
 				&cli.BoolFlag{
 					Name: "no-livekit",
 				},
-				&cli.BoolFlag{
-					Name: "no-text",
-				},
-				&cli.BoolFlag{
-					Name: "text",
+				&cli.IntSliceFlag{
+					Name:    "supported-kind",
+					Aliases: []string{"supported-kinds"},
+					Usage:   "list of event kind numbers supported by this group",
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				if c.Bool("livekit") || c.Bool("no-livekit") || c.Bool("no-text") || c.Bool("text") {
+				if c.Bool("livekit") || c.Bool("no-livekit") {
 					relay, _, err := parseGroupIdentifier(c)
 					if err != nil {
 						return err
@@ -537,10 +545,13 @@ var group = &cli.Command{
 					} else if c.Bool("no-livekit") {
 						evt.Tags = append(evt.Tags, nostr.Tag{"no-livekit"})
 					}
-					if c.Bool("no-text") {
-						evt.Tags = append(evt.Tags, nostr.Tag{"no-text"})
-					} else if c.Bool("text") {
-						evt.Tags = append(evt.Tags, nostr.Tag{"text"})
+					if supportedKinds := c.IntSlice("supported-kind"); len(supportedKinds) > 0 {
+						tag := make(nostr.Tag, 1, 1+len(supportedKinds))
+						tag[0] = "supported_kinds"
+						for _, kind := range supportedKinds {
+							tag = append(tag, strconv.FormatInt(kind, 10))
+						}
+						evt.Tags = append(evt.Tags, tag)
 					}
 					return nil
 				})
