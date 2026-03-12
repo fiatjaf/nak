@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"sync"
@@ -379,32 +380,235 @@ var group = &cli.Command{
 		},
 		{
 			Name:        "forum",
-			Usage:       "read group forum posts",
-			Description: "access group forum functionality.",
-			ArgsUsage:   "<relay>'<identifier>",
+			Usage:       "forum topic operations",
+			Description: "when called directly, lists forum topics; with an id prefix, displays that topic with threaded comments.",
+			ArgsUsage:   "<relay>'<identifier> [id-prefix]",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				relay, identifier, err := parseGroupIdentifier(c)
 				if err != nil {
 					return err
 				}
 
-				for evt := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
-					Kinds: []nostr.Kind{11},
-					Tags:  nostr.TagMap{"h": []string{identifier}},
-				}, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
-					title := evt.Tags.Find("title")
-					if title != nil {
-						stdout(colors.bold(title[1]))
-					} else {
-						stdout(colors.bold("<untitled>"))
-					}
-					meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
-					stdout("by " + evt.PubKey.Hex() + " (" + color.HiBlueString(meta.ShortName()) + ") at " + evt.CreatedAt.Time().Format(time.DateTime))
-					stdout(evt.Content)
+				topics, err := fetchGroupForumTopics(ctx, relay, identifier)
+				if err != nil {
+					return err
 				}
-				// TODO: see what to do about this
 
-				return nil
+				prefix := strings.TrimSpace(c.Args().Get(1))
+				if prefix == "" {
+					if len(topics) == 0 {
+						log("no forum topics found\n")
+						return nil
+					}
+
+					wg := sync.WaitGroup{}
+					for _, evt := range topics {
+						wg.Go(func() {
+							sys.FetchProfileMetadata(ctx, evt.PubKey)
+						})
+					}
+					wg.Wait()
+
+					for _, evt := range topics {
+						id := evt.ID.Hex()
+						date := evt.CreatedAt.Time().Format(time.DateOnly)
+						author := authorPreview(ctx, evt.PubKey)
+						subject := forumSubjectPreview(evt, 72)
+						if subject == "" {
+							subject = "<untitled>"
+						}
+						stdout(color.CyanString(id[:6]), color.HiBlackString(date), color.HiBlueString(author), color.HiWhiteString(subject))
+					}
+
+					return nil
+				}
+
+				evt, err := findEventByPrefix(topics, prefix)
+				if err != nil {
+					return err
+				}
+
+				return showThreadWithComments(ctx, []string{relay}, evt, "", nostr.TagMap{"h": []string{identifier}})
+			},
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "edit and send a forum topic event (kind 11)",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						relay, identifier, err := parseGroupIdentifier(c)
+						if err != nil {
+							return err
+						}
+
+						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier)
+						if err != nil {
+							return err
+						}
+						groupName := groupMeta.Name
+						if groupName == "" {
+							groupName = identifier
+						}
+
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						_, selfName, selfNpub, err := keyerIdentity(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to get current identity: %w", err)
+						}
+
+						content, err := editWithDefaultEditor(
+							"nak-group-forum/NOTES_EDITMSG",
+							strings.TrimSpace(fmt.Sprintf(`# creating as '%s' ('%s')
+# creating forum topic in group '%s' ('%s''%s')
+# the first line will be used as the topic title
+topic title here
+
+# the remaining lines will be the body
+write your forum post
+
+# lines starting with '#' are ignored
+`, selfName, selfNpub, groupName, relay, identifier)),
+							true,
+						)
+						if err != nil {
+							return err
+						}
+
+						title, body, err := parseForumCreateContent(content)
+						if err != nil {
+							return err
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      11,
+							Tags: nostr.Tags{
+								nostr.Tag{"h", identifier},
+								nostr.Tag{"title", title},
+							},
+							Content: body,
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign forum topic event: %w", err)
+						}
+
+						r, err := sys.Pool.EnsureRelay(relay)
+						if err != nil {
+							return err
+						}
+
+						return r.Publish(ctx, evt)
+					},
+				},
+				{
+					Name:      "comment",
+					Usage:     "comment on a forum topic with a NIP-22 comment event",
+					ArgsUsage: "<relay>'<identifier> <id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						relay, identifier, err := parseGroupIdentifier(c)
+						if err != nil {
+							return err
+						}
+
+						prefix := strings.TrimSpace(c.Args().Get(1))
+						if prefix == "" {
+							return fmt.Errorf("missing forum topic id prefix")
+						}
+
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						_, selfName, selfNpub, err := keyerIdentity(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to get current identity: %w", err)
+						}
+
+						topics, err := fetchGroupForumTopics(ctx, relay, identifier)
+						if err != nil {
+							return err
+						}
+
+						topic, err := findEventByPrefix(topics, prefix)
+						if err != nil {
+							return err
+						}
+
+						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier)
+						if err != nil {
+							return err
+						}
+						groupName := groupMeta.Name
+						if groupName == "" {
+							groupName = identifier
+						}
+
+						subject := forumSubjectPreview(topic, 72)
+						if subject == "" {
+							subject = "<untitled>"
+						}
+						pm := sys.FetchProfileMetadata(ctx, topic.PubKey)
+						headerLines := []string{
+							fmt.Sprintf("commenting as '%s' ('%s')", selfName, selfNpub),
+							fmt.Sprintf("commenting on forum topic '%s' '%s' by '%s' ('%s') in group '%s' ('%s''%s')", topic.ID.Hex()[:6], subject, pm.ShortName(), pm.NpubShort(), groupName, relay, identifier),
+						}
+
+						comments, err := fetchThreadComments(ctx, []string{relay}, topic.ID, nostr.TagMap{"h": []string{identifier}})
+						if err != nil {
+							return err
+						}
+
+						edited, err := editWithDefaultEditor(
+							"nak-group-forum-reply/NOTES_EDITMSG",
+							threadReplyEditorTemplate(ctx, headerLines, topic, comments),
+							true,
+						)
+						if err != nil {
+							return err
+						}
+
+						content, parentEvt, err := parseThreadReplyContent(topic, comments, edited)
+						if err != nil {
+							return err
+						}
+
+						rootRelay := relay
+						if topic.Relay.URL != "" {
+							rootRelay = topic.Relay.URL
+						}
+						parentRelay := rootRelay
+						if parentEvt.Relay.URL != "" {
+							parentRelay = parentEvt.Relay.URL
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1111,
+							Tags: nostr.Tags{
+								nostr.Tag{"E", topic.ID.Hex(), rootRelay},
+								nostr.Tag{"e", parentEvt.ID.Hex(), parentRelay},
+								nostr.Tag{"P", topic.PubKey.Hex()},
+								nostr.Tag{"p", parentEvt.PubKey.Hex()},
+								nostr.Tag{"h", identifier},
+							},
+							Content: content,
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign forum comment event: %w", err)
+						}
+
+						r, err := sys.Pool.EnsureRelay(relay)
+						if err != nil {
+							return err
+						}
+
+						return r.Publish(ctx, evt)
+					},
+				},
 			},
 		},
 		{
@@ -745,6 +949,72 @@ func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (n
 	}
 
 	return group, nil
+}
+
+func fetchGroupForumTopics(ctx context.Context, relay string, identifier string) ([]nostr.RelayEvent, error) {
+	topics := make([]nostr.RelayEvent, 0, 30)
+	for ie := range sys.Pool.FetchMany(ctx, []string{relay}, nostr.Filter{
+		Kinds: []nostr.Kind{11},
+		Tags:  nostr.TagMap{"h": []string{identifier}},
+		Limit: 500,
+	}, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
+		topics = append(topics, ie)
+	}
+
+	slices.SortFunc(topics, nostr.CompareRelayEvent)
+	return topics, nil
+}
+
+func forumSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
+	if tag := evt.Tags.Find("title"); len(tag) >= 2 {
+		subject := strings.TrimSpace(tag[1])
+		if subject != "" {
+			return clampWithEllipsis(subject, maxChars)
+		}
+	}
+
+	if tag := evt.Tags.Find("subject"); len(tag) >= 2 {
+		subject := strings.TrimSpace(tag[1])
+		if subject != "" {
+			return clampWithEllipsis(subject, maxChars)
+		}
+	}
+
+	for _, line := range strings.Split(evt.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return clampWithEllipsis(line, maxChars)
+		}
+	}
+
+	return ""
+}
+
+func parseForumCreateContent(content string) (title string, body string, err error) {
+	lines := strings.Split(content, "\n")
+	var bodyb strings.Builder
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if title == "" {
+			title = line
+			continue
+		}
+
+		bodyb.WriteString(line)
+		bodyb.WriteByte('\n')
+	}
+
+	if title == "" {
+		return "", "", fmt.Errorf("topic title cannot be empty")
+	}
+
+	body = strings.TrimSpace(bodyb.String())
+	return title, body, nil
 }
 
 func checkRelayLivekitMetadataSupport(ctx context.Context, relay string) error {
