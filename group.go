@@ -493,63 +493,113 @@ var group = &cli.Command{
 					Name: "no-livekit",
 				},
 				&cli.IntSliceFlag{
-					Name:    "supported-kind",
+					Name:    "kind",
 					Aliases: []string{"supported-kinds"},
 					Usage:   "list of event kind numbers supported by this group",
 				},
+				&cli.BoolFlag{
+					Name:  "all-kinds",
+					Usage: "specify this to delete the supported_kinds property, meaning everything will be supported",
+				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				if c.Bool("livekit") || c.Bool("no-livekit") {
-					relay, _, err := parseGroupIdentifier(c)
-					if err != nil {
-						return err
-					}
+				relay, identifier, err := parseGroupIdentifier(c)
+				if err != nil {
+					return err
+				}
 
+				if c.Bool("livekit") || c.Bool("no-livekit") {
 					if err := checkRelayLivekitMetadataSupport(ctx, relay); err != nil {
 						return err
 					}
 				}
 
+				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				if err != nil {
+					return err
+				}
+				if group.Name == "" {
+					group.Name = identifier
+				}
+
+				if name := c.String("name"); name != "" {
+					group.Name = name
+				}
+				if picture := c.String("picture"); picture != "" {
+					group.Picture = picture
+				}
+				if about := c.String("about"); about != "" {
+					group.About = about
+				}
+				if c.Bool("restricted") {
+					group.Restricted = true
+				} else if c.Bool("unrestricted") {
+					group.Restricted = false
+				}
+				if c.Bool("closed") {
+					group.Closed = true
+				} else if c.Bool("open") {
+					group.Closed = false
+				}
+				if c.Bool("hidden") {
+					group.Hidden = true
+				} else if c.Bool("visible") {
+					group.Hidden = false
+				}
+				if c.Bool("private") {
+					group.Private = true
+				} else if c.Bool("public") {
+					group.Private = false
+				}
+				if c.Bool("livekit") {
+					group.LiveKit = true
+				} else if c.Bool("no-livekit") {
+					group.LiveKit = false
+				}
+				if supportedKinds := c.IntSlice("kind"); len(supportedKinds) > 0 {
+					kinds := make([]nostr.Kind, 0, len(supportedKinds))
+					for _, kind := range supportedKinds {
+						kinds = append(kinds, nostr.Kind(kind))
+					}
+					group.SupportedKinds = kinds
+				} else if c.Bool("all-kinds") {
+					group.SupportedKinds = nil
+				}
+
 				return createModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
-					if name := c.String("name"); name != "" {
-						evt.Tags = append(evt.Tags, nostr.Tag{"name", name})
-					}
-					if picture := c.String("picture"); picture != "" {
-						evt.Tags = append(evt.Tags, nostr.Tag{"picture", picture})
-					}
-					if about := c.String("about"); about != "" {
-						evt.Tags = append(evt.Tags, nostr.Tag{"about", about})
-					}
-					if c.Bool("restricted") {
+					evt.Tags = append(evt.Tags, nostr.Tag{"name", group.Name})
+					evt.Tags = append(evt.Tags, nostr.Tag{"picture", group.Picture})
+					evt.Tags = append(evt.Tags, nostr.Tag{"about", group.About})
+					if group.Restricted {
 						evt.Tags = append(evt.Tags, nostr.Tag{"restricted"})
-					} else if c.Bool("unrestricted") {
+					} else {
 						evt.Tags = append(evt.Tags, nostr.Tag{"unrestricted"})
 					}
-					if c.Bool("closed") {
+					if group.Closed {
 						evt.Tags = append(evt.Tags, nostr.Tag{"closed"})
-					} else if c.Bool("open") {
+					} else {
 						evt.Tags = append(evt.Tags, nostr.Tag{"open"})
 					}
-					if c.Bool("hidden") {
+					if group.Hidden {
 						evt.Tags = append(evt.Tags, nostr.Tag{"hidden"})
-					} else if c.Bool("visible") {
+					} else {
 						evt.Tags = append(evt.Tags, nostr.Tag{"visible"})
 					}
-					if c.Bool("private") {
+					if group.Private {
 						evt.Tags = append(evt.Tags, nostr.Tag{"private"})
-					} else if c.Bool("public") {
+					} else {
 						evt.Tags = append(evt.Tags, nostr.Tag{"public"})
 					}
-					if c.Bool("livekit") {
+					if group.LiveKit {
 						evt.Tags = append(evt.Tags, nostr.Tag{"livekit"})
-					} else if c.Bool("no-livekit") {
+					} else {
 						evt.Tags = append(evt.Tags, nostr.Tag{"no-livekit"})
 					}
-					if supportedKinds := c.IntSlice("supported-kind"); len(supportedKinds) > 0 {
-						tag := make(nostr.Tag, 1, 1+len(supportedKinds))
+					if group.SupportedKinds != nil {
+						tag := make(nostr.Tag, 1, 1+len(group.SupportedKinds))
 						tag[0] = "supported_kinds"
-						for _, kind := range supportedKinds {
-							tag = append(tag, strconv.FormatInt(kind, 10))
+						for _, kind := range group.SupportedKinds {
+							tag = append(tag, strconv.Itoa(int(kind)))
 						}
 						evt.Tags = append(evt.Tags, tag)
 					}
@@ -675,6 +725,7 @@ func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (n
 	filter := nostr.Filter{
 		Kinds: []nostr.Kind{nostr.KindSimpleGroupMetadata},
 		Tags:  nostr.TagMap{"d": []string{identifier}},
+		Limit: 1,
 	}
 
 	if info, err := nip11.Fetch(ctx, relay); err == nil {
