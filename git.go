@@ -994,8 +994,14 @@ aside from those, there is also:
 					Name:      "close",
 					Usage:     "close a patch by publishing a status event",
 					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "applied",
+							Usage: "mark the patch as applied instead of closed",
+						},
+					},
 					Action: func(ctx context.Context, c *cli.Command) error {
-						return gitDiscussionClose(ctx, c, 1617, "patch")
+						return gitDiscussionClose(ctx, c, 1617, "patch", c.Bool("applied"))
 					},
 				},
 				{
@@ -1088,7 +1094,6 @@ aside from those, there is also:
 									nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
 									nostr.Tag{"p", evt.PubKey.Hex()},
 								},
-								Content: "applied",
 							}
 
 							if signerPubkey != repo.Event.PubKey {
@@ -1274,7 +1279,7 @@ please fix
 					Usage:     "close an issue by publishing a status event",
 					ArgsUsage: "<id-prefix>",
 					Action: func(ctx context.Context, c *cli.Command) error {
-						return gitDiscussionClose(ctx, c, 1621, "issue")
+						return gitDiscussionClose(ctx, c, 1621, "issue", false)
 					},
 				},
 			},
@@ -1697,6 +1702,7 @@ func gitDiscussionClose(
 	c *cli.Command,
 	discussionKind nostr.Kind,
 	discussionName string,
+	applied bool,
 ) error {
 	prefix := strings.TrimSpace(c.Args().First())
 	if prefix == "" {
@@ -1728,14 +1734,20 @@ func gitDiscussionClose(
 		return err
 	}
 
+	statusKind := nostr.Kind(1632)
+	statusLabel := "closed"
+	if applied {
+		statusKind = 1631
+		statusLabel = "applied"
+	}
+
 	statusEvt := nostr.Event{
 		CreatedAt: nostr.Now(),
-		Kind:      1632,
+		Kind:      statusKind,
 		Tags: nostr.Tags{
 			nostr.Tag{"e", discussionEvt.ID.Hex()},
 			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
 		},
-		Content: "closed",
 	}
 
 	if discussionEvt.PubKey != signerPubkey {
@@ -1749,18 +1761,18 @@ func gitDiscussionClose(
 	}
 
 	if err := kr.SignEvent(ctx, &statusEvt); err != nil {
-		return fmt.Errorf("failed to sign %s closed status event: %w", discussionName, err)
+		return fmt.Errorf("failed to sign %s %s status event: %w", discussionName, statusLabel, err)
 	}
 
-	if err := confirmGitEventToBeSent(statusEvt, repo.Relays, fmt.Sprintf("close this %s", discussionName)); err != nil {
+	if err := confirmGitEventToBeSent(statusEvt, repo.Relays, fmt.Sprintf("mark this %s as %s", discussionName, statusLabel)); err != nil {
 		return err
 	}
 
 	if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
-		return fmt.Errorf("failed to publish %s closed status event: %w", discussionName, err)
+		return fmt.Errorf("failed to publish %s %s status event: %w", discussionName, statusLabel, err)
 	}
 
-	log("closed %s %s\n", discussionName, color.GreenString(discussionEvt.ID.Hex()[:6]))
+	log("marked %s %s as %s\n", discussionName, color.GreenString(discussionEvt.ID.Hex()[:6]), statusLabel)
 	return nil
 }
 
