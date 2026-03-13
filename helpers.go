@@ -18,6 +18,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
@@ -528,8 +529,23 @@ func parseEventID(value string) (nostr.ID, error) {
 	return nostr.ID{}, fmt.Errorf("invalid event id (\"%s\"): expected hex, note, or nevent", value)
 }
 
-func decodeTagValue(value string) string {
-	if strings.HasPrefix(value, "npub1") || strings.HasPrefix(value, "nevent1") || strings.HasPrefix(value, "note1") || strings.HasPrefix(value, "nprofile1") || strings.HasPrefix(value, "naddr1") {
+func decodeTagValue(value string, letter rune) string {
+	letter = unicode.ToLower(letter)
+
+	if letter == 'p' {
+		if nip05.IsValidIdentifier(value) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+			pp, err := nip05.QueryIdentifier(ctx, value)
+			cancel()
+			if err == nil {
+				return pp.PublicKey.Hex()
+			}
+		}
+	}
+
+	if (letter == 'p' && (strings.HasPrefix(value, "npub1") || strings.HasPrefix(value, "nprofile1"))) ||
+		((letter == 'a' || letter == 'q') && strings.HasPrefix(value, "naddr1")) ||
+		((letter == 'e' || letter == 'q') && (strings.HasPrefix(value, "nevent1") || strings.HasPrefix(value, "note1"))) {
 		if ptr, err := nip19.ToPointer(value); err == nil {
 			return ptr.AsTagReference()
 		}

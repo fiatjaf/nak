@@ -212,8 +212,12 @@ example:
 				if found {
 					// tags may also contain extra elements separated with a ";"
 					tagValues := strings.Split(tagValue, ";")
+					val := tagValues[0]
+					if len(tagName) == 1 {
+						val = decodeTagValue(val, rune(tagName[0]))
+					}
 					if len(tagValues) >= 1 {
-						tagValues[0] = decodeTagValue(tagValues[0])
+						tagValues[0] = val
 					}
 					tag = append(tag, tagValues...)
 				}
@@ -221,21 +225,20 @@ example:
 			}
 
 			for _, etag := range c.StringSlice("e") {
-				decodedEtag := decodeTagValue(etag)
+				decodedEtag := decodeTagValue(etag, 'e')
 				if tags.FindWithValue("e", decodedEtag) == nil {
 					tags = append(tags, nostr.Tag{"e", decodedEtag})
 				}
 			}
 			for _, ptag := range c.StringSlice("p") {
-				decodedPtag := decodeTagValue(ptag)
+				decodedPtag := decodeTagValue(ptag, 'p')
 				if tags.FindWithValue("p", decodedPtag) == nil {
 					tags = append(tags, nostr.Tag{"p", decodedPtag})
 				}
 			}
 			for _, dtag := range c.StringSlice("d") {
-				decodedDtag := decodeTagValue(dtag)
-				if tags.FindWithValue("d", decodedDtag) == nil {
-					tags = append(tags, nostr.Tag{"d", decodedDtag})
+				if tags.FindWithValue("d", dtag) == nil {
+					tags = append(tags, nostr.Tag{"d", dtag})
 				}
 			}
 			if len(tags) > 0 {
