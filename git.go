@@ -157,7 +157,7 @@ aside from those, there is also:
 				var owner nostr.PubKey
 				var ownerStr string
 				if c.String("owner") != "" {
-					owner, err = parsePubKey(ownerStr)
+					owner, err = parsePubKey(c.String("owner"))
 					if err != nil {
 						return fmt.Errorf("invalid owner pubkey: %w", err)
 					}
