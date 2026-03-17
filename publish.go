@@ -109,6 +109,7 @@ example:
 
 			if replyEvent.Kind != 1 {
 				evt.Kind = 1111
+				evt.Tags = append(evt.Tags, nostr.Tag{"K", fmt.Sprint(replyEvent.Kind)})
 			}
 
 			// add reply tags

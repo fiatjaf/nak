@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -1662,6 +1663,7 @@ func gitDiscussionReply(
 			nostr.Tag{"e", parentEvt.ID.Hex(), parentEvt.Relay.URL},
 			nostr.Tag{"P", discussionEvt.PubKey.Hex()},
 			nostr.Tag{"p", parentEvt.PubKey.Hex()},
+			nostr.Tag{"K", strconv.Itoa(int(discussionEvt.Kind))},
 		},
 		Content: content,
 	}

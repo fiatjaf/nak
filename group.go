@@ -594,6 +594,7 @@ write your forum post
 								nostr.Tag{"P", topic.PubKey.Hex()},
 								nostr.Tag{"p", parentEvt.PubKey.Hex()},
 								nostr.Tag{"h", identifier},
+								nostr.Tag{"K", strconv.Itoa(int(topic.Kind))},
 							},
 							Content: content,
 						}
