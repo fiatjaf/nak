@@ -66,6 +66,12 @@ example:
 			Hidden: true,
 		},
 		// ~~~
+		&cli.BoolFlag{
+			Name:     "force-sign",
+			Usage:    "when an event is already signed and not modified it isn't signed again even when a different --sec is given, this option negates that",
+			Value:    false,
+			Category: CATEGORY_SIGNER,
+		},
 		&cli.UintFlag{
 			Name:     "pow",
 			Usage:    "nip13 difficulty to target when doing hash work on the event id",
@@ -256,7 +262,7 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if c.IsSet("musig") || c.IsSet("sec") || c.IsSet("prompt-sec") {
+			if c.IsSet("musig") || c.Bool("force-sign") {
 				mustRehashAndResign = true
 			}
 
