@@ -209,12 +209,12 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					for c, potentialCipher := range ciphers {
 						switch c {
 						case 0:
+							log("- trying receiver's identity key %s\n", color.CyanString(receiver.Hex()))
+						case 1:
 							if eSec.Public() == nostr.ZeroPK {
 								continue
 							}
 							log("- trying receiver's decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
-						case 1:
-							log("- trying receiver's identity key %s\n", color.CyanString(receiver.Hex()))
 						}
 
 						sealj, thisErr := potentialCipher.Decrypt(ctx, wrap.Content, wrap.PubKey)
@@ -230,7 +230,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						cipher = potentialCipher
 						break
 					}
-					if seal.ID == nostr.ZeroID {
+					if seal.ID == nostr.ZeroID && seal.PubKey == nostr.ZeroPK && seal.CreatedAt == 0 {
 						// if both ciphers failed above we'll reach here
 						return fmt.Errorf("failed to decrypt seal: %w", err)
 					}
@@ -256,9 +256,9 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 
 						switch s {
 						case 0:
-							log("- trying sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
-						case 1:
 							log("- trying sender's identity public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
+						case 1:
+							log("- trying sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
 						}
 
 						rumorj, thisErr := cipher.Decrypt(ctx, seal.Content, senderEncryptionPublicKey)
@@ -274,7 +274,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						break
 					}
 
-					if rumor.ID == nostr.ZeroID {
+					if rumor.ID == nostr.ZeroID && rumor.PubKey == nostr.ZeroPK && rumor.CreatedAt == 0 {
 						return fmt.Errorf("failed to decrypt rumor: %w", err)
 					}
 
@@ -328,7 +328,6 @@ func getDecoupledEncryptionSecretKey(ctx context.Context, configPath string, pub
 			if eSec.Public() != ePub {
 				return [32]byte{}, true, fmt.Errorf("stored decoupled encryption key is corrupted: %w", err)
 			}
-
 			return eSec, true, nil
 		}
 	}
