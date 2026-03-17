@@ -64,6 +64,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 	var finalJsonErr error
 	return func(yield func(string) bool) {
+		stopped := false
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			// we're look for an event, but it may be in multiple lines, so if json parsing fails
 			// we'll try the next line until we're successful
@@ -78,12 +79,17 @@ func getJsonsOrBlank() iter.Seq[string] {
 			finalJsonErr = nil
 
 			if !yield(stdinEvent) {
+				stopped = true
 				return false
 			}
 
 			curr.Reset()
 			return true
 		})
+
+		if stopped {
+			return
+		}
 
 		if !hasStdin {
 			if !yield("{}") {
@@ -99,12 +105,18 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 func getStdinLinesOrBlank() iter.Seq[string] {
 	return func(yield func(string) bool) {
+		stopped := false
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			if !yield(stdinLine) {
+				stopped = true
 				return false
 			}
 			return true
 		})
+
+		if stopped {
+			return
+		}
 
 		if !hasStdin {
 			if !yield("") {
