@@ -179,7 +179,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, receiver)
 				if has {
 					if err != nil {
-						return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
+						return fmt.Errorf("receiver's decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
 					}
 					ciphers = append(ciphers, kr)
 					ciphers[0] = keyer.NewPlainKeySigner(eSec) // pub decoupled key first
@@ -209,9 +209,12 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					for c, potentialCipher := range ciphers {
 						switch c {
 						case 0:
-							log("- trying the receiver's decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
+							if eSec.Public() == nostr.ZeroPK {
+								continue
+							}
+							log("- trying receiver's decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
 						case 1:
-							log("- trying the receiver's identity key %s\n", color.CyanString(receiver.Hex()))
+							log("- trying receiver's identity key %s\n", color.CyanString(receiver.Hex()))
 						}
 
 						sealj, thisErr := potentialCipher.Decrypt(ctx, wrap.Content, wrap.PubKey)
@@ -247,11 +250,15 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					var rumor nostr.Event
 					err = nil
 					for s, senderEncryptionPublicKey := range senderEncryptionPublicKeys {
+						if senderEncryptionPublicKey == nostr.ZeroPK {
+							continue
+						}
+
 						switch s {
 						case 0:
-							log("- trying the sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
+							log("- trying sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
 						case 1:
-							log("- trying the sender's identity public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
+							log("- trying sender's identity public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
 						}
 
 						rumorj, thisErr := cipher.Decrypt(ctx, seal.Content, senderEncryptionPublicKey)

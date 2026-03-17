@@ -86,7 +86,9 @@ func getJsonsOrBlank() iter.Seq[string] {
 		})
 
 		if !hasStdin {
-			yield("{}")
+			if !yield("{}") {
+				return
+			}
 		}
 
 		if finalJsonErr != nil {
@@ -105,7 +107,9 @@ func getStdinLinesOrBlank() iter.Seq[string] {
 		})
 
 		if !hasStdin {
-			yield("")
+			if !yield("") {
+				return
+			}
 		}
 	}
 }
