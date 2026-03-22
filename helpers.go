@@ -491,15 +491,14 @@ func askConfirmation(msg string) bool {
 }
 
 func parsePubKey(value string) (nostr.PubKey, error) {
-	// try nip05 first
 	if nip05.IsValidIdentifier(value) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		pp, err := nip05.QueryIdentifier(ctx, value)
 		cancel()
-		if err == nil {
-			return pp.PublicKey, nil
+		if err != nil {
+			return nostr.ZeroPK, err
 		}
-		// if nip05 fails, fall through to try as pubkey
+		return pp.PublicKey, nil
 	}
 
 	pk, err := nostr.PubKeyFromHex(value)
