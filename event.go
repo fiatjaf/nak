@@ -175,6 +175,11 @@ example:
 		// this is called when we have a valid json from stdin
 		handleEvent := func(stdinEvent string) error {
 			evt.Content = ""
+			evt.CreatedAt = 0
+			clear(evt.Tags)
+			evt.ID = nostr.ZeroID
+			evt.PubKey = nostr.ZeroPK
+			evt.Sig = [64]byte{}
 
 			kindWasSupplied := strings.Contains(stdinEvent, `"kind"`)
 			contentWasSupplied := strings.Contains(stdinEvent, `"content"`)
