@@ -7,8 +7,10 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip45"
 	"fiatjaf.com/nostr/nip45/hyperloglog"
+	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
 )
@@ -18,13 +20,51 @@ var count = &cli.Command{
 	Usage:                     "generates encoded COUNT messages and optionally use them to talk to relays",
 	Description:               `like 'nak req', but does a "COUNT" call instead. Will attempt to perform HyperLogLog aggregation if more than one relay is specified.`,
 	DisableSliceFlagSeparator: true,
-	Flags:                     reqFilterFlags,
-	ArgsUsage:                 "[relay...]",
+	Flags: append(defaultKeyFlags,
+		append(reqFilterFlags,
+			&cli.BoolFlag{
+				Name:  "auth",
+				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			},
+			&cli.BoolFlag{
+				Name:     "force-pre-auth",
+				Aliases:  []string{"fpa"},
+				Usage:    "after connecting, for a nip42 \"AUTH\" message to be received, act on it and only then send the \"COUNT\"",
+				Category: CATEGORY_SIGNER,
+			},
+		)...,
+	),
+	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		biggerUrlSize := 0
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			relays := connectToAllRelays(ctx, c, relayUrls, nil, nostr.PoolOptions{})
+			forcePreAuthSigner := authSigner
+			if !c.Bool("force-pre-auth") {
+				forcePreAuthSigner = nil
+			}
+			relays := connectToAllRelays(
+				ctx,
+				c,
+				relayUrls,
+				forcePreAuthSigner,
+				nostr.PoolOptions{
+					RelayOptions: nostr.RelayOptions{
+						AuthHandler: func(ctx context.Context, _ *nostr.Relay, authEvent *nostr.Event) error {
+							return authSigner(ctx, c, func(s string, args ...any) {
+								if strings.HasPrefix(s, "authenticating as") {
+									cleanUrl, _ := strings.CutPrefix(
+										nip42.GetRelayURLFromAuthEvent(*authEvent),
+										"wss://",
+									)
+									s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+								}
+								log(s+"\n", args...)
+							}, authEvent)
+						},
+					},
+				},
+			)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")
 				os.Exit(3)

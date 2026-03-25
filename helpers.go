@@ -200,8 +200,8 @@ func connectToAllRelays(
 
 	opts.EventMiddleware = sys.TrackEventHints
 	opts.PenaltyBox = true
-	opts.RelayOptions = nostr.RelayOptions{
-		RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"}},
+	opts.RelayOptions.RequestHeader = http.Header{
+		textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"},
 	}
 	sys.Pool = nostr.NewPool(opts)
 
