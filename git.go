@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
@@ -16,6 +17,8 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip34"
+	"fiatjaf.com/nostr/nip34/gitnaturalapi"
+	"fiatjaf.com/nostr/nip34/grasp"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -457,6 +460,190 @@ aside from those, there is also:
 
 				log("cloned into %s\n", color.GreenString(targetDir))
 				return nil
+			},
+		},
+		{
+			Name:      "download",
+			Usage:     "download a file from a NIP-34 repository",
+			ArgsUsage: "<repository> <path>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "output",
+					Aliases: []string{"O"},
+					Usage:   "output path (use '-' for stdout)",
+				},
+				&cli.StringFlag{
+					Name:    "ref",
+					Aliases: []string{"r"},
+					Usage:   "git ref/tag/branch/commit to read from",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() < 2 {
+					return fmt.Errorf("missing repository and path")
+				}
+
+				repo := args.Get(0)
+				path := args.Get(1)
+				outputPath := c.String("output")
+				ref := strings.TrimSpace(c.String("ref"))
+
+				if outputPath == "" {
+					cleaned := strings.TrimRight(path, "/")
+					base := filepath.Base(cleaned)
+					if base == "." || base == "/" || base == "" {
+						return fmt.Errorf("cannot determine output filename from path '%s', use --output", path)
+					}
+					outputPath = base
+				}
+
+				if outputPath != "-" {
+					if fi, err := os.Stat(outputPath); err == nil && fi.IsDir() {
+						return fmt.Errorf("output path '%s' is a directory", outputPath)
+					}
+				}
+
+				var gitURLs []string
+				if strings.HasPrefix(repo, "http://") || strings.HasPrefix(repo, "https://") {
+					gitURLs = []string{strings.TrimRight(repo, "/")}
+				} else {
+					owner, identifier, relayHints, err := parseRepositoryAddress(ctx, repo)
+					if err != nil {
+						return fmt.Errorf("failed to parse repository address '%s': %w", repo, err)
+					}
+
+					repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+					if err != nil {
+						var stateErr *StateErr
+						if ref == "" || !errors.As(err, &stateErr) {
+							return err
+						}
+					}
+
+					if ref == "" && state != nil && state.HEAD != "" {
+						ref = state.HEAD
+					}
+
+					for _, url := range repo.Clone {
+						if strings.HasPrefix(url, "http") {
+							gitURLs = append(gitURLs, url)
+						}
+					}
+				}
+
+				if len(gitURLs) == 0 {
+					return fmt.Errorf("no HTTP git URLs found for repository")
+				}
+
+				var lastErr error
+				for _, url := range gitURLs {
+					if lastErr != nil {
+						log("%s\n", color.HiRedString(lastErr.Error()))
+					}
+					lastErr = nil
+
+					{
+						printUrl := color.BlueString(url)
+						if grasp.IsGraspURL(url) {
+							printUrl = color.HiYellowString(strings.Split(url, "/")[2])
+						}
+						log("attempting download from %s... ", printUrl)
+					}
+
+					info, err := gitnaturalapi.GetInfoRefs(url)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					var commitHash string
+
+					if ref == "" {
+						if symref, ok := info.Symrefs["HEAD"]; ok && symref != "" {
+							commitHash, _ = info.Refs[symref]
+						} else if head, ok := info.Refs["HEAD"]; ok && head != "" {
+							commitHash = head
+						} else {
+							lastErr = fmt.Errorf("could not resolve default ref for %s", url)
+							continue
+						}
+					}
+
+					if gitHashRe.MatchString(ref) {
+						commitHash = ref
+					} else if strings.HasPrefix(ref, "refs/") {
+						if ch, ok := info.Refs[ref]; ok {
+							commitHash = ch
+						}
+					} else {
+						if ch, ok := info.Refs["refs/heads/"+ref]; ok {
+							commitHash = ch
+						} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
+							commitHash = ch
+						} else if sr, ok := info.Symrefs[ref]; ok && ch != "" {
+							commitHash, _ = info.Refs[sr]
+						}
+					}
+
+					if commitHash == "" {
+						lastErr = fmt.Errorf("couldn't get a commit hash for ref '%s'", ref)
+						continue
+					}
+
+					if !gitHashRe.MatchString(commitHash) {
+						lastErr = fmt.Errorf("couldn't invalid commit hash for ref '%s': '%s'", ref, commitHash)
+						continue
+					}
+
+					entry, err := gitnaturalapi.GetObjectByPath(url, commitHash, path)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+					if entry == nil {
+						lastErr = fmt.Errorf("path '%s' not found", path)
+						continue
+					}
+					if entry.IsDir {
+						lastErr = fmt.Errorf("path '%s' is a directory", path)
+						continue
+					}
+
+					obj, err := gitnaturalapi.GetObject(url, entry.Hash)
+					if err != nil {
+						lastErr = fmt.Errorf("download error: %s", err)
+						continue
+					}
+					if obj == nil {
+						lastErr = fmt.Errorf("object for '%s' not found", path)
+						continue
+					}
+					if obj.Type != gitnaturalapi.ObjectTypeBlob {
+						lastErr = fmt.Errorf("object at '%s' is not a file", path)
+						continue
+					}
+
+					if outputPath == "-" {
+						if _, err = os.Stdout.Write(obj.Data); err != nil {
+							log("\nprinted object %s to stdout\n", color.CyanString(obj.Hash))
+							return err
+						}
+					}
+
+					if err := os.WriteFile(outputPath, obj.Data, 0644); err != nil {
+						return fmt.Errorf("failed to write %s: %w", outputPath, err)
+					}
+
+					log("\nsaved object %s to %s\n", color.CyanString(obj.Hash), color.GreenString(outputPath))
+					return nil
+				}
+
+				if lastErr != nil {
+					log("%s\n", color.HiRedString(lastErr.Error()))
+				}
+
+				return fmt.Errorf("failed to download '%s' from '%s'", path, repo)
 			},
 		},
 		{
@@ -1769,7 +1956,10 @@ func ensureGitRepositoryMaintainer(ctx context.Context, kr nostr.Keyer, repo nip
 	return pubkey, nil
 }
 
-var patchPrefixRe = regexp.MustCompile(`(?i)^\[patch[^\]]*\]\s*`)
+var (
+	patchPrefixRe = regexp.MustCompile(`(?i)^\[patch[^\]]*\]\s*`)
+	gitHashRe     = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+)
 
 func patchSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
 	for _, line := range strings.Split(evt.Content, "\n") {
