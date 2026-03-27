@@ -191,8 +191,10 @@ func connectToAllRelays(
 	opts nostr.PoolOptions,
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
-	for _, url := range relayUrls {
-		if !nostr.IsValidRelayURL(nostr.NormalizeURL(url)) {
+	for i, url := range relayUrls {
+		url = nostr.NormalizeURL(url)
+		relayUrls[i] = url
+		if !nostr.IsValidRelayURL(url) {
 			log("invalid relay URL: %s\n", url)
 			os.Exit(4)
 		}
@@ -249,7 +251,7 @@ func connectToAllRelays(
 	} else {
 		// simple flow
 		for _, url := range relayUrls {
-			log("connecting to %s... ", color.CyanString(url))
+			log("connecting to %s... ", color.CyanString(strings.Split(url, "/")[2]))
 			relay := connectToSingleRelay(ctx, c, url, preAuthSigner, nil, log)
 			if relay != nil {
 				relays = append(relays, relay)
