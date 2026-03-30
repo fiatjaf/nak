@@ -626,7 +626,7 @@ write your forum post
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return createModerationEvent(ctx, c, 9000, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9000, func(evt *nostr.Event, args []string) error {
 					pubkey := getPubKey(c, "pubkey")
 					tag := nostr.Tag{"p", pubkey.Hex()}
 					tag = append(tag, c.StringSlice("role")...)
@@ -646,9 +646,19 @@ write your forum post
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return createModerationEvent(ctx, c, 9001, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9001, func(evt *nostr.Event, args []string) error {
 					pubkey := getPubKey(c, "pubkey")
 					evt.Tags = append(evt.Tags, nostr.Tag{"p", pubkey.Hex()})
+					return nil
+				})
+			},
+		},
+		{
+			Name:      "create-group",
+			Usage:     "creates a new group",
+			ArgsUsage: "<relay>'<identifier>",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				return publishModerationEvent(ctx, c, 9007, func(evt *nostr.Event, args []string) error {
 					return nil
 				})
 			},
@@ -771,7 +781,7 @@ write your forum post
 					group.SupportedKinds = nil
 				}
 
-				return createModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
 					evt.Tags = append(evt.Tags, nostr.Tag{"name", group.Name})
 					evt.Tags = append(evt.Tags, nostr.Tag{"picture", group.Picture})
 					evt.Tags = append(evt.Tags, nostr.Tag{"about", group.About})
@@ -823,7 +833,7 @@ write your forum post
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return createModerationEvent(ctx, c, 9005, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9005, func(evt *nostr.Event, args []string) error {
 					id := getID(c, "event")
 					evt.Tags = append(evt.Tags, nostr.Tag{"e", id.Hex()})
 					return nil
@@ -835,7 +845,7 @@ write your forum post
 			Usage:     "deletes the group",
 			ArgsUsage: "<relay>'<identifier>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return createModerationEvent(ctx, c, 9008, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9008, func(evt *nostr.Event, args []string) error {
 					return nil
 				})
 			},
@@ -851,7 +861,7 @@ write your forum post
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				return createModerationEvent(ctx, c, 9009, func(evt *nostr.Event, args []string) error {
+				return publishModerationEvent(ctx, c, 9009, func(evt *nostr.Event, args []string) error {
 					evt.Tags = append(evt.Tags, nostr.Tag{"code", c.String("code")})
 					return nil
 				})
@@ -860,7 +870,7 @@ write your forum post
 	},
 }
 
-func createModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind, setupFunc func(*nostr.Event, []string) error) error {
+func publishModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind, setupFunc func(*nostr.Event, []string) error) error {
 	args := c.Args().Slice()
 	if len(args) < 1 {
 		return fmt.Errorf("requires group identifier")
