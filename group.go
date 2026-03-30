@@ -787,13 +787,9 @@ write your forum post
 					evt.Tags = append(evt.Tags, nostr.Tag{"about", group.About})
 					if group.Restricted {
 						evt.Tags = append(evt.Tags, nostr.Tag{"restricted"})
-					} else {
-						evt.Tags = append(evt.Tags, nostr.Tag{"unrestricted"})
 					}
 					if group.Closed {
 						evt.Tags = append(evt.Tags, nostr.Tag{"closed"})
-					} else {
-						evt.Tags = append(evt.Tags, nostr.Tag{"open"})
 					}
 					if group.Hidden {
 						evt.Tags = append(evt.Tags, nostr.Tag{"hidden"})
@@ -802,13 +798,9 @@ write your forum post
 					}
 					if group.Private {
 						evt.Tags = append(evt.Tags, nostr.Tag{"private"})
-					} else {
-						evt.Tags = append(evt.Tags, nostr.Tag{"public"})
 					}
 					if group.LiveKit {
 						evt.Tags = append(evt.Tags, nostr.Tag{"livekit"})
-					} else {
-						evt.Tags = append(evt.Tags, nostr.Tag{"no-livekit"})
 					}
 					if group.SupportedKinds != nil {
 						tag := make(nostr.Tag, 1, 1+len(group.SupportedKinds))
