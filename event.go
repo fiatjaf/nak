@@ -354,7 +354,8 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 		if c.Bool("confirm") {
 			relaysStr := make([]string, len(relays))
 			for i, r := range relays {
-				relaysStr[i] = strings.ToLower(strings.Split(r.URL, "://")[1])
+				_, after, _ := strings.Cut(r.URL, "://")
+				relaysStr[i] = strings.ToLower(after)
 			}
 			time.Sleep(time.Millisecond * 10)
 			if !askConfirmation("publish to [ " + strings.Join(relaysStr, " ") + " ]? ") {
