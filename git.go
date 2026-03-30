@@ -79,7 +79,7 @@ aside from those, there is also:
 				},
 				&cli.StringSliceFlag{
 					Name:  "maintainers",
-					Usage: "maintainer public keys as npub or hex (can be used multiple times)",
+					Usage: "maintainer public keys as npub, nip05 or hex (can be used multiple times)",
 				},
 				&cli.StringFlag{
 					Name:  "earliest-unique-commit",
@@ -169,7 +169,7 @@ aside from those, there is also:
 				} else if c.Bool("interactive") {
 					for {
 						if err := survey.AskOne(&survey.Input{
-							Message: "owner (npub or hex)",
+							Message: "owner (npub, nip05 or hex)",
 							Default: defaultOwner,
 						}, &ownerStr); err != nil {
 							return err
@@ -251,7 +251,13 @@ aside from those, there is also:
 				config.Owner = getValue(existingConfig.Owner, c.String("owner"), config.Owner)
 				config.GraspServers = getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), config.GraspServers)
 				config.EarliestUniqueCommit = getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), config.EarliestUniqueCommit)
-				config.Maintainers = getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
+				maintainers := getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
+				config.Maintainers = make([]string, 0, len(maintainers))
+				for _, m := range maintainers {
+					if pubkey, err := parsePubKey(m); err == nil {
+						config.Maintainers = append(config.Maintainers, pubkey.Hex())
+					}
+				}
 
 				if c.Bool("interactive") {
 					// prompt for name
@@ -308,7 +314,7 @@ aside from those, there is also:
 						return err
 					}
 
-					// Prompt for maintainers
+					// prompt for maintainers
 					maintainers, err := promptForStringList("maintainers", config.Maintainers, []string{}, nil, func(s string) bool {
 						pk, err := parsePubKey(s)
 						if err != nil {
