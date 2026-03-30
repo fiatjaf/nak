@@ -72,6 +72,12 @@ example:
 			Value:    false,
 			Category: CATEGORY_SIGNER,
 		},
+		&cli.BoolFlag{
+			Name:     "no-sign",
+			Usage:    "print the event without signing it, using the specified pubkey",
+			Value:    false,
+			Category: CATEGORY_SIGNER,
+		},
 		&cli.UintFlag{
 			Name:     "pow",
 			Usage:    "nip13 difficulty to target when doing hash work on the event id",
@@ -100,6 +106,12 @@ example:
 			Value:       0,
 			Category:    CATEGORY_EVENT_FIELDS,
 		},
+		&PubKeyOrAddressFlag{
+			Name:     "author",
+			Aliases:  []string{"a"},
+			Usage:    "set the event pubkey or add an 'a' tag if it's an address",
+			Category: CATEGORY_EVENT_FIELDS,
+		},
 		&cli.StringFlag{
 			Name:        "content",
 			Aliases:     []string{"c"},
@@ -127,6 +139,11 @@ example:
 		&cli.StringSliceFlag{
 			Name:     "d",
 			Usage:    "shortcut for --tag d=<value>",
+			Category: CATEGORY_EVENT_FIELDS,
+		},
+		&cli.StringSliceFlag{
+			Name:     "h",
+			Usage:    "shortcut for --tag h=<value>",
 			Category: CATEGORY_EVENT_FIELDS,
 		},
 		&NaturalTimeFlag{
@@ -252,11 +269,39 @@ example:
 					tags = append(tags, nostr.Tag{"d", dtag})
 				}
 			}
+			for _, htag := range c.StringSlice("h") {
+				if tags.FindWithValue("h", htag) == nil {
+					tags = append(tags, nostr.Tag{"h", htag})
+				}
+			}
+
+			var authorPubKey nostr.PubKey
+			for _, a := range getPubKeyOrAddressSlice(c, "author") {
+				// is it an address?
+				if a.Addr != nil {
+					aTag := a.Addr.AsTagReference()
+					if tags.FindWithValue("a", aTag) == nil {
+						tags = append(tags, nostr.Tag{"a", aTag})
+					}
+					continue
+				}
+
+				// or is it an "author" pubkey?
+				if a.PubKey != nostr.ZeroPK {
+					if authorPubKey != nostr.ZeroPK {
+						return fmt.Errorf("multiple author pubkeys provided")
+					}
+					authorPubKey = a.PubKey
+				}
+			}
 			if len(tags) > 0 {
 				for _, tag := range tags {
 					evt.Tags = append(evt.Tags, tag)
 				}
 				mustRehashAndResign = true
+			}
+			if authorPubKey != nostr.ZeroPK {
+				evt.PubKey = authorPubKey
 			}
 
 			if c.IsSet("created-at") {
@@ -282,7 +327,7 @@ example:
 					if err != nil {
 						return err
 					}
-				} else {
+				} else if evt.PubKey == nostr.ZeroPK {
 					evt.PubKey, _ = kr.GetPublicKey(ctx)
 				}
 
@@ -293,7 +338,13 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if evt.Sig == [64]byte{} || mustRehashAndResign {
+			if c.Bool("no-sign") {
+				if evt.PubKey == nostr.ZeroPK {
+					return fmt.Errorf("--no-sign requires a pubkey in the event or via --author")
+				}
+				evt.ID = nostr.ZeroID
+				evt.Sig = [64]byte{}
+			} else if evt.Sig == [64]byte{} || mustRehashAndResign {
 				if numSigners := c.Uint("musig"); numSigners > 1 {
 					// must do musig
 					pubkeys := c.StringSlice("musig-pubkey")

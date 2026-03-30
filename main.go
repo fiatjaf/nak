@@ -120,6 +120,12 @@ func init() {
 		Name:  "version",
 		Usage: "prints the version",
 	}
+	cli.HelpFlag = &cli.BoolFlag{
+		Name:        "help",
+		Usage:       "shows help",
+		HideDefault: true,
+		Local:       true,
+	}
 }
 
 func main() {

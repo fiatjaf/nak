@@ -183,6 +183,66 @@ func getPubKeySlice(cmd *cli.Command, name string) []nostr.PubKey {
 //
 //
 
+type PubKeyOrAddress struct {
+	PubKey nostr.PubKey
+	Addr   *nostr.EntityPointer
+}
+
+type (
+	pubKeyOrAddressValue struct {
+		value      PubKeyOrAddress
+		hasBeenSet bool
+	}
+	pubKeyOrAddressSlice = cli.SliceBase[PubKeyOrAddress, struct{}, pubKeyOrAddressValue]
+	PubKeyOrAddressFlag  = cli.FlagBase[[]PubKeyOrAddress, struct{}, pubKeyOrAddressSlice]
+)
+
+var _ cli.ValueCreator[PubKeyOrAddress, struct{}] = pubKeyOrAddressValue{}
+
+func (t pubKeyOrAddressValue) Create(val PubKeyOrAddress, p *PubKeyOrAddress, c struct{}) cli.Value {
+	*p = val
+	return &pubKeyOrAddressValue{
+		value: val,
+	}
+}
+
+func (t pubKeyOrAddressValue) ToString(b PubKeyOrAddress) string {
+	if b.Addr != nil {
+		return b.Addr.AsTagReference()
+	}
+	return b.PubKey.String()
+}
+
+func (t *pubKeyOrAddressValue) Set(value string) error {
+	pubkey, err1 := parsePubKey(value)
+	if err1 == nil {
+		t.value = PubKeyOrAddress{PubKey: pubkey}
+		t.hasBeenSet = true
+		return nil
+	}
+
+	addr, err2 := nostr.ParseAddrString(value)
+	if err2 == nil {
+		t.value = PubKeyOrAddress{Addr: &addr}
+		t.hasBeenSet = true
+		return nil
+	}
+
+	return fmt.Errorf("value is neither a pubkey or an address: %w; %w", err1, err2)
+}
+
+func (t *pubKeyOrAddressValue) String() string         { return fmt.Sprintf("%#v", t.value) }
+func (t *pubKeyOrAddressValue) Value() PubKeyOrAddress { return t.value }
+func (t *pubKeyOrAddressValue) Get() any               { return t.value }
+
+func getPubKeyOrAddressSlice(cmd *cli.Command, name string) []PubKeyOrAddress {
+	return cmd.Value(name).([]PubKeyOrAddress)
+}
+
+//
+//
+//
+
 type (
 	IDFlag = cli.FlagBase[nostr.ID, struct{}, idValue]
 )

@@ -387,7 +387,7 @@ readevents:
 }
 
 var reqFilterFlags = []cli.Flag{
-	&PubKeySliceFlag{
+	&PubKeyOrAddressFlag{
 		Name:     "author",
 		Aliases:  []string{"a"},
 		Usage:    "only accept events from these authors",
@@ -426,6 +426,11 @@ var reqFilterFlags = []cli.Flag{
 		Usage:    "shortcut for --tag d=<value>",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
+	&cli.StringSliceFlag{
+		Name:     "h",
+		Usage:    "shortcut for --tag h=<value>",
+		Category: CATEGORY_FILTER_ATTRIBUTES,
+	},
 	&NaturalTimeFlag{
 		Name:     "since",
 		Aliases:  []string{"s"},
@@ -451,10 +456,30 @@ var reqFilterFlags = []cli.Flag{
 	},
 }
 
+type flagTag struct {
+	key   string
+	value string
+}
+
 func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
-	if authors := getPubKeySlice(c, "author"); len(authors) > 0 {
-		filter.Authors = append(filter.Authors, authors...)
+	tags := make([]flagTag, 0, 5)
+
+	if as := getPubKeyOrAddressSlice(c, "author"); len(as) > 0 {
+		for _, author := range as {
+
+			// is it an address?
+			if author.Addr != nil {
+				tags = append(tags, flagTag{"a", author.Addr.AsTagReference()})
+				continue
+			}
+
+			// or is it an "author" pubkey?
+			if author.PubKey != nostr.ZeroPK {
+				filter.Authors = append(filter.Authors, author.PubKey)
+			}
+		}
 	}
+
 	if ids := getIDSlice(c, "id"); len(ids) > 0 {
 		filter.IDs = append(filter.IDs, ids...)
 	}
@@ -464,7 +489,7 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	if search := c.String("search"); search != "" {
 		filter.Search = search
 	}
-	tags := make([][]string, 0, 5)
+
 	for _, tagFlag := range c.StringSlice("tag") {
 		spl := strings.SplitN(tagFlag, "=", 2)
 		if len(spl) == 2 {
@@ -472,19 +497,22 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 			if len(spl) == 1 {
 				val = decodeTagValue(val, []rune(spl[0])[0])
 			}
-			tags = append(tags, []string{spl[0], val})
+			tags = append(tags, flagTag{spl[0], val})
 		} else {
 			return fmt.Errorf("invalid --tag '%s'", tagFlag)
 		}
 	}
 	for _, etag := range c.StringSlice("e") {
-		tags = append(tags, []string{"e", decodeTagValue(etag, 'e')})
+		tags = append(tags, flagTag{"e", decodeTagValue(etag, 'e')})
 	}
 	for _, ptag := range c.StringSlice("p") {
-		tags = append(tags, []string{"p", decodeTagValue(ptag, 'p')})
+		tags = append(tags, flagTag{"p", decodeTagValue(ptag, 'p')})
 	}
 	for _, dtag := range c.StringSlice("d") {
-		tags = append(tags, []string{"d", dtag})
+		tags = append(tags, flagTag{"d", dtag})
+	}
+	for _, htag := range c.StringSlice("h") {
+		tags = append(tags, flagTag{"h", htag})
 	}
 
 	if len(tags) > 0 && filter.Tags == nil {
@@ -492,10 +520,10 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	}
 
 	for _, tag := range tags {
-		if _, ok := filter.Tags[tag[0]]; !ok {
-			filter.Tags[tag[0]] = make([]string, 0, 3)
+		if _, ok := filter.Tags[tag.key]; !ok {
+			filter.Tags[tag.key] = make([]string, 0, 3)
 		}
-		filter.Tags[tag[0]] = append(filter.Tags[tag[0]], tag[1])
+		filter.Tags[tag.key] = append(filter.Tags[tag.key], tag.value)
 	}
 
 	if c.IsSet("since") {
