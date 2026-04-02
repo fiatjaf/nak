@@ -106,10 +106,16 @@ var fetch = &cli.Command{
 				continue
 			}
 
+			found := false
 			for ie := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
 				Label: "nak-fetch",
 			}) {
+				found = true
 				stdout(ie.Event)
+			}
+
+			if !found {
+				ctx = lineProcessingError(ctx, "no events found for %s", code)
 			}
 		}
 
