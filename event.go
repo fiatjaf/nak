@@ -98,6 +98,12 @@ example:
 			Usage:    "print the nevent code (to stderr) after the event is published",
 			Category: CATEGORY_EXTRAS,
 		},
+		&cli.BoolFlag{
+			Name:        "outbox",
+			Usage:       "use outbox relays from specified public keys",
+			DefaultText: "false, will only use manually-specified relays",
+			Category:    CATEGORY_EXTRAS,
+		},
 		&cli.UintFlag{
 			Name:        "kind",
 			Aliases:     []string{"k"},
@@ -162,22 +168,7 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		// try to connect to the relays here
-		var relays []*nostr.Relay
-
-		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays = connectToAllRelays(ctx, c, relayUrls, nil,
-				nostr.PoolOptions{
-					AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-					},
-				},
-			)
-			if len(relays) == 0 {
-				log("failed to connect to any of the given relays.\n")
-				os.Exit(3)
-			}
-		}
+		relayUrls := c.Args().Slice()
 
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
@@ -366,6 +357,45 @@ example:
 						err = fmt.Errorf("timeout waiting for bunker to respond")
 					}
 					return fmt.Errorf("error signing with provided key: %w", err)
+				}
+			}
+
+			var relays []*nostr.Relay
+			if len(relayUrls) > 0 || c.Bool("outbox") {
+				if c.Bool("outbox") {
+					if evt.PubKey != nostr.ZeroPK {
+						relayUrls = appendUnique(relayUrls, sys.FetchWriteRelays(ctx, evt.PubKey)...)
+					}
+
+					seenPubkeys := make(map[nostr.PubKey]struct{}, len(evt.Tags))
+					for _, tag := range evt.Tags {
+						if len(tag) < 2 || (tag[0] != "p" && tag[0] != "P") {
+							continue
+						}
+						pk, err := nostr.PubKeyFromHex(tag[1])
+						if err != nil {
+							continue
+						}
+						if _, ok := seenPubkeys[pk]; ok {
+							continue
+						}
+						seenPubkeys[pk] = struct{}{}
+						relayUrls = appendUnique(relayUrls, sys.FetchInboxRelays(ctx, pk, 15)...)
+					}
+				}
+
+				if len(relayUrls) > 0 {
+					relays = connectToAllRelays(ctx, c, relayUrls, nil,
+						nostr.PoolOptions{
+							AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
+								return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+							},
+						},
+					)
+					if len(relays) == 0 {
+						log("failed to connect to any of the given relays.\n")
+						os.Exit(3)
+					}
 				}
 			}
 
