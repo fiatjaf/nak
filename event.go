@@ -364,7 +364,7 @@ example:
 			if len(relayUrls) > 0 || c.Bool("outbox") {
 				if c.Bool("outbox") {
 					if evt.PubKey != nostr.ZeroPK {
-						relayUrls = appendUnique(relayUrls, sys.FetchWriteRelays(ctx, evt.PubKey)...)
+						relayUrls = nostr.AppendUnique(relayUrls, sys.FetchWriteRelays(ctx, evt.PubKey)...)
 					}
 
 					seenPubkeys := make(map[nostr.PubKey]struct{}, len(evt.Tags))
@@ -380,7 +380,7 @@ example:
 							continue
 						}
 						seenPubkeys[pk] = struct{}{}
-						relayUrls = appendUnique(relayUrls, sys.FetchInboxRelays(ctx, pk, 15)...)
+						relayUrls = nostr.AppendUnique(relayUrls, sys.FetchInboxRelays(ctx, pk, 15)...)
 					}
 				}
 

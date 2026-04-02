@@ -2424,7 +2424,7 @@ func fetchRepositoryAndState(
 	relayHints []string,
 ) (repo nip34.Repository, upToDateAnnouncementEvent *nostr.Event, upToDateRelays []string, state *nip34.RepositoryState, err error) {
 	// fetch repository announcement (30617)
-	relays := appendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
+	relays := nostr.AppendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30617},
 		Authors: []nostr.PubKey{pubkey},

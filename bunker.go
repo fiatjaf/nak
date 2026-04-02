@@ -75,7 +75,7 @@ var bunker = &cli.Command{
 	Action: func(ctx context.Context, c *cli.Command) error {
 		// read config from file
 		config := BunkerConfig{}
-		baseRelaysUrls := appendUnique(c.Args().Slice(), c.StringSlice("relay")...)
+		baseRelaysUrls := nostr.AppendUnique(c.Args().Slice(), c.StringSlice("relay")...)
 		for i, url := range baseRelaysUrls {
 			baseRelaysUrls[i] = nostr.NormalizeURL(url)
 		}
@@ -153,7 +153,7 @@ var bunker = &cli.Command{
 			for i, url := range config.Relays {
 				config.Relays[i] = nostr.NormalizeURL(url)
 			}
-			config.Relays = appendUnique(config.Relays, baseRelaysUrls...)
+			config.Relays = nostr.AppendUnique(config.Relays, baseRelaysUrls...)
 			for _, bak := range baseAuthorizedKeys {
 				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool { return c.PubKey == bak }) {
 					config.Clients = append(config.Clients, BunkerConfigClient{PubKey: bak})

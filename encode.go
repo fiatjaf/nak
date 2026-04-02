@@ -47,19 +47,19 @@ var encode = &cli.Command{
 
 			var eventPtr nostr.EventPointer
 			if err := json.Unmarshal([]byte(jsonStr), &eventPtr); err == nil && eventPtr.ID != nostr.ZeroID {
-				stdout(nip19.EncodeNevent(eventPtr.ID, appendUnique(relays, eventPtr.Relays...), eventPtr.Author))
+				stdout(nip19.EncodeNevent(eventPtr.ID, nostr.AppendUnique(relays, eventPtr.Relays...), eventPtr.Author))
 				continue
 			}
 
 			var profilePtr nostr.ProfilePointer
 			if err := json.Unmarshal([]byte(jsonStr), &profilePtr); err == nil && profilePtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, appendUnique(relays, profilePtr.Relays...)))
+				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, nostr.AppendUnique(relays, profilePtr.Relays...)))
 				continue
 			}
 
 			var entityPtr nostr.EntityPointer
 			if err := json.Unmarshal([]byte(jsonStr), &entityPtr); err == nil && entityPtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, appendUnique(relays, entityPtr.Relays...)))
+				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, nostr.AppendUnique(relays, entityPtr.Relays...)))
 				continue
 			}
 
@@ -140,7 +140,7 @@ var encode = &cli.Command{
 
 					if getBoolInt(c, "outbox") > 0 {
 						for _, r := range sys.FetchOutboxRelays(ctx, pk, int(getBoolInt(c, "outbox"))) {
-							relays = appendUnique(relays, r)
+							relays = nostr.AppendUnique(relays, r)
 						}
 					}
 
@@ -189,7 +189,7 @@ var encode = &cli.Command{
 
 					if getBoolInt(c, "outbox") > 0 && author != nostr.ZeroPK {
 						for _, r := range sys.FetchOutboxRelays(ctx, author, int(getBoolInt(c, "outbox"))) {
-							relays = appendUnique(relays, r)
+							relays = nostr.AppendUnique(relays, r)
 						}
 					}
 
@@ -259,7 +259,7 @@ var encode = &cli.Command{
 
 					if getBoolInt(c, "outbox") > 0 {
 						for _, r := range sys.FetchOutboxRelays(ctx, pubkey, int(getBoolInt(c, "outbox"))) {
-							relays = appendUnique(relays, r)
+							relays = nostr.AppendUnique(relays, r)
 						}
 					}
 

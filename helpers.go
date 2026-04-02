@@ -436,19 +436,6 @@ func clampError(err error, prefixAlreadyPrinted int) string {
 	return msg
 }
 
-func appendUnique[A comparable](list []A, newEls ...A) []A {
-ex:
-	for _, newEl := range newEls {
-		for _, el := range list {
-			if el == newEl {
-				continue ex
-			}
-		}
-		list = append(list, newEl)
-	}
-	return list
-}
-
 func askConfirmation(msg string) bool {
 	if isPiped() {
 		tty, err := tty.Open()
