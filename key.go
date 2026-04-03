@@ -23,6 +23,7 @@ var key = &cli.Command{
 	Commands: []*cli.Command{
 		generate,
 		public,
+		expand,
 		encryptKey,
 		decryptKey,
 		combine,
@@ -62,6 +63,37 @@ var public = &cli.Command{
 			} else {
 				stdout(hex.EncodeToString(pk.SerializeCompressed()[1:]))
 			}
+		}
+		return nil
+	},
+}
+
+var expand = &cli.Command{
+	Name:                      "expand",
+	Usage:                     "left-pads a hex key to 64 characters",
+	Description:               ``,
+	ArgsUsage:                 "[key]",
+	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		for keyhex := range getStdinLinesOrArgumentsFromSlice(c.Args().Slice()) {
+			keyhex = strings.TrimSpace(keyhex)
+			if keyhex == "" {
+				continue
+			}
+			if len(keyhex) > 64 {
+				ctx = lineProcessingError(ctx, "invalid hex key: length %d", len(keyhex))
+				continue
+			}
+			check := keyhex
+			if len(check)%2 == 1 {
+				check = "0" + check
+			}
+			if _, err := hex.DecodeString(check); err != nil {
+				ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
+				continue
+			}
+			keyhex = strings.ToLower(keyhex)
+			stdout(strings.Repeat("0", 64-len(keyhex)) + keyhex)
 		}
 		return nil
 	},
