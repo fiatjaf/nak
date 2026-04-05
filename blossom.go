@@ -19,7 +19,7 @@ var blossomCmd = &cli.Command{
 	Usage:                     "an army knife for blossom things",
 	DisableSliceFlagSeparator: true,
 	Flags: append(defaultKeyFlags,
-		&cli.StringFlag{
+		&cli.StringSliceFlag{
 			Name:     "server",
 			Aliases:  []string{"s"},
 			Usage:    "the hostname of the target mediaserver",
@@ -41,7 +41,11 @@ var blossomCmd = &cli.Command{
 					if err != nil {
 						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
 					}
-					client = blossom.NewClient(c.String("server"), keyer.NewReadOnlySigner(pk))
+					servers := c.StringSlice("server")
+					if err != nil {
+						return err
+					}
+					client = blossom.NewClient(servers[0], keyer.NewReadOnlySigner(pk))
 				} else {
 					var err error
 					client, err = getBlossomClient(ctx, c)
@@ -69,9 +73,15 @@ var blossomCmd = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			ArgsUsage:                 "[files...]",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				client, err := getBlossomClient(ctx, c)
+				keyer, _, err := gatherKeyerFromArguments(ctx, c)
 				if err != nil {
 					return err
+				}
+
+				servers := c.StringSlice("server")
+
+				if len(servers) == 0 {
+					return fmt.Errorf("no server specified")
 				}
 
 				if isPiped() {
@@ -84,33 +94,35 @@ var blossomCmd = &cli.Command{
 					if err != nil {
 						return fmt.Errorf("failed to read stdin: %w", err)
 					}
-
-					bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
-					if err != nil {
-						return err
-					}
-
-					j, _ := json.Marshal(bd)
-					stdout(string(j))
-				} else {
-					// get filenames from arguments
-					hasError := false
-					for _, fpath := range c.Args().Slice() {
-						bd, err := client.UploadFilePath(ctx, fpath)
+					for _, server := range servers {
+						client := blossom.NewClient(server, keyer)
+						bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s\n", err)
-							hasError = true
+							ctx = lineProcessingError(ctx, "failed to upload to '%s': %s", server, err)
 							continue
 						}
 
 						j, _ := json.Marshal(bd)
 						stdout(string(j))
 					}
+				} else {
+					// get filenames from arguments
+					for _, fpath := range c.Args().Slice() {
+						for _, server := range servers {
+							client := blossom.NewClient(server, keyer)
+							bd, err := client.UploadFilePath(ctx, fpath)
+							if err != nil {
+								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %w", fpath, server, err)
+								continue
+							}
 
-					if hasError {
-						os.Exit(3)
+							j, _ := json.Marshal(bd)
+							stdout(string(j))
+						}
 					}
 				}
+
+				exitIfLineProcessingError(ctx)
 
 				return nil
 			},
@@ -290,5 +302,9 @@ func getBlossomClient(ctx context.Context, c *cli.Command) (*blossom.Client, err
 	if err != nil {
 		return nil, err
 	}
-	return blossom.NewClient(c.String("server"), keyer), nil
+	servers := c.StringSlice("server")
+	if err != nil {
+		return nil, err
+	}
+	return blossom.NewClient(servers[0], keyer), nil
 }
