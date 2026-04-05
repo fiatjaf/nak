@@ -82,7 +82,7 @@ var encode = &cli.Command{
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					pk, err := nostr.PubKeyFromHexCheap(target)
 					if err != nil {
-						ctx = lineProcessingError(ctx, "invalid public key '%s': %w", target, err)
+						ctx = lineProcessingError(ctx, "invalid public key '%s': %s", target, err)
 						continue
 					}
 
@@ -101,7 +101,7 @@ var encode = &cli.Command{
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					sk, err := nostr.SecretKeyFromHex(target)
 					if err != nil {
-						ctx = lineProcessingError(ctx, "invalid private key '%s': %w", target, err)
+						ctx = lineProcessingError(ctx, "invalid private key '%s': %s", target, err)
 						continue
 					}
 
@@ -132,7 +132,7 @@ var encode = &cli.Command{
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					pk, err := nostr.PubKeyFromHexCheap(target)
 					if err != nil {
-						ctx = lineProcessingError(ctx, "invalid public key '%s': %w", target, err)
+						ctx = lineProcessingError(ctx, "invalid public key '%s': %s", target, err)
 						continue
 					}
 

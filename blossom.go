@@ -112,7 +112,7 @@ var blossomCmd = &cli.Command{
 							client := blossom.NewClient(server, keyer)
 							bd, err := client.UploadFilePath(ctx, fpath)
 							if err != nil {
-								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %w", fpath, server, err)
+								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %s", fpath, server, err)
 								continue
 							}
 
@@ -281,7 +281,7 @@ if any of the files are not found the command will fail, otherwise it will succe
 						}
 						bd, err := client.MirrorBlob(ctx, blobURL)
 						if err != nil {
-							ctx = lineProcessingError(ctx, "failed to mirror '%s': %w", blobURL, err)
+							ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
 							continue
 						}
 						out, _ := json.Marshal(bd)
