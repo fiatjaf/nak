@@ -239,6 +239,10 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						return fmt.Errorf("not a seal event (kind %d)", seal.Kind)
 					}
 
+					if !seal.VerifySignature() {
+						return fmt.Errorf("seal signature is invalid")
+					}
+
 					senderEncryptionPublicKeys := []nostr.PubKey{seal.PubKey}
 					if theirEPub, exists := getDecoupledEncryptionPublicKey(ctx, seal.PubKey); exists {
 						senderEncryptionPublicKeys = append(senderEncryptionPublicKeys, seal.PubKey)
@@ -277,6 +281,9 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					if rumor.ID == nostr.ZeroID && rumor.PubKey == nostr.ZeroPK && rumor.CreatedAt == 0 {
 						return fmt.Errorf("failed to decrypt rumor: %w", err)
 					}
+
+					rumor.PubKey = seal.PubKey
+					rumor.ID = rumor.GetID()
 
 					// output the unwrapped event (rumor)
 					stdout(rumor.String())
