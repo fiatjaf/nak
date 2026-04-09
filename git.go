@@ -281,7 +281,7 @@ aside from those, there is also:
 						"gitnostr.com",
 						"relay.ngit.dev",
 						"pyramid.fiatjaf.com",
-						"git.shakespeare.dyi",
+						"git.shakespeare.diy",
 					}, graspServerHost, nil)
 					if err != nil {
 						return err
