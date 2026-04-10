@@ -27,6 +27,7 @@ var key = &cli.Command{
 		encryptKey,
 		decryptKey,
 		combine,
+		validate,
 	},
 }
 
@@ -184,6 +185,53 @@ var decryptKey = &cli.Command{
 		default:
 			return fmt.Errorf("invalid number of arguments")
 		}
+	},
+}
+
+var validate = &cli.Command{
+	Name:  "validate",
+	Usage: "validates a public key by attempting to parse it",
+	Description: `Accepts public keys in hex (64 characters) or npub format.
+Returns error if key is invalid, otherwise exits successfully.`,
+	ArgsUsage:                 "[pubkey...]",
+	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		for pk := range getStdinLinesOrArgumentsFromSlice(c.Args().Slice()) {
+			pk = strings.TrimSpace(pk)
+			if pk == "" {
+				continue
+			}
+
+			var pkBytes []byte
+			var err error
+
+			if strings.HasPrefix(pk, "npub1") {
+				_, data, err := nip19.Decode(pk)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid npub: %s", err)
+					continue
+				}
+				tmp := data.([32]byte)
+				pkBytes = tmp[:]
+			} else {
+				pkBytes, err = hex.DecodeString(pk)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid hex: %s", err)
+					continue
+				}
+				if len(pkBytes) != 32 {
+					ctx = lineProcessingError(ctx, "invalid pubkey length: expected 32 bytes, got %d", len(pkBytes))
+					continue
+				}
+			}
+
+			_, err = btcec.ParsePubKey(append([]byte{0x02}, pkBytes...))
+			if err != nil {
+				ctx = lineProcessingError(ctx, "invalid pubkey: %s", err)
+				continue
+			}
+		}
+		return nil
 	},
 }
 
