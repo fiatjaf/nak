@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
@@ -209,10 +208,9 @@ var encode = &cli.Command{
 			Usage: "generate codes for addressable events",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
-					Name:     "identifier",
-					Aliases:  []string{"d"},
-					Usage:    "the \"d\" tag identifier of this replaceable event -- can also be read from stdin",
-					Required: true,
+					Name:    "identifier",
+					Aliases: []string{"d"},
+					Usage:   "the \"d\" tag identifier of this replaceable event -- can also be read from stdin",
 				},
 				&PubKeyFlag{
 					Name:     "pubkey",
@@ -242,21 +240,27 @@ var encode = &cli.Command{
 				for d := range getStdinLinesOrBlank() {
 					pubkey := getPubKey(c, "pubkey")
 
-					kind := c.Int("kind")
-					if kind < 30000 || kind >= 40000 {
-						return fmt.Errorf("kind must be between 30000 and 39999, got %d", kind)
-					}
-
+					kind := nostr.Kind(c.Int("kind"))
 					if d == "" {
 						d = c.String("identifier")
-						if d == "" {
-							ctx = lineProcessingError(ctx, "\"d\" tag identifier can't be empty")
+					}
+
+					if kind.IsAddressable() {
+						if !c.IsSet("identifier") {
+							ctx = lineProcessingError(ctx, "\"d\" tag identifier must be set for addressable events")
 							continue
 						}
+					} else if kind.IsReplaceable() {
+						if c.IsSet("identifier") {
+							ctx = lineProcessingError(ctx, "\"d\" tag identifier must not be set for replaceable events")
+							continue
+						}
+					} else {
+						ctx = lineProcessingError(ctx, "can only encode addressable events")
+						continue
 					}
 
 					relays := c.StringSlice("relay")
-
 					if getBoolInt(c, "outbox") > 0 {
 						for _, r := range sys.FetchOutboxRelays(ctx, pubkey, int(getBoolInt(c, "outbox"))) {
 							relays = nostr.AppendUnique(relays, r)
