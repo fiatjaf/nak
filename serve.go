@@ -6,9 +6,12 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"net"
+	"net/http"
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"time"
 
@@ -163,8 +166,7 @@ var serve = &cli.Command{
 		}
 
 		go func() {
-			err := rl.Start(hostname, port, started)
-			exited <- err
+			exited <- http.ListenAndServe(net.JoinHostPort(hostname, strconv.Itoa(port)), rl)
 		}()
 
 		// relay logging
