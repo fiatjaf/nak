@@ -55,6 +55,7 @@ var app = &cli.Command{
 		syncCmd,
 		spell,
 		profile,
+		validateCmd,
 	},
 	Version: version,
 	Flags: []cli.Flag{
