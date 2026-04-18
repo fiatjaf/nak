@@ -7,8 +7,6 @@ import (
 	"fmt"
 	"iter"
 	"math/rand"
-	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
 	"os/exec"
@@ -199,13 +197,6 @@ func connectToAllRelays(
 			os.Exit(4)
 		}
 	}
-
-	opts.EventMiddleware = sys.TrackEventHints
-	opts.PenaltyBox = true
-	opts.RelayOptions.RequestHeader = http.Header{
-		textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"},
-	}
-	sys.Pool = nostr.NewPool(opts)
 
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 

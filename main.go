@@ -103,13 +103,11 @@ var app = &cli.Command{
 
 		setupLocalDatabases(c, sys)
 
-		sys.Pool = nostr.NewPool(nostr.PoolOptions{
-			AuthorKindQueryMiddleware: sys.TrackQueryAttempts,
-			EventMiddleware:           sys.TrackEventHints,
-			RelayOptions: nostr.RelayOptions{
-				RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
-			},
-		})
+		sys.Pool.QueryMiddleware = sys.TrackQueryAttempts
+		sys.Pool.EventMiddleware = sys.TrackEventHints
+		sys.Pool.RelayOptions = nostr.RelayOptions{
+			RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
+		}
 
 		return ctx, nil
 	},
