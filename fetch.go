@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nipad"
 	"fiatjaf.com/nostr/sdk/hints"
@@ -68,8 +67,7 @@ var fetch = &cli.Command{
 				for _, url := range webPath.Relays {
 					relays = append(relays, nostr.NormalizeURL(url))
 				}
-			} else if nip05.IsValidIdentifier(code) {
-				pp, err := nip05.QueryIdentifier(ctx, code)
+			} else if pp, err := resolveNip05OrDotBit(ctx, code); pp != nil || err != nil {
 				if err != nil {
 					ctx = lineProcessingError(ctx, "failed to fetch nip05: %s", err)
 					continue
