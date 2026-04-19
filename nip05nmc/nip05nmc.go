@@ -28,6 +28,7 @@ func IsDotBit(identifier string) bool {
 		return false
 	}
 	norm := strings.ToLower(strings.TrimSpace(identifier))
+	norm = strings.TrimPrefix(norm, "nostr:")
 	if strings.HasPrefix(norm, "d/") || strings.HasPrefix(norm, "id/") {
 		return true
 	}
@@ -47,6 +48,11 @@ type parsedIdentifier struct {
 // .bit / d/ / id/ identifier.
 func parseIdentifier(raw string) *parsedIdentifier {
 	input := strings.TrimSpace(raw)
+	// Strip an optional NIP-21 "nostr:" URI prefix so callers can pass
+	// through the nak-style `nostr:alice@example.bit` form directly.
+	if len(input) >= 6 && strings.EqualFold(input[:6], "nostr:") {
+		input = input[6:]
+	}
 	lower := strings.ToLower(input)
 
 	// Explicit namespace references.

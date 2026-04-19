@@ -24,6 +24,9 @@ func TestIsDotBit(t *testing.T) {
 		{"", false},
 		{"   ", false},
 		{"npub1xyz", false},
+		{"nostr:alice@example.bit", true},
+		{"nostr:example.bit", true},
+		{"nostr:npub1xyz", false},
 	}
 	for _, tc := range cases {
 		if got := IsDotBit(tc.in); got != tc.want {
@@ -43,6 +46,8 @@ func TestParseIdentifier(t *testing.T) {
 		{"ALICE@Example.Bit", &parsedIdentifier{"d/example", "alice", true}},
 		{"d/example", &parsedIdentifier{"d/example", "_", true}},
 		{"id/alice", &parsedIdentifier{"id/alice", "_", false}},
+		{"nostr:alice@example.bit", &parsedIdentifier{"d/example", "alice", true}},
+		{"Nostr:example.bit", &parsedIdentifier{"d/example", "_", true}},
 		{".bit", nil},
 		{"@.bit", nil},
 		{"not a name", nil},
