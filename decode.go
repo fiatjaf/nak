@@ -7,7 +7,6 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"github.com/urfave/cli/v3"
 )
@@ -75,7 +74,7 @@ var decode = &cli.Command{
 				}
 			}
 
-			pp, _ := nip05.QueryIdentifier(ctx, input)
+			pp, _ := resolveNip05OrDotBit(ctx, input)
 			if pp != nil {
 				if c.Bool("pubkey") {
 					stdout(pp.PublicKey.Hex())

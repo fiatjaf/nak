@@ -1,7 +1,5 @@
 fiatjaf.com/lib v0.3.6 h1:GRZNSxHI2EWdjSKVuzaT+c0aifLDtS16SzkeJaHyJfY=
 fiatjaf.com/lib v0.3.6/go.mod h1:UlHaZvPHj25PtKLh9GjZkUHRmQ2xZ8Jkoa4VRaLeeQ8=
-fiatjaf.com/nostr v0.0.0-20260402062956-72a5be58d755 h1:Tt9XwQMaGaZw2cwujK8IAD/g6FkJC9WWRJuz+7qM1zM=
-fiatjaf.com/nostr v0.0.0-20260402062956-72a5be58d755/go.mod h1:iRKV8eYKzePA30MdbaYBpAv8pYQ6to8rDr3W+R2hJzM=
 fiatjaf.com/nostr v0.0.0-20260416191442-f50b7b0f8dcb h1:zOni3zgiu+hnzZFjt8SAMzmntlAxm+c8T9kEr0qwGRw=
 fiatjaf.com/nostr v0.0.0-20260416191442-f50b7b0f8dcb/go.mod h1:1cmygNC87Pw06/WjkZqDV+Xo6rV10kpTjzuayosIX4Y=
 github.com/AlecAivazis/survey/v2 v2.3.7 h1:6I/u8FvytdGsgonrYsVn2t8t4QiRnh6QSTqkkhIiSjQ=
