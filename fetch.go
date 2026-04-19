@@ -5,7 +5,6 @@ import (
 	"fmt"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/sdk/hints"
 	"github.com/urfave/cli/v3"
@@ -32,8 +31,7 @@ var fetch = &cli.Command{
 			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")
 
-			if nip05.IsValidIdentifier(code) {
-				pp, err := nip05.QueryIdentifier(ctx, code)
+			if pp, err := resolveNip05OrDotBit(ctx, code); pp != nil || err != nil {
 				if err != nil {
 					ctx = lineProcessingError(ctx, "failed to fetch nip05: %s", err)
 					continue

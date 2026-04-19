@@ -25,6 +25,7 @@ import (
 	"fiatjaf.com/nostr/sdk"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
+	"github.com/fiatjaf/nak/nip05nmc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-tty"
@@ -470,7 +471,30 @@ func askConfirmation(msg string) bool {
 	}
 }
 
+// resolveNip05OrDotBit first tries Namecoin `.bit` resolution (via
+// nip05nmc) and falls back to the standard NIP-05 HTTPS lookup. It
+// returns nil when `input` doesn't look like any kind of NIP-05
+// identifier.
+func resolveNip05OrDotBit(ctx context.Context, input string) (*nostr.ProfilePointer, error) {
+	if nip05nmc.IsDotBit(input) {
+		return nip05nmc.QueryIdentifier(ctx, input)
+	}
+	if nip05.IsValidIdentifier(input) {
+		return nip05.QueryIdentifier(ctx, input)
+	}
+	return nil, nil
+}
+
 func parsePubKey(value string) (nostr.PubKey, error) {
+	if nip05nmc.IsDotBit(value) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+		pp, err := nip05nmc.QueryIdentifier(ctx, value)
+		cancel()
+		if err != nil {
+			return nostr.ZeroPK, err
+		}
+		return pp.PublicKey, nil
+	}
 	if nip05.IsValidIdentifier(value) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		pp, err := nip05.QueryIdentifier(ctx, value)
@@ -528,7 +552,14 @@ func decodeTagValue(value string, letter rune) string {
 	letter = unicode.ToLower(letter)
 
 	if letter == 'p' {
-		if nip05.IsValidIdentifier(value) {
+		if nip05nmc.IsDotBit(value) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*30)
+			pp, err := nip05nmc.QueryIdentifier(ctx, value)
+			cancel()
+			if err == nil {
+				return pp.PublicKey.Hex()
+			}
+		} else if nip05.IsValidIdentifier(value) {
 			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 			pp, err := nip05.QueryIdentifier(ctx, value)
 			cancel()
