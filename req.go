@@ -45,6 +45,10 @@ example:
 	Flags: append(defaultKeyFlags,
 		append(reqFilterFlags,
 			&cli.StringFlag{
+				Name:  "jq",
+				Usage: "filter returned events with jq expression",
+			},
+			&cli.StringFlag{
 				Name:      "only-missing",
 				Usage:     "use nip77 negentropy to only fetch events that aren't present in the given jsonl file",
 				TakesFile: true,
@@ -123,6 +127,14 @@ example:
 
 		if len(relayUrls) > 0 && (c.Bool("bare") || c.Bool("spell")) {
 			return fmt.Errorf("relay URLs are incompatible with --bare or --spell")
+		}
+
+		jq, err := jqPrepare(c.String("jq"))
+		if err != nil {
+			return err
+		}
+		if jq != nil && len(relayUrls) == 0 && !c.Bool("outbox") {
+			return fmt.Errorf("--jq requires relay URLs or --outbox")
 		}
 
 		if len(relayUrls) > 0 && !negentropy {
@@ -206,6 +218,7 @@ example:
 
 					target := PrintingQuerierPublisher{
 						QuerierPublisher: wrappers.StorePublisher{Store: store, MaxLimit: math.MaxInt},
+						jq:               jq,
 					}
 
 					var source nostr.Querier = nil
@@ -235,7 +248,9 @@ example:
 						}
 					}
 				} else {
-					performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), "nak-req")
+					if err := performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), "nak-req", jq); err != nil {
+						return err
+					}
 				}
 			} else {
 				// no relays given, will just print the filter or spell
@@ -277,7 +292,8 @@ func performReq(
 	paginate bool,
 	paginateInterval time.Duration,
 	label string,
-) {
+	jq jqProcessor,
+) error {
 	var results chan nostr.RelayEvent
 	var closeds chan nostr.RelayClosed
 
@@ -431,7 +447,22 @@ readevents:
 			if !stillOpen {
 				break readevents
 			}
-			stdout(ie.Event)
+
+			var out string
+			if jq == nil {
+				out = ie.Event.String()
+			} else {
+				v, matches, err := jq(ie.Event)
+				if err != nil {
+					return fmt.Errorf("jq filter failed: %w", err)
+				}
+				if !matches {
+					continue
+				}
+				out, _ = json.MarshalToString(v)
+			}
+			stdout(out)
+
 		case closed, stillOpen := <-closeds:
 			if stillOpen {
 				if closed.HandledAuth {
@@ -444,6 +475,8 @@ readevents:
 			break readevents
 		}
 	}
+
+	return nil
 }
 
 var reqFilterFlags = []cli.Flag{
@@ -604,11 +637,25 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 
 type PrintingQuerierPublisher struct {
 	nostr.QuerierPublisher
+	jq jqProcessor
 }
 
 func (p PrintingQuerierPublisher) Publish(ctx context.Context, evt nostr.Event) error {
 	if err := p.QuerierPublisher.Publish(ctx, evt); err == nil {
-		stdout(evt)
+		var out string
+		if p.jq == nil {
+			out = evt.String()
+		} else {
+			v, matches, err := p.jq(evt)
+			if err != nil {
+				return fmt.Errorf("jq filter failed: %w", err)
+			}
+			if !matches {
+				return nil
+			}
+			out, _ = json.MarshalToString(v)
+		}
+		stdout(out)
 		return nil
 	} else if err == eventstore.ErrDupEvent {
 		return nil

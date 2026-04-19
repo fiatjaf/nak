@@ -19,8 +19,13 @@ example:
 		nak filter '{"kind": 1, "content": "hello"}' '{"kinds": [1]}' -k 0
 `,
 	DisableSliceFlagSeparator: true,
-	Flags:                     reqFilterFlags,
-	ArgsUsage:                 "[event_json] [base_filter_json]",
+	Flags: append(append([]cli.Flag{}, reqFilterFlags...),
+		&cli.StringFlag{
+			Name:  "jq",
+			Usage: "filter matching events with jq expression",
+		},
+	),
+	ArgsUsage: "[event_json] [base_filter_json]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		args := c.Args().Slice()
 
@@ -54,6 +59,11 @@ example:
 			return err
 		}
 
+		jq, err := jqPrepare(c.String("jq"))
+		if err != nil {
+			return err
+		}
+
 		// if there is no stdin we'll still get an empty object here
 		for evtj := range getJsonsOrBlank() {
 			var evt nostr.Event
@@ -83,7 +93,20 @@ example:
 			}
 
 			if baseFilter.Matches(evt) {
-				stdout(evt)
+				var out string
+				if jq == nil {
+					out = evt.String()
+				} else {
+					v, matches, err := jq(evt)
+					if err != nil {
+						return fmt.Errorf("jq filter failed: %w", err)
+					}
+					if !matches {
+						continue
+					}
+					out, _ = json.MarshalToString(v)
+				}
+				stdout(out)
 			} else {
 				logverbose("event %s didn't match %s", evt, baseFilter)
 			}

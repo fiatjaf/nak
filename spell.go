@@ -248,7 +248,9 @@ func runSpell(
 
 	// execute
 	logSpellDetails(spell)
-	performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell")
+	if err := performReq(ctx, spellFilter, spellRelays, stream, outbox, c.Uint("outbox-relays-per-pubkey"), false, 0, "nak-spell", nil); err != nil {
+		return err
+	}
 
 	return nil
 }
