@@ -144,25 +144,25 @@ example:
 			if !c.Bool("force-pre-auth") {
 				forcePreAuthSigner = nil
 			}
+
+			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+				return authSigner(ctx, c, func(s string, args ...any) {
+					if strings.HasPrefix(s, "authenticating as") {
+						cleanUrl, _ := strings.CutPrefix(
+							nip42.GetRelayURLFromAuthEvent(*authEvent),
+							"wss://",
+						)
+						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+					}
+					log(s+"\n", args...)
+				}, authEvent)
+			}
 			relays := connectToAllRelays(
 				ctx,
 				c,
 				relayUrls,
 				forcePreAuthSigner,
-				nostr.PoolOptions{
-					AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-						return authSigner(ctx, c, func(s string, args ...any) {
-							if strings.HasPrefix(s, "authenticating as") {
-								cleanUrl, _ := strings.CutPrefix(
-									nip42.GetRelayURLFromAuthEvent(*authEvent),
-									"wss://",
-								)
-								s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-							}
-							log(s+"\n", args...)
-						}, authEvent)
-					},
-				})
+			)
 
 			// stop here already if all connections failed
 			if len(relays) == 0 {

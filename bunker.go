@@ -225,7 +225,7 @@ var bunker = &cli.Command{
 			}
 		}
 		relayURLs := make([]string, 0, len(allRelays))
-		relays := connectToAllRelays(ctx, c, allRelays, nil, nostr.PoolOptions{})
+		relays := connectToAllRelays(ctx, c, allRelays, nil)
 		if len(relays) == 0 {
 			log("failed to connect to any of the given relays.\n")
 			os.Exit(3)

@@ -152,13 +152,11 @@ example:
 		relayUrls = nostr.AppendUnique(relayUrls, targetRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, replyRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, c.Args().Slice()...)
-		relays := connectToAllRelays(ctx, c, relayUrls, nil,
-			nostr.PoolOptions{
-				AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-					return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-				},
-			},
-		)
+
+		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+			return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+		}
+		relays := connectToAllRelays(ctx, c, relayUrls, nil)
 
 		if len(relays) == 0 {
 			if len(relayUrls) == 0 {

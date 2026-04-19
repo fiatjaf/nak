@@ -186,7 +186,6 @@ func connectToAllRelays(
 	c *cli.Command,
 	relayUrls []string,
 	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error), // if this exists we will force preauth
-	opts nostr.PoolOptions,
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
 	for i, url := range relayUrls {
