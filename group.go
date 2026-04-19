@@ -16,6 +16,7 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip11"
 	"fiatjaf.com/nostr/nip29"
+	"fiatjaf.com/nostr/nip42"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
@@ -27,7 +28,28 @@ var group = &cli.Command{
 	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <relay>'<identifier>" where host.tld is the relay and identifier is the group identifier.`,
 	DisableSliceFlagSeparator: true,
 	ArgsUsage:                 "<subcommand> <relay>'<identifier> [flags]",
-	Flags:                     defaultKeyFlags,
+	Flags: append(defaultKeyFlags,
+		&cli.BoolFlag{
+			Name:  "auth",
+			Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+		},
+	),
+	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
+		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+			return authSigner(ctx, c, func(s string, args ...any) {
+				if strings.HasPrefix(s, "authenticating as") {
+					cleanUrl, _ := strings.CutPrefix(
+						nip42.GetRelayURLFromAuthEvent(*authEvent),
+						"wss://",
+					)
+					s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+				}
+				log(s+"\n", args...)
+			}, authEvent)
+		}
+
+		return ctx, nil
+	},
 	Commands: []*cli.Command{
 		{
 			Name:        "info",
@@ -947,11 +969,10 @@ func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (n
 		if err := group.MergeInMetadataEvent(&ie.Event); err != nil {
 			return group, err
 		}
-
-		break
+		return group, nil
 	}
 
-	return group, nil
+	return group, fmt.Errorf("couldn't fetch group metadata")
 }
 
 func fetchGroupForumTopics(ctx context.Context, relay string, identifier string) ([]nostr.RelayEvent, error) {
