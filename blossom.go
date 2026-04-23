@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"unsafe"
 
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb0/blossom"
@@ -149,12 +151,24 @@ var blossomCmd = &cli.Command{
 				outputs := c.StringSlice("output")
 
 				hasError := false
-				for i, hash := range c.Args().Slice() {
+				var hash [32]byte
+				for i, hhash := range c.Args().Slice() {
+					if len(hhash) != 64 {
+						log("invalid blob hash '%s': %s\n", hhash, err)
+						hasError = true
+						continue
+					}
+					if _, err := hex.Decode(hash[:], unsafe.Slice(unsafe.StringData(hhash), 32)); err != nil {
+						log("invalid blob hash '%s': %s\n", hhash, err)
+						hasError = true
+						continue
+					}
+
 					if len(outputs)-1 >= i && outputs[i] != "--" {
 						// save to this file
 						err := client.DownloadToFile(ctx, hash, outputs[i])
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s\n", err)
+							log("download failed for '%s': %s\n", hhash, err)
 							hasError = true
 						}
 					} else {

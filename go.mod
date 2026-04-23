@@ -29,7 +29,7 @@ require (
 )
 
 require (
-	fiatjaf.com/lib v0.3.6
+	fiatjaf.com/lib v0.3.7
 	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/itchyny/gojq v0.12.19
 )
@@ -111,3 +111,5 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )
+
+replace fiatjaf.com/nostr => ../nostrlib
