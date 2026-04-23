@@ -48,6 +48,10 @@ example:
 				Name:  "jq",
 				Usage: "filter returned events with jq expression",
 			},
+			&cli.BoolFlag{
+				Name:  "no-verify",
+				Usage: "skip event signature verification from relays",
+			},
 			&cli.StringFlag{
 				Name:      "only-missing",
 				Usage:     "use nip77 negentropy to only fetch events that aren't present in the given jsonl file",
@@ -104,6 +108,10 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
+		if c.Bool("no-verify") {
+			sys.Pool.RelayOptions.AssumeValid = true
+		}
+
 		negentropy := c.Bool("ids-only") || c.IsSet("only-missing")
 		if negentropy {
 			if c.Bool("paginate") || c.Bool("stream") || c.Bool("outbox") {
