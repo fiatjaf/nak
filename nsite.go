@@ -13,6 +13,7 @@ import (
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip5a"
 	"fiatjaf.com/nostr/nipb0/blossom"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -112,7 +113,7 @@ var nsite = &cli.Command{
 				}
 
 				if !c.Bool("yes") {
-					log("files:\n")
+					log("%s\n", color.CyanString("files:"))
 
 					if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 						if err != nil {
@@ -127,15 +128,15 @@ var nsite = &cli.Command{
 							return fmt.Errorf("failed to get relative path for %s: %w", path, err)
 						}
 
-						log("  /%s\n", filepath.ToSlash(relPath))
+						log("  %s\n", color.GreenString("/%s", filepath.ToSlash(relPath)))
 						return nil
 					}); err != nil {
 						return err
 					}
 
-					log("blossom servers:\n")
+					log("%s\n", color.CyanString("blossom servers:"))
 					for _, server := range blossomServers {
-						log("  %s\n", server)
+						log("  %s\n", color.YellowString(server))
 					}
 					if !askConfirmation("upload nsite and publish manifest? [y/n] ") {
 						return fmt.Errorf("aborted")
@@ -163,7 +164,7 @@ var nsite = &cli.Command{
 							return fmt.Errorf("failed to upload %s to %s: %w", path, server, err)
 						}
 						hhash = bd.SHA256
-						log("uploaded %s to %s as %s\n", path, server, hhash)
+						log("uploaded %s to %s as %s\n", color.GreenString(path), color.YellowString(server), color.CyanString(hhash))
 					}
 
 					var hash [32]byte
