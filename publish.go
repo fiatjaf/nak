@@ -91,6 +91,8 @@ example:
 					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
 				case nostr.EntityPointer:
 					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
+				default:
+					return fmt.Errorf("unexpected reply target type: %T", value)
 				}
 				if err != nil {
 					return fmt.Errorf("failed to fetch reply target event: %w", err)
