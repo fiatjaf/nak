@@ -154,11 +154,11 @@ var blossomCmd = &cli.Command{
 				var hash [32]byte
 				for i, hhash := range c.Args().Slice() {
 					if len(hhash) != 64 {
-						log("invalid blob hash '%s': %s\n", hhash, err)
+						log("invalid blob hash '%s'\n", hhash)
 						hasError = true
 						continue
 					}
-					if _, err := hex.Decode(hash[:], unsafe.Slice(unsafe.StringData(hhash), 32)); err != nil {
+					if _, err := hex.Decode(hash[:], unsafe.Slice(unsafe.StringData(hhash), 64)); err != nil {
 						log("invalid blob hash '%s': %s\n", hhash, err)
 						hasError = true
 						continue
