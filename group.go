@@ -277,12 +277,14 @@ var group = &cli.Command{
 				}
 
 				eosed := false
+				var mu sync.Mutex
 				messages := make([]struct {
 					message  string
 					rendered bool
 				}, 200)
 				base := len(messages)
 
+				// must be called with mu held
 				tryRender := func(i int) {
 					// if all messages before these are loaded we can render this,
 					// otherwise we render whatever we can and stop
@@ -301,6 +303,7 @@ var group = &cli.Command{
 				for {
 					select {
 					case evt := <-sub.Events:
+						mu.Lock()
 						var i int
 						if eosed {
 							i = len(messages)
@@ -308,24 +311,33 @@ var group = &cli.Command{
 								message  string
 								rendered bool
 							}{})
-						} else {
+						} else if base > 0 {
 							base--
 							i = base
+						} else {
+							// pre-EOSE buffer is full (relay returned more than the limit); drop.
+							mu.Unlock()
+							continue
 						}
+						mu.Unlock()
 
 						go func() {
 							meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
-							messages[i].message = color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + evt.Content
-
+							line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + evt.Content
+							mu.Lock()
+							messages[i].message = line
 							if eosed {
 								tryRender(i)
 							}
+							mu.Unlock()
 						}()
 					case reason := <-sub.ClosedReason:
 						stdout("closed:" + color.YellowString(reason))
 					case <-sub.EndOfStoredEvents:
+						mu.Lock()
 						eosed = true
 						tryRender(len(messages) - 1)
+						mu.Unlock()
 					case <-sub.Context.Done():
 						return fmt.Errorf("subscription ended: %w", context.Cause(sub.Context))
 					}
