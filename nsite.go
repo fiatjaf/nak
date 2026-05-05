@@ -273,7 +273,11 @@ var nsite = &cli.Command{
 				signer := keyer.NewReadOnlySigner(pk)
 
 				for path, hash := range mnf.Paths {
-					fullPath := filepath.Join(outputDir, filepath.FromSlash(strings.TrimPrefix(path, "/")))
+					relPath := strings.TrimPrefix(path, "/")
+					if !filepath.IsLocal(relPath) {
+						return fmt.Errorf("manifest path %q escapes output directory", path)
+					}
+					fullPath := filepath.Join(outputDir, filepath.FromSlash(relPath))
 					if err := os.MkdirAll(filepath.Dir(fullPath), 0o755); err != nil {
 						return fmt.Errorf("failed to create %s: %w", filepath.Dir(fullPath), err)
 					}
