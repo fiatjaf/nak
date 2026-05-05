@@ -108,13 +108,65 @@ var serve = &cli.Command{
 			rl.Negentropy = true
 		}
 
-		started := make(chan bool)
 		exited := make(chan error)
 
 		hostname := c.String("hostname")
 		port := int(c.Uint("port"))
 
+		totalConnections := atomic.Int32{}
+		rl.OnConnect = func(ctx context.Context) {
+			totalConnections.Add(1)
+			go func() {
+				<-ctx.Done()
+				totalConnections.Add(-1)
+			}()
+		}
+
+		d := debounce.New(time.Second * 2)
 		var printStatus func()
+		printStatus = func() {
+			d(func() {
+				totalEvents, err := db.CountEvents(nostr.Filter{})
+				if err != nil {
+					log("failed to count: %s\n", err)
+				}
+				subs := rl.GetListeningFilters()
+
+				blossomMsg := ""
+				if c.Bool("blossom") {
+					blobsStored := blobStore.Size()
+					blossomMsg = fmt.Sprintf("blobs: %s, ",
+						color.HiMagentaString("%d", blobsStored),
+					)
+				}
+
+				graspMsg := ""
+				if c.Bool("grasp") {
+					gitAnnounced := 0
+					gitStored := 0
+					for evt := range db.QueryEvents(nostr.Filter{Kinds: []nostr.Kind{nostr.Kind(30617)}}, 500) {
+						gitAnnounced++
+						identifier := evt.Tags.GetD()
+						if info, err := os.Stat(filepath.Join(repoDir, identifier)); err == nil && info.IsDir() {
+							gitStored++
+						}
+					}
+					graspMsg = fmt.Sprintf("git announced: %s, git stored: %s, ",
+						color.HiMagentaString("%d", gitAnnounced),
+						color.HiMagentaString("%d", gitStored),
+					)
+				}
+
+				log("  %s events: %s, %s%sconnections: %s, subscriptions: %s\n",
+					color.HiMagentaString("•"),
+					color.HiMagentaString("%d", totalEvents),
+					blossomMsg,
+					graspMsg,
+					color.HiMagentaString("%d", totalConnections.Load()),
+					color.HiMagentaString("%d", len(subs)),
+				)
+			})
+		}
 
 		if c.Bool("blossom") {
 			bs := blossom.New(rl, fmt.Sprintf("http://%s:%d", hostname, port))
@@ -165,8 +217,13 @@ var serve = &cli.Command{
 			}
 		}
 
+		ln, err := net.Listen("tcp", net.JoinHostPort(hostname, strconv.Itoa(port)))
+		if err != nil {
+			return err
+		}
+
 		go func() {
-			exited <- http.ListenAndServe(net.JoinHostPort(hostname, strconv.Itoa(port)), rl)
+			exited <- http.Serve(ln, rl)
 		}()
 
 		// relay logging
@@ -193,61 +250,6 @@ var serve = &cli.Command{
 			return false, ""
 		}
 
-		totalConnections := atomic.Int32{}
-		rl.OnConnect = func(ctx context.Context) {
-			totalConnections.Add(1)
-			go func() {
-				<-ctx.Done()
-				totalConnections.Add(-1)
-			}()
-		}
-
-		d := debounce.New(time.Second * 2)
-		printStatus = func() {
-			d(func() {
-				totalEvents, err := db.CountEvents(nostr.Filter{})
-				if err != nil {
-					log("failed to count: %s\n", err)
-				}
-				subs := rl.GetListeningFilters()
-
-				blossomMsg := ""
-				if c.Bool("blossom") {
-					blobsStored := blobStore.Size()
-					blossomMsg = fmt.Sprintf("blobs: %s, ",
-						color.HiMagentaString("%d", blobsStored),
-					)
-				}
-
-				graspMsg := ""
-				if c.Bool("grasp") {
-					gitAnnounced := 0
-					gitStored := 0
-					for evt := range db.QueryEvents(nostr.Filter{Kinds: []nostr.Kind{nostr.Kind(30617)}}, 500) {
-						gitAnnounced++
-						identifier := evt.Tags.GetD()
-						if info, err := os.Stat(filepath.Join(repoDir, identifier)); err == nil && info.IsDir() {
-							gitStored++
-						}
-					}
-					graspMsg = fmt.Sprintf("git announced: %s, git stored: %s, ",
-						color.HiMagentaString("%d", gitAnnounced),
-						color.HiMagentaString("%d", gitStored),
-					)
-				}
-
-				log("  %s events: %s, %s%sconnections: %s, subscriptions: %s\n",
-					color.HiMagentaString("•"),
-					color.HiMagentaString("%d", totalEvents),
-					blossomMsg,
-					graspMsg,
-					color.HiMagentaString("%d", totalConnections.Load()),
-					color.HiMagentaString("%d", len(subs)),
-				)
-			})
-		}
-
-		<-started
 		log("%s relay running at %s", color.HiRedString(">"), colors.boldf("ws://%s:%d", hostname, port))
 		if c.Bool("grasp") {
 			log(" (grasp repos at %s)", repoDir)
