@@ -452,54 +452,56 @@ var bunker = &cli.Command{
 		for ie := range events {
 			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
 
-			// handle the NIP-46 request event
-			from := ie.Event.PubKey
-			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
-			if err != nil {
-				if errors.Is(err, nip46.AlreadyHandled) {
-					continue
-				}
-
-				log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
-				continue
-			}
-
-			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
-			jresp, _ := json.MarshalIndent(resp, "", "  ")
-			log("~ responding with %s\n", string(jresp))
-
-			// use custom relays if they are defined for this client
-			// (normally if the initial connection came from a nostrconnect:// URL)
-			relays := relayURLs
-			for _, c := range config.Clients {
-				if c.PubKey == from && len(c.CustomRelays) > 0 {
-					relays = c.CustomRelays
-					break
-				}
-			}
-
-			for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
-				if res.Error == nil {
-					log("* sent response through %s\n", res.Relay.URL)
-				} else {
-					log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
-				}
-			}
-
-			// just after handling one request we trigger this
 			go func() {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-				cancelPreviousBunkerInfoPrint = cancel
-				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
-				// but we will only do if the bunker is inactive for more than 5 minutes
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Minute * 5):
-					log("\n")
-					printBunkerInfo()
+				// handle the NIP-46 request event
+				from := ie.Event.PubKey
+				req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
+				if err != nil {
+					if errors.Is(err, nip46.AlreadyHandled) {
+						return
+					}
+
+					log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
+					return
 				}
+
+				jreq, _ := json.MarshalIndent(req, "", "  ")
+				log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
+				jresp, _ := json.MarshalIndent(resp, "", "  ")
+				log("~ responding with %s\n", string(jresp))
+
+				// use custom relays if they are defined for this client
+				// (normally if the initial connection came from a nostrconnect:// URL)
+				relays := relayURLs
+				for _, c := range config.Clients {
+					if c.PubKey == from && len(c.CustomRelays) > 0 {
+						relays = c.CustomRelays
+						break
+					}
+				}
+
+				for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
+					if res.Error == nil {
+						log("* sent response through %s\n", res.Relay.URL)
+					} else {
+						log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
+					}
+				}
+
+				// just after handling one request we trigger this
+				go func() {
+					ctx, cancel := context.WithCancel(ctx)
+					defer cancel()
+					cancelPreviousBunkerInfoPrint = cancel
+					// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
+					// but we will only do if the bunker is inactive for more than 5 minutes
+					select {
+					case <-ctx.Done():
+					case <-time.After(time.Minute * 5):
+						log("\n")
+						printBunkerInfo()
+					}
+				}()
 			}()
 		}
 
