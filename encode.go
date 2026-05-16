@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	stdjson "encoding/json"
 	"fmt"
 
 	"fiatjaf.com/nostr"
@@ -21,7 +22,7 @@ var encode = &cli.Command{
 		nak encode nsec <privkey-hex>
 		echo '{"pubkey":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19","relays":["wss://nada.zero"]}' | nak encode
 		echo '{
-		  "id":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19"
+		  "id":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19",
 		  "relays":["wss://nada.zero"],
 		  "author":"ebb6ff85430705651b311ed51328767078fd790b14f02d22efba68d5513376bc"
 		} | nak encode`,
@@ -51,20 +52,20 @@ var encode = &cli.Command{
 			}
 
 			var eventPtr nostr.EventPointer
-			if err := json.Unmarshal([]byte(jsonStr), &eventPtr); err == nil && eventPtr.ID != nostr.ZeroID {
+			if err := stdjson.Unmarshal([]byte(jsonStr), &eventPtr); err == nil && eventPtr.ID != nostr.ZeroID {
 				stdout(nip19.EncodeNevent(eventPtr.ID, nostr.AppendUnique(relays, eventPtr.Relays...), eventPtr.Author))
 				continue
 			}
 
-			var profilePtr nostr.ProfilePointer
-			if err := json.Unmarshal([]byte(jsonStr), &profilePtr); err == nil && profilePtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, nostr.AppendUnique(relays, profilePtr.Relays...)))
+			var entityPtr nostr.EntityPointer
+			if err := stdjson.Unmarshal([]byte(jsonStr), &entityPtr); err == nil && entityPtr.PublicKey != nostr.ZeroPK && entityPtr.Kind != 0 {
+				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, nostr.AppendUnique(relays, entityPtr.Relays...)))
 				continue
 			}
 
-			var entityPtr nostr.EntityPointer
-			if err := json.Unmarshal([]byte(jsonStr), &entityPtr); err == nil && entityPtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, nostr.AppendUnique(relays, entityPtr.Relays...)))
+			var profilePtr nostr.ProfilePointer
+			if err := stdjson.Unmarshal([]byte(jsonStr), &profilePtr); err == nil && profilePtr.PublicKey != nostr.ZeroPK {
+				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, nostr.AppendUnique(relays, profilePtr.Relays...)))
 				continue
 			}
 
