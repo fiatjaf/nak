@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
@@ -27,7 +28,12 @@ var encode = &cli.Command{
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() != 0 {
-			return nil
+			switch c.Args().First() {
+			case "naddr", "nevent", "npub", "nprofile", "nsec":
+				return nil
+			}
+
+			return fmt.Errorf("unknown encode target '%s'", c.Args().First())
 		}
 
 		relays := c.StringSlice("relay")
