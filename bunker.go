@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"os"
@@ -251,8 +252,10 @@ var bunker = &cli.Command{
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
-			qs.Set("secret", newSecret)
-			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
+			iqs := make(url.Values)
+			maps.Copy(iqs, qs)
+			iqs.Set("secret", newSecret)
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), iqs.Encode())
 
 			authorizedKeysStr := ""
 			if len(config.Clients) != 0 {
