@@ -263,15 +263,13 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 		keyGroups := make([][]*btcec.PublicKey, 0, len(result.Keys))
 
 		for i, keyhex := range result.Keys {
-			keyb, err := hex.DecodeString(keyhex)
-			if err != nil {
-				return fmt.Errorf("error parsing key %s: %w", keyhex, err)
-			}
+			pk32, err := parsePubKey(keyhex)
+			if err == nil { /* we'll try both the 02 and the 03 prefix versions */
+				result.Keys[i] = pk32.Hex()
 
-			if len(keyb) == 32 /* we'll use both the 02 and the 03 prefix versions */ {
 				group := make([]*btcec.PublicKey, 2)
 				for i, prefix := range []byte{0x02, 0x03} {
-					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, keyb...))
+					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, pk32[:]...))
 					if err != nil {
 						log("error parsing key %s: %s", keyhex, err)
 						continue
@@ -279,7 +277,16 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 					group[i] = pubk
 				}
 				keyGroups = append(keyGroups, group)
-			} else /* assume it's 33 */ {
+				continue
+			}
+
+			keyb, err := hex.DecodeString(keyhex)
+			if err != nil {
+				return fmt.Errorf("error parsing key %s: %w", keyhex, err)
+			}
+			if len(keyb) == 33 {
+				result.Keys[i] = hex.EncodeToString(keyb[1:])
+
 				pubk, err := btcec.ParsePubKey(keyb)
 				if err != nil {
 					return fmt.Errorf("error parsing key %s: %w", keyhex, err)
@@ -288,6 +295,8 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 
 				// remove the leading byte from the output just so it is all uniform
 				result.Keys[i] = result.Keys[i][2:]
+
+				continue
 			}
 		}
 
