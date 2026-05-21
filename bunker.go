@@ -225,17 +225,15 @@ var bunker = &cli.Command{
 				}
 			}
 		}
-		relayURLs := make([]string, 0, len(allRelays))
 		relays := connectToAllRelays(ctx, c, allRelays, nil)
 		if len(relays) == 0 {
 			log("failed to connect to any of the given relays.\n")
 			os.Exit(3)
 		}
-		for _, relay := range relays {
-			relayURLs = append(relayURLs, relay.URL)
-			qs.Add("relay", relay.URL)
+		for _, relay := range config.Relays {
+			qs.Add("relay", relay)
 		}
-		if len(relayURLs) == 0 {
+		if len(relays) == 0 {
 			return fmt.Errorf("not connected to any relays: please specify at least one")
 		}
 
@@ -295,8 +293,8 @@ var bunker = &cli.Command{
 				secretKeyFlag = "--sec " + sec
 			}
 
-			relayURLsPossiblyWithoutSchema := make([]string, len(relayURLs))
-			for i, url := range relayURLs {
+			relayURLsPossiblyWithoutSchema := make([]string, len(config.Relays))
+			for i, url := range config.Relays {
 				if strings.HasPrefix(url, "wss://") {
 					relayURLsPossiblyWithoutSchema[i] = url[6:]
 				} else {
@@ -313,7 +311,7 @@ var bunker = &cli.Command{
 				)
 
 				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
-					colors.bold(relayURLs),
+					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
 					authorizedKeysStr,
@@ -324,7 +322,7 @@ var bunker = &cli.Command{
 			} else {
 				// otherwise just print the data
 				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  bunker: %s\n\n",
-					colors.bold(relayURLs),
+					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
 					authorizedKeysStr,
@@ -343,7 +341,7 @@ var bunker = &cli.Command{
 		printBunkerInfo()
 
 		// subscribe to relays
-		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
+		events := sys.Pool.SubscribeMany(ctx, allRelays, nostr.Filter{
 			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
 			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
 			Since:     nostr.Now(),
@@ -475,7 +473,7 @@ var bunker = &cli.Command{
 
 				// use custom relays if they are defined for this client
 				// (normally if the initial connection came from a nostrconnect:// URL)
-				relays := relayURLs
+				relays := config.Relays
 				for _, c := range config.Clients {
 					if c.PubKey == from && len(c.CustomRelays) > 0 {
 						relays = c.CustomRelays
