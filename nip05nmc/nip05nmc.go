@@ -2,7 +2,6 @@ package nip05nmc
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"regexp"
@@ -108,21 +107,57 @@ func parseIdentifier(raw string) *parsedIdentifier {
 // The context deadline is respected: we ask ElectrumX to honour the
 // same timeout the caller set on the HTTP-based NIP-05 path.
 func QueryIdentifier(ctx context.Context, identifier string) (*nostr.ProfilePointer, error) {
+	return queryIdentifierWithLookup(ctx, identifier, electrumxLookup(ctx))
+}
+
+// electrumxLookup returns a nameValueLookup that fetches each name
+// via the default ElectrumX server pool. Failures collapse to the
+// empty string per the lenient nameValueLookup contract.
+func electrumxLookup(ctx context.Context) nameValueLookup {
+	client := NewElectrumClient()
+	return func(namecoinName string) string {
+		result, err := client.NameShowWithFallback(ctx, namecoinName, DefaultElectrumXServers)
+		if err != nil || result == nil {
+			return ""
+		}
+		return result.Value
+	}
+}
+
+// queryIdentifierWithLookup is the lookup-injected core of
+// QueryIdentifier. It is unexported so test code in this package can
+// stub the Namecoin transport without standing up a live ElectrumX.
+//
+// The flow is:
+//
+//  1. Parse the identifier into name + local-part.
+//  2. Fetch the apex name's value via lookup.
+//  3. Parse the value as a JSON object; expand any ifa-0001 §"import"
+//     chain via expandImports so that records like testls.bit (which
+//     keep their nostr.names block in a sibling dd/ name) resolve.
+//  4. Pull the nostr pubkey + relays out of the merged object.
+func queryIdentifierWithLookup(ctx context.Context, identifier string, lookup nameValueLookup) (*nostr.ProfilePointer, error) {
 	parsed := parseIdentifier(identifier)
 	if parsed == nil {
 		return nil, fmt.Errorf("nip05nmc: not a Namecoin identifier: %q", identifier)
 	}
 
-	client := NewElectrumClient()
-	result, err := client.NameShowWithFallback(ctx, parsed.namecoinName, DefaultElectrumXServers)
-	if err != nil {
-		return nil, err
-	}
-	if result == nil {
+	apex := lookup(parsed.namecoinName)
+	if apex == "" {
 		return nil, ErrNameNotFound
 	}
 
-	pubkeyHex, relays, err := extractNostrFromValue(result.Value, parsed)
+	root, ok := tryParseObject(apex)
+	if !ok {
+		return nil, fmt.Errorf("nip05nmc: name value for %q is not a JSON object", parsed.namecoinName)
+	}
+
+	// ifa-0001 §"import": merge any imported siblings into the apex
+	// object before extracting nostr fields. Records without an
+	// `import` key incur zero extra I/O.
+	merged := expandImports(root, lookup, DefaultMaxImportDepth)
+
+	pubkeyHex, relays, err := extractNostrFromObject(merged, parsed)
 	if err != nil {
 		return nil, err
 	}
@@ -131,29 +166,37 @@ func QueryIdentifier(ctx context.Context, identifier string) (*nostr.ProfilePoin
 	if err != nil {
 		return nil, fmt.Errorf("nip05nmc: invalid pubkey %q in name value: %w", pubkeyHex, err)
 	}
+	_ = ctx // context is consumed by the lookup; kept on the signature for API parity
 	return &nostr.ProfilePointer{
 		PublicKey: pk,
 		Relays:    relays,
 	}, nil
 }
 
-// extractNostrFromValue parses the Namecoin name value JSON and pulls
-// the relevant nostr pubkey + relay list out of it. Supports both the
-// simple `"nostr": "hex"` form and the extended
-// `"nostr": { "names": {...}, "relays": {...} }` form used by Amethyst.
+// extractNostrFromValue is a thin adapter that decodes a raw
+// Namecoin name value JSON and delegates to extractNostrFromObject.
+// It is retained so the long-standing extractor tests continue to
+// drive the same behaviour after the import-chain refactor.
 func extractNostrFromValue(valueJSON string, parsed *parsedIdentifier) (string, []string, error) {
-	var root map[string]json.RawMessage
-	if err := json.Unmarshal([]byte(valueJSON), &root); err != nil {
-		return "", nil, fmt.Errorf("nip05nmc: name value is not valid JSON: %w", err)
+	root, ok := tryParseObject(valueJSON)
+	if !ok {
+		return "", nil, fmt.Errorf("nip05nmc: name value is not valid JSON: %q", valueJSON)
 	}
+	return extractNostrFromObject(root, parsed)
+}
+
+// extractNostrFromObject pulls the nostr pubkey + relay list out of
+// an already-parsed (and import-expanded) Namecoin name value.
+// Supports both the simple `"nostr": "hex"` form and the extended
+// `"nostr": { "names": {...}, "relays": {...} }` form used by Amethyst.
+func extractNostrFromObject(root map[string]any, parsed *parsedIdentifier) (string, []string, error) {
 	nostrRaw, ok := root["nostr"]
 	if !ok {
 		return "", nil, errors.New("nip05nmc: name value has no \"nostr\" field")
 	}
 
 	// Simple form: "nostr": "hex-pubkey"
-	var asString string
-	if err := json.Unmarshal(nostrRaw, &asString); err == nil {
+	if asString, ok := nostrRaw.(string); ok {
 		if parsed.isDomain && parsed.localPart != "_" {
 			return "", nil, fmt.Errorf("nip05nmc: simple nostr field only supports root lookup, got local-part %q", parsed.localPart)
 		}
@@ -164,9 +207,9 @@ func extractNostrFromValue(valueJSON string, parsed *parsedIdentifier) (string, 
 	}
 
 	// Extended form: object with "names" and optional "relays".
-	var asObject map[string]json.RawMessage
-	if err := json.Unmarshal(nostrRaw, &asObject); err != nil {
-		return "", nil, fmt.Errorf("nip05nmc: nostr field is neither string nor object: %w", err)
+	asObject, ok := nostrRaw.(map[string]any)
+	if !ok {
+		return "", nil, errors.New("nip05nmc: nostr field is neither string nor object")
 	}
 
 	if parsed.isDomain {
@@ -175,27 +218,31 @@ func extractNostrFromValue(valueJSON string, parsed *parsedIdentifier) (string, 
 	return extractFromIdentityObject(asObject, parsed)
 }
 
-func extractFromDomainNamesObject(obj map[string]json.RawMessage, parsed *parsedIdentifier) (string, []string, error) {
+func extractFromDomainNamesObject(obj map[string]any, parsed *parsedIdentifier) (string, []string, error) {
 	namesRaw, ok := obj["names"]
 	if !ok {
 		return "", nil, errors.New("nip05nmc: extended nostr object lacks \"names\"")
 	}
-	var names map[string]string
-	if err := json.Unmarshal(namesRaw, &names); err != nil {
-		return "", nil, fmt.Errorf("nip05nmc: parse names map: %w", err)
+	names, ok := namesRaw.(map[string]any)
+	if !ok {
+		return "", nil, errors.New("nip05nmc: nostr.names is not an object")
 	}
 
 	// Match priority: exact local-part → "_" root → first entry (only
-	// when the caller asked for root). Matches Kotlin reference.
+	// when the caller asked for root).
 	var pickedKey, pickedPubkey string
-	if v, ok := names[parsed.localPart]; ok && hexPubKeyRegex.MatchString(v) {
+	if v, ok := stringFrom(names, parsed.localPart); ok && hexPubKeyRegex.MatchString(v) {
 		pickedKey, pickedPubkey = parsed.localPart, v
-	} else if v, ok := names["_"]; ok && hexPubKeyRegex.MatchString(v) {
+	} else if v, ok := stringFrom(names, "_"); ok && hexPubKeyRegex.MatchString(v) {
 		pickedKey, pickedPubkey = "_", v
 	} else if parsed.localPart == "_" {
 		// First entry (map iteration order is non-deterministic, so
 		// this is a weak fallback — we accept the first valid pubkey).
-		for k, v := range names {
+		for k, raw := range names {
+			v, ok := raw.(string)
+			if !ok {
+				continue
+			}
 			if hexPubKeyRegex.MatchString(v) {
 				pickedKey, pickedPubkey = k, v
 				break
@@ -211,48 +258,71 @@ func extractFromDomainNamesObject(obj map[string]json.RawMessage, parsed *parsed
 	return strings.ToLower(pickedPubkey), relays, nil
 }
 
-func extractFromIdentityObject(obj map[string]json.RawMessage, parsed *parsedIdentifier) (string, []string, error) {
+func extractFromIdentityObject(obj map[string]any, parsed *parsedIdentifier) (string, []string, error) {
 	// Try "pubkey" field.
-	if raw, ok := obj["pubkey"]; ok {
-		var pk string
-		if err := json.Unmarshal(raw, &pk); err == nil && hexPubKeyRegex.MatchString(pk) {
-			// Try "relays" array (id/ shape).
-			var relays []string
-			if r, ok := obj["relays"]; ok {
-				_ = json.Unmarshal(r, &relays)
-			}
-			return strings.ToLower(pk), relays, nil
+	if pk, ok := stringFrom(obj, "pubkey"); ok && hexPubKeyRegex.MatchString(pk) {
+		var relays []string
+		if r, ok := obj["relays"]; ok {
+			relays = stringSliceFrom(r)
 		}
+		return strings.ToLower(pk), relays, nil
 	}
 
 	// Fall back to NIP-05-like "names" with "_" root.
 	if raw, ok := obj["names"]; ok {
-		var names map[string]string
-		if err := json.Unmarshal(raw, &names); err == nil {
-			if v, ok := names["_"]; ok && hexPubKeyRegex.MatchString(v) {
+		if names, ok := raw.(map[string]any); ok {
+			if v, ok := stringFrom(names, "_"); ok && hexPubKeyRegex.MatchString(v) {
 				relays := extractRelays(obj, v)
 				return strings.ToLower(v), relays, nil
 			}
 		}
 	}
 
+	_ = parsed
 	return "", nil, errors.New("nip05nmc: id/ nostr object has no valid pubkey")
 }
 
-func extractRelays(obj map[string]json.RawMessage, pubkey string) []string {
+func extractRelays(obj map[string]any, pubkey string) []string {
 	raw, ok := obj["relays"]
 	if !ok {
 		return nil
 	}
-	var relayMap map[string][]string
-	if err := json.Unmarshal(raw, &relayMap); err != nil {
+	relayMap, ok := raw.(map[string]any)
+	if !ok {
 		return nil
 	}
 	if v, ok := relayMap[strings.ToLower(pubkey)]; ok {
-		return v
+		return stringSliceFrom(v)
 	}
 	if v, ok := relayMap[pubkey]; ok {
-		return v
+		return stringSliceFrom(v)
 	}
 	return nil
+}
+
+// stringFrom reads a string-valued key from a generic map, returning
+// ("", false) if the key is missing or the value is not a string.
+func stringFrom(m map[string]any, key string) (string, bool) {
+	v, ok := m[key]
+	if !ok {
+		return "", false
+	}
+	s, ok := v.(string)
+	return s, ok
+}
+
+// stringSliceFrom coerces a JSON-decoded []any into []string, dropping
+// non-string entries. Returns nil for non-array inputs.
+func stringSliceFrom(v any) []string {
+	arr, ok := v.([]any)
+	if !ok {
+		return nil
+	}
+	out := make([]string, 0, len(arr))
+	for _, entry := range arr {
+		if s, ok := entry.(string); ok {
+			out = append(out, s)
+		}
+	}
+	return out
 }
