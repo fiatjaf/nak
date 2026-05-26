@@ -100,7 +100,7 @@ example:
 		},
 		&cli.BoolFlag{
 			Name:        "outbox",
-			Usage:       "use outbox relays from specified public keys",
+			Usage:       "publish to the \"write\" relays of the author and to the \"read\" relays of anyone mentioned  in \"p\" tags",
 			DefaultText: "false, will only use manually-specified relays",
 			Category:    CATEGORY_EXTRAS,
 		},

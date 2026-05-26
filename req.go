@@ -68,7 +68,7 @@ example:
 			},
 			&cli.BoolFlag{
 				Name:        "outbox",
-				Usage:       "use outbox relays from specified public keys",
+				Usage:       "read from \"write\" relays of \"authors\" and/or from the \"read\" relays of any \"#p\" or \"#P\" tags",
 				DefaultText: "false, will only use manually-specified relays",
 			},
 			&cli.UintFlag{
