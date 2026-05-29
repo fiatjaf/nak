@@ -17,7 +17,6 @@ require (
 	github.com/mark3labs/mcp-go v0.8.3
 	github.com/markusmobius/go-dateparser v1.2.3
 	github.com/mattn/go-isatty v0.0.20
-	github.com/mattn/go-tty v0.0.7
 	github.com/mdp/qrterminal/v3 v3.2.1
 	github.com/puzpuzpuz/xsync/v3 v3.5.1
 	github.com/stretchr/testify v1.10.0
@@ -32,6 +31,7 @@ require (
 	fiatjaf.com/lib v0.3.7
 	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/itchyny/gojq v0.12.19
+	github.com/mattn/go-tty/v2 v2.0.0
 )
 
 require (
