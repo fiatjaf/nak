@@ -27,7 +27,7 @@ import (
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mattn/go-isatty"
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
