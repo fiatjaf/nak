@@ -145,6 +145,30 @@ type the password to decrypt your secret key: **********
 985d66d2644dfa7676e26046914470d66ebc7fa783a3f57f139fde32d0d631d7
 ```
 
+### display profile information for any npub, nip05 or hex key
+
+```shell
+~> nak profile f7z.io
+pubkey (hex): fa984bd7dbb282f07e16e7ae87b26a2a7b9b90b7246a44771f0cf5ae58018f52
+npub: npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn66ukqp3afqutajft
+profile uri: nostr:nprofile1qqs04xzt6ldm9qhs0ctw0t58kf4z57umjzmjg6jywu0seadwtqqc75spr9mhxue69uhhq7tjv9kkjepwve5kzar2v9nzucm0d5q3qamnwvaz7te3xsczue3h0ghxjmcppemhxue69uhhytnxxaazu6t0axr23s
+name: PABLOF7z
+display_name: PABLOF7z
+about: Magical Other Stuff Maximalist.
+picture: https://m.primal.net/KwlG.jpg
+banner: https://24242.io/1dc3a4a8bb2626551d4cc91e93f5b2e6ef87b1931b9db9bf4ac72dfe61c7a45b.png
+website: https://pablof7z.com
+nip05: _@f7z.io (verified)
+lud16: pablof7z@primal.net
+relays:
+   wss://relay.damus.io (read)
+   wss://relay.primal.net (read)
+   wss://pyramid.fiatjaf.com (write)
+   wss://140.f7z.io (write)
+   wss://r.f7z.io (read/write)
+follows: 1051
+```
+
 ### sign an event using a bunker provider (amber, promenade etc)
 ```shell
 ~> export NOSTR_CLIENT_KEY="$(nak key generate)"
