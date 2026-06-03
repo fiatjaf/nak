@@ -52,6 +52,7 @@ var app = &cli.Command{
 		nsite,
 		git,
 		group,
+		podcast,
 		nip,
 		syncCmd,
 		spell,
