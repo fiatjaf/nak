@@ -33,6 +33,7 @@ var app = &cli.Command{
 		decode,
 		encode,
 		key,
+		kindCmd,
 		verify,
 		relay,
 		admin,

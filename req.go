@@ -17,6 +17,7 @@ import (
 	"fiatjaf.com/nostr/eventstore/wrappers"
 	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip77"
+	"fiatjaf.com/nostr/schema"
 	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
@@ -503,10 +504,10 @@ var reqFilterFlags = []cli.Flag{
 		Usage:    "only accept events with these ids",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
-	&cli.IntSliceFlag{
+	&KindSliceFlag{
 		Name:     "kind",
 		Aliases:  []string{"k"},
-		Usage:    "only accept events with these kind numbers",
+		Usage:    "only accept events with these kind numbers or kind names",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
 	&cli.StringSliceFlag{
@@ -558,6 +559,16 @@ var reqFilterFlags = []cli.Flag{
 		Usage:    "a nip50 search query, use it only with relays that explicitly support it",
 		Category: CATEGORY_FILTER_ATTRIBUTES,
 	},
+
+	// hidden
+	&cli.StringFlag{
+		Name:        "schema",
+		Usage:       "url to download the YAML schema from, or path to the file",
+		Value:       schema.DefaultSchemaURL,
+		TakesFile:   true,
+		Destination: &schemaURI,
+		Hidden:      true,
+	},
 }
 
 type flagTag struct {
@@ -587,9 +598,7 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	if ids := getIDSlice(c, "id"); len(ids) > 0 {
 		filter.IDs = append(filter.IDs, ids...)
 	}
-	for _, kind64 := range c.IntSlice("kind") {
-		filter.Kinds = append(filter.Kinds, nostr.Kind(kind64))
-	}
+	filter.Kinds = getKindSlice(c, "kind")
 	if search := c.String("search"); search != "" {
 		filter.Search = search
 	}

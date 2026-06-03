@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -22,10 +23,12 @@ import (
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip42"
+	"fiatjaf.com/nostr/schema"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
+	"github.com/lithammer/fuzzysearch/fuzzy"
 	"github.com/mattn/go-isatty"
 	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
@@ -608,6 +611,65 @@ func clampWithEllipsis(s string, size int) string {
 		return s
 	}
 	return s[0:size-1] + "…"
+}
+
+var (
+	schemaURI       string
+	fetchSchemaOnce sync.Once
+	schemaCache     schema.Schema
+	schemaErrCache  error
+)
+
+func getSchema() (schema.Schema, error) {
+	fetchSchemaOnce.Do(func() {
+		if strings.HasPrefix(schemaURI, "http") {
+			schemaCache, schemaErrCache = schema.FetchSchemaFromURL(schemaURI)
+		} else {
+			schemaCache, schemaErrCache = schema.NewSchemaFromFile(schemaURI)
+		}
+	})
+	return schemaCache, schemaErrCache
+}
+
+func stringToKind(value string) (nostr.Kind, error) {
+	if n, err := strconv.Atoi(value); err == nil && n >= 0 {
+		return nostr.Kind(n), nil
+	}
+
+	// find kind from name
+	sch, err := getSchema()
+	if err != nil {
+		return 0, err
+	}
+
+	fuzzyWords := make([]string, 0, len(sch.Kinds))
+	fuzzyIndexes := make([]string, 0, len(sch.Kinds))
+
+	// exact match
+	for k, ks := range sch.Kinds {
+		fuzzyWords = append(fuzzyWords, ks.Description)
+		fuzzyIndexes = append(fuzzyIndexes, k)
+
+		if strings.EqualFold(ks.Description, value) {
+			return ks.Kind, nil
+		}
+	}
+
+	// fuzzy match
+	result := fuzzy.RankFindNormalizedFold(value, fuzzyWords)
+	bestDesc := "<none>"
+	bestDist := "-"
+
+	if len(result) > 0 {
+		if bd := result[0].Distance; bd < 26 {
+			return sch.Kinds[fuzzyIndexes[result[0].OriginalIndex]].Kind, nil
+		} else {
+			bestDesc = sch.Kinds[fuzzyIndexes[result[0].OriginalIndex]].Description
+			bestDist = strconv.Itoa(bd)
+		}
+	}
+
+	return 0, fmt.Errorf("unknown kind: %q (closest: %q, distance: %s)", value, bestDesc, bestDist)
 }
 
 var colors = struct {

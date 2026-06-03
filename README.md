@@ -107,7 +107,7 @@ ok.
 
 ### sign an event collaboratively with multiple parties using musig2
 ```shell
-~> nak event --sec 1234 -k 1 -c 'hello from a combined key' --musig 2
+~> nak event --sec 1234 -k 'text note' -c 'hello from a combined key' --musig 2
 the following code should be saved secretly until the next step an included with --musig-nonce-secret:
 QebOT03ERmV7km22CqEqBPFmzAkgxQzGGbR7Si8yIZCBrd1N9A3LKwGLO71kbgXZ9EYFKpjiwun4u0mj5Tq6vwM3pK7x+EI8oHbkt9majKv/QN24Ix8qnwEIHxXX+mXBug==
 
@@ -343,7 +343,7 @@ echo "#surely you're joking, mr npub1l2vyh47mk2p0qlsku7hg0vn29faehy9hy34ygaclpn6
 
 ### record and publish an audio note (yakbak, nostur etc) signed from a bunker
 ```shell
-ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blossom.primal.net upload | jq -rc '{content: .url}' | nak event -k 1222 --sec 'bunker://urlgoeshere' pyramid.fiatjaf.com nostr.wine
+ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blossom.primal.net upload | jq -rc '{content: .url}' | nak event -k 'voice message' --sec 'bunker://urlgoeshere' pyramid.fiatjaf.com nostr.wine
 ```
 
 ### gift-wrap an event to a recipient and publish it somewhere
@@ -353,7 +353,7 @@ ffmpeg -f alsa -i default -f webm -t 00:00:03 pipe:1 | nak blossom --server blos
 
 ### download a gift-wrap event and unwrap it
 ```shell
-~> nak req -p <my-public-key> -k 1059 relay.com | nak gift unwrap --sec <my-secret-key> --from <sender-public-key>
+~> nak req -p <my-public-key> -k 'giftwrap' relay.com | nak gift unwrap --sec <my-secret-key> --from <sender-public-key>
 ```
 
 ### sync events between two relays using negentropy
@@ -471,4 +471,41 @@ gitnostr.com... ok.
 ~> nak group admin "<relay>'<id>"
 ~> nak group chat "<relay>'<id>"
 ~> nak group chat send "<relay>'<id>" "<message>"
+```
+
+### figure out what is a given kind
+```shell
+~> nak kind 10050 | jq .description
+"Relay list to receive DMs"
+~> nak kind 'fav relays' | jq
+{
+  "kind": 10012,
+  "description": "Favorite relays list",
+  "in_use": true,
+  "content": {
+    "type": "free"
+  },
+  "multiple": [
+    "relay"
+  ],
+  "tags": [
+    {
+      "name": "relay",
+      "next": {
+        "type": "relay",
+        "required": true
+      }
+    },
+    {
+      "name": "a",
+      "next": {
+        "type": "addr",
+        "required": true,
+        "next": {
+          "type": "relay"
+        }
+      }
+    }
+  ]
+}
 ```

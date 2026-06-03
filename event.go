@@ -13,6 +13,7 @@ import (
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nip13"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/schema"
 	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
@@ -104,10 +105,10 @@ example:
 			DefaultText: "false, will only use manually-specified relays",
 			Category:    CATEGORY_EXTRAS,
 		},
-		&cli.UintFlag{
+		&KindFlag{
 			Name:        "kind",
 			Aliases:     []string{"k"},
-			Usage:       "event kind",
+			Usage:       "event kind number or name",
 			DefaultText: "1",
 			Value:       0,
 			Category:    CATEGORY_EVENT_FIELDS,
@@ -165,6 +166,16 @@ example:
 			Usage:    "ask before publishing the event",
 			Category: CATEGORY_EXTRAS,
 		},
+
+		// hidden
+		&cli.StringFlag{
+			Name:        "schema",
+			Usage:       "url to download the YAML schema from, or path to the file",
+			Value:       schema.DefaultSchemaURL,
+			TakesFile:   true,
+			Destination: &schemaURI,
+			Hidden:      true,
+		},
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -197,8 +208,8 @@ example:
 				return fmt.Errorf("invalid event received from stdin: %s", err)
 			}
 
-			if kind := c.Uint("kind"); slices.Contains(c.FlagNames(), "kind") {
-				evt.Kind = nostr.Kind(kind)
+			if c.IsSet("kind") {
+				evt.Kind = getKind(c, "kind")
 				mustRehashAndResign = true
 			} else if !kindWasSupplied {
 				evt.Kind = 1

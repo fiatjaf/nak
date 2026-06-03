@@ -289,3 +289,55 @@ type (
 func getIDSlice(cmd *cli.Command, name string) []nostr.ID {
 	return cmd.Value(name).([]nostr.ID)
 }
+
+//
+//
+//
+
+type (
+	KindFlag = cli.FlagBase[nostr.Kind, struct{}, kindValue]
+)
+
+type kindValue struct {
+	kind       nostr.Kind
+	hasBeenSet bool
+}
+
+var _ cli.ValueCreator[nostr.Kind, struct{}] = kindValue{}
+
+func (t kindValue) Create(val nostr.Kind, p *nostr.Kind, c struct{}) cli.Value {
+	*p = val
+	return &kindValue{
+		kind: val,
+	}
+}
+
+func (t kindValue) ToString(b nostr.Kind) string { return fmt.Sprintf("%d", b) }
+
+func (t *kindValue) Set(value string) error {
+	k, err := stringToKind(value)
+	t.kind = k
+	t.hasBeenSet = true
+	return err
+}
+
+func (t *kindValue) String() string    { return fmt.Sprintf("%#v", t.kind) }
+func (t *kindValue) Value() nostr.Kind { return t.kind }
+func (t *kindValue) Get() any          { return t.kind }
+
+func getKind(cmd *cli.Command, name string) nostr.Kind {
+	return cmd.Value(name).(nostr.Kind)
+}
+
+//
+//
+//
+
+type (
+	kindSlice     = cli.SliceBase[nostr.Kind, struct{}, kindValue]
+	KindSliceFlag = cli.FlagBase[[]nostr.Kind, struct{}, kindSlice]
+)
+
+func getKindSlice(cmd *cli.Command, name string) []nostr.Kind {
+	return cmd.Value(name).([]nostr.Kind)
+}

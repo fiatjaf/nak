@@ -8,6 +8,7 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/schema"
 	"github.com/urfave/cli/v3"
 )
 
@@ -290,7 +291,7 @@ var encode = &cli.Command{
 					Usage:   "pubkey of the naddr author",
 					Aliases: []string{"author", "a", "p"},
 				},
-				&cli.IntFlag{
+				&KindFlag{
 					Name:    "kind",
 					Aliases: []string{"k"},
 					Usage:   "kind of referred replaceable event",
@@ -305,12 +306,22 @@ var encode = &cli.Command{
 					Usage: "automatically appends outbox relays to the code",
 					Value: 3,
 				},
+
+				// hidden
+				&cli.StringFlag{
+					Name:        "schema",
+					Usage:       "url to download the YAML schema from, or path to the file",
+					Value:       schema.DefaultSchemaURL,
+					TakesFile:   true,
+					Destination: &schemaURI,
+					Hidden:      true,
+				},
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				for target := range getEncodeSubcommandInput(c.Args(), true) {
 					pubkey := getPubKey(c, "pubkey")
-					kind := nostr.Kind(c.Int("kind"))
+					kind := getKind(c, "kind")
 					d := c.String("identifier")
 					relays := c.StringSlice("relay")
 
