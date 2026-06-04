@@ -1,8 +1,8 @@
 # build stage
-FROM golang:1.24-alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 # install git and ca-certificates (needed for fetching dependencies)
-RUN apk add --no-cache git ca-certificates
+RUN apk add --no-cache git ca-certificates gcc musl-dev
 
 # set working directory
 WORKDIR /app
@@ -19,7 +19,7 @@ COPY . .
 # build the application
 # use cgo_enabled=0 to create a static binary
 # use -ldflags to strip debug info and reduce binary size
-RUN CGO_ENABLED=0 GOOS=linux go build -ldflags="-w -s" -o nak .
+RUN CGO_ENABLED=1 GOOS=linux go build -ldflags="-w -s" -o nak .
 
 # runtime stage
 FROM alpine:latest
