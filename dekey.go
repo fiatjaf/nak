@@ -87,7 +87,7 @@ var dekey = &cli.Command{
 		// get relays for the user
 		log("fetching write relays for %s\n", color.CyanString(nip19.EncodeNpub(userPub)))
 		relays := sys.FetchWriteRelays(ctx, userPub)
-		relayList := connectToAllRelays(ctx, c, relays, nil, nostr.PoolOptions{})
+		relayList := connectToAllRelays(ctx, c, relays, nil)
 		if len(relayList) == 0 {
 			return fmt.Errorf("no relays to use")
 		}

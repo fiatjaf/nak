@@ -2,11 +2,65 @@ package main
 
 import (
 	"context"
+	stdjson "encoding/json"
+	"fmt"
+	"iter"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
 	"github.com/urfave/cli/v3"
 )
+
+func parseProfilePointerInput(target string) (nostr.ProfilePointer, bool) {
+	var profilePtr nostr.ProfilePointer
+	if err := stdjson.Unmarshal([]byte(target), &profilePtr); err != nil || profilePtr.PublicKey == nostr.ZeroPK {
+		return nostr.ProfilePointer{}, false
+	}
+	return profilePtr, true
+}
+
+func parseEventPointerInput(target string) (nostr.EventPointer, bool) {
+	var eventPtr nostr.EventPointer
+	if err := stdjson.Unmarshal([]byte(target), &eventPtr); err != nil || eventPtr.ID == nostr.ZeroID {
+		return nostr.EventPointer{}, false
+	}
+	return eventPtr, true
+}
+
+func parseEntityPointerInput(target string) (nostr.EntityPointer, bool) {
+	var entityPtr nostr.EntityPointer
+	if err := stdjson.Unmarshal([]byte(target), &entityPtr); err != nil || entityPtr.PublicKey == nostr.ZeroPK || entityPtr.Kind == 0 {
+		return nostr.EntityPointer{}, false
+	}
+	return entityPtr, true
+}
+
+func getEncodeSubcommandInput(args cli.Args, allowBlank bool) iter.Seq[string] {
+	if args.Len() > 0 {
+		return func(yield func(string) bool) {
+			for _, arg := range args.Slice() {
+				if !yield(arg) {
+					return
+				}
+			}
+		}
+	}
+
+	return func(yield func(string) bool) {
+		for jsonStr := range getJsonsOrBlank() {
+			if jsonStr == "{}" {
+				if allowBlank {
+					yield("")
+				}
+				return
+			}
+
+			if !yield(jsonStr) {
+				return
+			}
+		}
+	}
+}
 
 var encode = &cli.Command{
 	Name:  "encode",
@@ -20,14 +74,19 @@ var encode = &cli.Command{
 		nak encode nsec <privkey-hex>
 		echo '{"pubkey":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19","relays":["wss://nada.zero"]}' | nak encode
 		echo '{
-		  "id":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19"
+		  "id":"7b225d32d3edb978dba1adfd9440105646babbabbda181ea383f74ba53c3be19",
 		  "relays":["wss://nada.zero"],
 		  "author":"ebb6ff85430705651b311ed51328767078fd790b14f02d22efba68d5513376bc"
 		} | nak encode`,
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		if c.Args().Len() != 0 {
-			return nil
+			switch c.Args().First() {
+			case "naddr", "nevent", "npub", "nprofile", "nsec":
+				return nil
+			}
+
+			return fmt.Errorf("unknown encode target '%s'", c.Args().First())
 		}
 
 		relays := c.StringSlice("relay")
@@ -44,21 +103,18 @@ var encode = &cli.Command{
 				hasStdin = true
 			}
 
-			var eventPtr nostr.EventPointer
-			if err := json.Unmarshal([]byte(jsonStr), &eventPtr); err == nil && eventPtr.ID != nostr.ZeroID {
+			if eventPtr, ok := parseEventPointerInput(jsonStr); ok {
 				stdout(nip19.EncodeNevent(eventPtr.ID, nostr.AppendUnique(relays, eventPtr.Relays...), eventPtr.Author))
 				continue
 			}
 
-			var profilePtr nostr.ProfilePointer
-			if err := json.Unmarshal([]byte(jsonStr), &profilePtr); err == nil && profilePtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, nostr.AppendUnique(relays, profilePtr.Relays...)))
+			if entityPtr, ok := parseEntityPointerInput(jsonStr); ok {
+				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, nostr.AppendUnique(relays, entityPtr.Relays...)))
 				continue
 			}
 
-			var entityPtr nostr.EntityPointer
-			if err := json.Unmarshal([]byte(jsonStr), &entityPtr); err == nil && entityPtr.PublicKey != nostr.ZeroPK {
-				stdout(nip19.EncodeNaddr(entityPtr.PublicKey, entityPtr.Kind, entityPtr.Identifier, nostr.AppendUnique(relays, entityPtr.Relays...)))
+			if profilePtr, ok := parseProfilePointerInput(jsonStr); ok {
+				stdout(nip19.EncodeNprofile(profilePtr.PublicKey, nostr.AppendUnique(relays, profilePtr.Relays...)))
 				continue
 			}
 
@@ -128,14 +184,21 @@ var encode = &cli.Command{
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				for target := range getStdinLinesOrArguments(c.Args()) {
-					pk, err := nostr.PubKeyFromHexCheap(target)
-					if err != nil {
-						ctx = lineProcessingError(ctx, "invalid public key '%s': %s", target, err)
-						continue
-					}
-
+				for target := range getEncodeSubcommandInput(c.Args(), false) {
 					relays := c.StringSlice("relay")
+					pk := nostr.ZeroPK
+
+					if profilePtr, ok := parseProfilePointerInput(target); ok {
+						pk = profilePtr.PublicKey
+						relays = nostr.AppendUnique(relays, profilePtr.Relays...)
+					} else {
+						var err error
+						pk, err = nostr.PubKeyFromHexCheap(target)
+						if err != nil {
+							ctx = lineProcessingError(ctx, "invalid public key '%s': %s", target, err)
+							continue
+						}
+					}
 
 					if getBoolInt(c, "outbox") > 0 {
 						for _, r := range sys.FetchOutboxRelays(ctx, pk, int(getBoolInt(c, "outbox"))) {
@@ -176,15 +239,25 @@ var encode = &cli.Command{
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				for target := range getStdinLinesOrArguments(c.Args()) {
-					id, err := parseEventID(target)
-					if err != nil {
-						ctx = lineProcessingError(ctx, "invalid event id: %s", target)
-						continue
-					}
-
+				for target := range getEncodeSubcommandInput(c.Args(), false) {
+					id := nostr.ZeroID
 					author := getPubKey(c, "author")
 					relays := c.StringSlice("relay")
+
+					if eventPtr, ok := parseEventPointerInput(target); ok {
+						id = eventPtr.ID
+						relays = nostr.AppendUnique(relays, eventPtr.Relays...)
+						if author == nostr.ZeroPK {
+							author = eventPtr.Author
+						}
+					} else {
+						var err error
+						id, err = parseEventID(target)
+						if err != nil {
+							ctx = lineProcessingError(ctx, "invalid event id: %s", target)
+							continue
+						}
+					}
 
 					if getBoolInt(c, "outbox") > 0 && author != nostr.ZeroPK {
 						for _, r := range sys.FetchOutboxRelays(ctx, author, int(getBoolInt(c, "outbox"))) {
@@ -213,16 +286,14 @@ var encode = &cli.Command{
 					Usage:   "the \"d\" tag identifier of this replaceable event -- can also be read from stdin",
 				},
 				&PubKeyFlag{
-					Name:     "pubkey",
-					Usage:    "pubkey of the naddr author",
-					Aliases:  []string{"author", "a", "p"},
-					Required: true,
+					Name:    "pubkey",
+					Usage:   "pubkey of the naddr author",
+					Aliases: []string{"author", "a", "p"},
 				},
 				&cli.IntFlag{
-					Name:     "kind",
-					Aliases:  []string{"k"},
-					Usage:    "kind of referred replaceable event",
-					Required: true,
+					Name:    "kind",
+					Aliases: []string{"k"},
+					Usage:   "kind of referred replaceable event",
 				},
 				&cli.StringSliceFlag{
 					Name:    "relay",
@@ -237,21 +308,44 @@ var encode = &cli.Command{
 			},
 			DisableSliceFlagSeparator: true,
 			Action: func(ctx context.Context, c *cli.Command) error {
-				for d := range getStdinLinesOrBlank() {
+				for target := range getEncodeSubcommandInput(c.Args(), true) {
 					pubkey := getPubKey(c, "pubkey")
-
 					kind := nostr.Kind(c.Int("kind"))
-					if d == "" {
-						d = c.String("identifier")
+					d := c.String("identifier")
+					relays := c.StringSlice("relay")
+
+					if entityPtr, ok := parseEntityPointerInput(target); ok {
+						relays = nostr.AppendUnique(relays, entityPtr.Relays...)
+						if pubkey == nostr.ZeroPK {
+							pubkey = entityPtr.PublicKey
+						}
+						if kind == 0 {
+							kind = entityPtr.Kind
+						}
+						if !c.IsSet("identifier") {
+							d = entityPtr.Identifier
+						}
+					} else if target != "" {
+						d = target
+					}
+
+					if pubkey == nostr.ZeroPK {
+						ctx = lineProcessingError(ctx, "pubkey must be set")
+						continue
+					}
+
+					if kind == 0 {
+						ctx = lineProcessingError(ctx, "kind must be set")
+						continue
 					}
 
 					if kind.IsAddressable() {
-						if !c.IsSet("identifier") {
+						if d == "" {
 							ctx = lineProcessingError(ctx, "\"d\" tag identifier must be set for addressable events")
 							continue
 						}
 					} else if kind.IsReplaceable() {
-						if c.IsSet("identifier") {
+						if d != "" {
 							ctx = lineProcessingError(ctx, "\"d\" tag identifier must not be set for replaceable events")
 							continue
 						}
@@ -260,7 +354,6 @@ var encode = &cli.Command{
 						continue
 					}
 
-					relays := c.StringSlice("relay")
 					if getBoolInt(c, "outbox") > 0 {
 						for _, r := range sys.FetchOutboxRelays(ctx, pubkey, int(getBoolInt(c, "outbox"))) {
 							relays = nostr.AppendUnique(relays, r)

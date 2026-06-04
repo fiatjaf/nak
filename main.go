@@ -49,6 +49,7 @@ var app = &cli.Command{
 		curl,
 		fsCmd,
 		publish,
+		nsite,
 		git,
 		group,
 		nip,

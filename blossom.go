@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"unsafe"
 
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb0/blossom"
@@ -149,12 +151,24 @@ var blossomCmd = &cli.Command{
 				outputs := c.StringSlice("output")
 
 				hasError := false
-				for i, hash := range c.Args().Slice() {
+				var hash [32]byte
+				for i, hhash := range c.Args().Slice() {
+					if len(hhash) != 64 {
+						log("invalid blob hash '%s'\n", hhash)
+						hasError = true
+						continue
+					}
+					if _, err := hex.Decode(hash[:], unsafe.Slice(unsafe.StringData(hhash), 64)); err != nil {
+						log("invalid blob hash '%s': %s\n", hhash, err)
+						hasError = true
+						continue
+					}
+
 					if len(outputs)-1 >= i && outputs[i] != "--" {
 						// save to this file
 						err := client.DownloadToFile(ctx, hash, outputs[i])
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s\n", err)
+							log("download failed for '%s': %s\n", hhash, err)
 							hasError = true
 						}
 					} else {
@@ -269,28 +283,27 @@ if any of the files are not found the command will fail, otherwise it will succe
 					out, _ := json.Marshal(bd)
 					stdout(out)
 					return nil
-				} else {
-					for input := range getJsonsOrBlank() {
-						if input == "{}" {
-							continue
-						}
-
-						blobURL := input
-						if err := json.Unmarshal([]byte(input), &bd); err == nil {
-							blobURL = bd.URL
-						}
-						bd, err := client.MirrorBlob(ctx, blobURL)
-						if err != nil {
-							ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
-							continue
-						}
-						out, _ := json.Marshal(bd)
-						stdout(out)
-					}
-
-					exitIfLineProcessingError(ctx)
 				}
 
+				for input := range getJsonsOrBlank() {
+					if input == "{}" {
+						continue
+					}
+
+					blobURL := input
+					if err := json.Unmarshal([]byte(input), &bd); err == nil {
+						blobURL = bd.URL
+					}
+					bd, err := client.MirrorBlob(ctx, blobURL)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
+						continue
+					}
+					out, _ := json.Marshal(bd)
+					stdout(out)
+				}
+
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},

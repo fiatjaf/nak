@@ -115,20 +115,23 @@ aside from those, there is also:
 					defaultOwner = existingConfig.Owner
 				} else {
 					// extract info from nostr:// git remotes (this is just for migrating from ngit)
-					if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
-						remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-						for _, remote := range remotes {
-							if strings.Contains(remote, "nostr://") {
-								parts := strings.Fields(remote)
-								if len(parts) >= 2 {
-									nostrURL := parts[1]
-									// parse nostr://npub.../relay_hostname/identifier
-									if remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
-										defaultIdentifier = remoteIdentifier
-										defaultOwner = nip19.EncodeNpub(remoteOwner)
-									}
-								}
+					output, err := exec.Command("git", "remote", "-v").Output()
+					if err == nil {
+						for _, remote := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+							if !strings.Contains(remote, "nostr://") {
+								continue
 							}
+							parts := strings.Fields(remote)
+							if len(parts) < 2 {
+								continue
+							}
+							// parse nostr://npub.../relay_hostname/identifier
+							remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, parts[1])
+							if err != nil || len(relays) == 0 {
+								continue
+							}
+							defaultIdentifier = remoteIdentifier
+							defaultOwner = nip19.EncodeNpub(remoteOwner)
 						}
 					}
 				}
@@ -369,7 +372,7 @@ aside from those, there is also:
 		{
 			Name:        "clone",
 			Usage:       "clone a NIP-34 repository from a nostr:// URI",
-			Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or an "naddr1..." code.`,
+			Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or "nostr://<npub>/<identifier>" or an "naddr1..." code.`,
 			ArgsUsage:   "<repository> [directory]",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args()
@@ -2633,30 +2636,40 @@ func parseRepositoryAddress(
 	}
 
 	// format 2: nostr://<npub_or_nip05>/<relay_hostname>/<identifier> (ngit-style)
+	// format 2b: nostr://<npub_or_nip05>/<identifier> (without relay)
 	if strings.HasPrefix(address, "nostr://") {
 		parts := strings.Split(address, "/")
-		if len(parts) != 5 {
+		if len(parts) == 5 {
+			// nostr://<owner>/<relay>/<identifier>
+			owner, err = parsePubKey(parts[2])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
+			}
+
+			relayHost := parts[3]
+			identifier = parts[4]
+
+			if strings.HasPrefix(relayHost, "wss:") || strings.HasPrefix(relayHost, "ws:") {
+				relayHints = []string{relayHost}
+			} else {
+				relayHints = []string{"wss://" + relayHost}
+			}
+
+			return owner, identifier, relayHints, nil
+		} else if len(parts) == 4 {
+			// nostr://<owner>/<identifier>
+			owner, err = parsePubKey(parts[2])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
+			}
+
+			identifier = parts[3]
+			return owner, identifier, nil, nil
+		} else {
 			return nostr.PubKey{}, "", nil, fmt.Errorf(
-				"invalid nostr URL format, expected nostr://<npub|nip05>/<relay_hostname>/<identifier>, got: %s", address,
+				"invalid nostr URL format, expected nostr://<npub|nip05>/<identifier> or nostr://<npub|nip05>/<relay>/<identifier>, got: %s", address,
 			)
 		}
-
-		owner, err = parsePubKey(parts[2])
-		if err != nil {
-			return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
-		}
-
-		relayHost := parts[3]
-		identifier = parts[4]
-
-		// construct relay hint from hostname
-		if strings.HasPrefix(relayHost, "wss:") || strings.HasPrefix(relayHost, "ws:") {
-			relayHints = []string{relayHost}
-		} else {
-			relayHints = []string{"wss://" + relayHost}
-		}
-
-		return owner, identifier, relayHints, nil
 	}
 
 	// format 3: <npub, hex, nprofile or nip05>/<identifier>

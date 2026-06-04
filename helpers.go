@@ -28,7 +28,7 @@ import (
 	"github.com/fiatjaf/nak/nip05nmc"
 	jsoniter "github.com/json-iterator/go"
 	"github.com/mattn/go-isatty"
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -187,7 +187,6 @@ func connectToAllRelays(
 	c *cli.Command,
 	relayUrls []string,
 	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error), // if this exists we will force preauth
-	opts nostr.PoolOptions,
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
 	for i, url := range relayUrls {

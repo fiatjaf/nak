@@ -43,27 +43,24 @@ var count = &cli.Command{
 			if !c.Bool("force-pre-auth") {
 				forcePreAuthSigner = nil
 			}
+
+			sys.Pool.RelayOptions.AuthHandler = func(ctx context.Context, _ *nostr.Relay, aevt *nostr.Event) error {
+				return authSigner(ctx, c, func(s string, args ...any) {
+					if strings.HasPrefix(s, "authenticating as") {
+						cleanUrl, _ := strings.CutPrefix(
+							nip42.GetRelayURLFromAuthEvent(*aevt),
+							"wss://",
+						)
+						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+					}
+					log(s+"\n", args...)
+				}, aevt)
+			}
 			relays := connectToAllRelays(
 				ctx,
 				c,
 				relayUrls,
 				forcePreAuthSigner,
-				nostr.PoolOptions{
-					RelayOptions: nostr.RelayOptions{
-						AuthHandler: func(ctx context.Context, _ *nostr.Relay, authEvent *nostr.Event) error {
-							return authSigner(ctx, c, func(s string, args ...any) {
-								if strings.HasPrefix(s, "authenticating as") {
-									cleanUrl, _ := strings.CutPrefix(
-										nip42.GetRelayURLFromAuthEvent(*authEvent),
-										"wss://",
-									)
-									s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-								}
-								log(s+"\n", args...)
-							}, authEvent)
-						},
-					},
-				},
 			)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")

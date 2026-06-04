@@ -91,6 +91,8 @@ example:
 					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
 				case nostr.EntityPointer:
 					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
+				default:
+					return fmt.Errorf("unexpected reply target type: %T", value)
 				}
 				if err != nil {
 					return fmt.Errorf("failed to fetch reply target event: %w", err)
@@ -152,13 +154,11 @@ example:
 		relayUrls = nostr.AppendUnique(relayUrls, targetRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, replyRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, c.Args().Slice()...)
-		relays := connectToAllRelays(ctx, c, relayUrls, nil,
-			nostr.PoolOptions{
-				AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-					return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-				},
-			},
-		)
+
+		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+			return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+		}
+		relays := connectToAllRelays(ctx, c, relayUrls, nil)
 
 		if len(relays) == 0 {
 			if len(relayUrls) == 0 {

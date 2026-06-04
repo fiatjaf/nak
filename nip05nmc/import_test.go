@@ -418,4 +418,3 @@ func TestQueryIdentifier_ImportTargetLacksNostrFieldYieldsClearError(t *testing.
 		t.Fatalf("wrong error class: %v", err)
 	}
 }
-

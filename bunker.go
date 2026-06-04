@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"maps"
 	"net"
 	"net/url"
 	"os"
@@ -224,17 +225,15 @@ var bunker = &cli.Command{
 				}
 			}
 		}
-		relayURLs := make([]string, 0, len(allRelays))
-		relays := connectToAllRelays(ctx, c, allRelays, nil, nostr.PoolOptions{})
+		relays := connectToAllRelays(ctx, c, allRelays, nil)
 		if len(relays) == 0 {
 			log("failed to connect to any of the given relays.\n")
 			os.Exit(3)
 		}
-		for _, relay := range relays {
-			relayURLs = append(relayURLs, relay.URL)
-			qs.Add("relay", relay.URL)
+		for _, relay := range config.Relays {
+			qs.Add("relay", relay)
 		}
-		if len(relayURLs) == 0 {
+		if len(relays) == 0 {
 			return fmt.Errorf("not connected to any relays: please specify at least one")
 		}
 
@@ -251,8 +250,10 @@ var bunker = &cli.Command{
 
 		// this function will be called every now and then
 		printBunkerInfo := func() {
-			qs.Set("secret", newSecret)
-			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), qs.Encode())
+			iqs := make(url.Values)
+			maps.Copy(iqs, qs)
+			iqs.Set("secret", newSecret)
+			bunkerURI := fmt.Sprintf("bunker://%s?%s", pubkey.Hex(), iqs.Encode())
 
 			authorizedKeysStr := ""
 			if len(config.Clients) != 0 {
@@ -292,8 +293,8 @@ var bunker = &cli.Command{
 				secretKeyFlag = "--sec " + sec
 			}
 
-			relayURLsPossiblyWithoutSchema := make([]string, len(relayURLs))
-			for i, url := range relayURLs {
+			relayURLsPossiblyWithoutSchema := make([]string, len(config.Relays))
+			for i, url := range config.Relays {
 				if strings.HasPrefix(url, "wss://") {
 					relayURLsPossiblyWithoutSchema[i] = url[6:]
 				} else {
@@ -310,7 +311,7 @@ var bunker = &cli.Command{
 				)
 
 				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
-					colors.bold(relayURLs),
+					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
 					authorizedKeysStr,
@@ -321,7 +322,7 @@ var bunker = &cli.Command{
 			} else {
 				// otherwise just print the data
 				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  bunker: %s\n\n",
-					colors.bold(relayURLs),
+					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
 					authorizedKeysStr,
@@ -340,7 +341,7 @@ var bunker = &cli.Command{
 		printBunkerInfo()
 
 		// subscribe to relays
-		events := sys.Pool.SubscribeMany(ctx, relayURLs, nostr.Filter{
+		events := sys.Pool.SubscribeMany(ctx, allRelays, nostr.Filter{
 			Kinds:     []nostr.Kind{nostr.KindNostrConnect},
 			Tags:      nostr.TagMap{"p": []string{pubkey.Hex()}},
 			Since:     nostr.Now(),
@@ -452,54 +453,56 @@ var bunker = &cli.Command{
 		for ie := range events {
 			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
 
-			// handle the NIP-46 request event
-			from := ie.Event.PubKey
-			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
-			if err != nil {
-				if errors.Is(err, nip46.AlreadyHandled) {
-					continue
-				}
-
-				log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
-				continue
-			}
-
-			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
-			jresp, _ := json.MarshalIndent(resp, "", "  ")
-			log("~ responding with %s\n", string(jresp))
-
-			// use custom relays if they are defined for this client
-			// (normally if the initial connection came from a nostrconnect:// URL)
-			relays := relayURLs
-			for _, c := range config.Clients {
-				if c.PubKey == from && len(c.CustomRelays) > 0 {
-					relays = c.CustomRelays
-					break
-				}
-			}
-
-			for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
-				if res.Error == nil {
-					log("* sent response through %s\n", res.Relay.URL)
-				} else {
-					log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
-				}
-			}
-
-			// just after handling one request we trigger this
 			go func() {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-				cancelPreviousBunkerInfoPrint = cancel
-				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
-				// but we will only do if the bunker is inactive for more than 5 minutes
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Minute * 5):
-					log("\n")
-					printBunkerInfo()
+				// handle the NIP-46 request event
+				from := ie.Event.PubKey
+				req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
+				if err != nil {
+					if errors.Is(err, nip46.AlreadyHandled) {
+						return
+					}
+
+					log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
+					return
 				}
+
+				jreq, _ := json.MarshalIndent(req, "", "  ")
+				log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
+				jresp, _ := json.MarshalIndent(resp, "", "  ")
+				log("~ responding with %s\n", string(jresp))
+
+				// use custom relays if they are defined for this client
+				// (normally if the initial connection came from a nostrconnect:// URL)
+				relays := config.Relays
+				for _, c := range config.Clients {
+					if c.PubKey == from && len(c.CustomRelays) > 0 {
+						relays = c.CustomRelays
+						break
+					}
+				}
+
+				for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
+					if res.Error == nil {
+						log("* sent response through %s\n", res.Relay.URL)
+					} else {
+						log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
+					}
+				}
+
+				// just after handling one request we trigger this
+				go func() {
+					ctx, cancel := context.WithCancel(ctx)
+					defer cancel()
+					cancelPreviousBunkerInfoPrint = cancel
+					// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
+					// but we will only do if the bunker is inactive for more than 5 minutes
+					select {
+					case <-ctx.Done():
+					case <-time.After(time.Minute * 5):
+						log("\n")
+						printBunkerInfo()
+					}
+				}()
 			}()
 		}
 

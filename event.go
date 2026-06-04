@@ -100,7 +100,7 @@ example:
 		},
 		&cli.BoolFlag{
 			Name:        "outbox",
-			Usage:       "use outbox relays from specified public keys",
+			Usage:       "publish to the \"write\" relays of the author and to the \"read\" relays of anyone mentioned  in \"p\" tags",
 			DefaultText: "false, will only use manually-specified relays",
 			Category:    CATEGORY_EXTRAS,
 		},
@@ -385,13 +385,10 @@ example:
 				}
 
 				if len(relayUrls) > 0 {
-					relays = connectToAllRelays(ctx, c, relayUrls, nil,
-						nostr.PoolOptions{
-							AuthRequiredHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-								return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-							},
-						},
-					)
+					sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+					}
+					relays = connectToAllRelays(ctx, c, relayUrls, nil)
 					if len(relays) == 0 {
 						log("failed to connect to any of the given relays.\n")
 						os.Exit(3)

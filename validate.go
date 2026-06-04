@@ -55,6 +55,8 @@ nak event -k 1 -p not_a_pubkey | nak validate
 				return fmt.Errorf("schema validation failed: %w", err)
 			}
 
+			stdout(evt)
+
 			return nil
 		}
 
