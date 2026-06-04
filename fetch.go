@@ -3,11 +3,14 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk/hints"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -18,12 +21,18 @@ var fetch = &cli.Command{
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(reqFilterFlags,
-		&cli.StringSliceFlag{
-			Name:    "relay",
-			Aliases: []string{"r"},
-			Usage:   "also use these relays to fetch from",
-		},
+	Flags: append(defaultKeyFlags,
+		append(reqFilterFlags,
+			&cli.StringSliceFlag{
+				Name:    "relay",
+				Aliases: []string{"r"},
+				Usage:   "also use these relays to fetch from",
+			},
+			&cli.BoolFlag{
+				Name:  "auth",
+				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+			},
+		)...,
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -106,10 +115,29 @@ var fetch = &cli.Command{
 				continue
 			}
 
+			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+				return authSigner(ctx, c, func(s string, args ...any) {
+					if strings.HasPrefix(s, "authenticating as") {
+						cleanUrl, _ := strings.CutPrefix(
+							nip42.GetRelayURLFromAuthEvent(*authEvent),
+							"wss://",
+						)
+						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+					}
+					log(s+"\n", args...)
+				}, authEvent)
+			}
+
+			found := false
 			for ie := range sys.Pool.FetchMany(ctx, relays, filter, nostr.SubscriptionOptions{
 				Label: "nak-fetch",
 			}) {
+				found = true
 				stdout(ie.Event)
+			}
+
+			if !found {
+				ctx = lineProcessingError(ctx, "no events found for %s", code)
 			}
 		}
 

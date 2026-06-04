@@ -28,7 +28,7 @@ func prepareWallet(ctx context.Context, c *cli.Command) (*nip60.Wallet, func(), 
 	relays := sys.FetchOutboxRelays(ctx, pk, 3)
 	w := nip60.LoadWallet(ctx, kr, sys.Pool, relays, nip60.WalletOptions{})
 	if w == nil {
-		return nil, nil, fmt.Errorf("error loading walle")
+		return nil, nil, fmt.Errorf("error loading wallet")
 	}
 
 	w.Processed = func(evt nostr.Event, err error) {
@@ -139,7 +139,11 @@ var wallet = &cli.Command{
 				}
 
 				for _, url := range w.Mints {
-					stdout(strings.Split(url, "://")[1])
+					if _, host, ok := strings.Cut(url, "://"); ok {
+						stdout(host)
+					} else {
+						stdout(url)
+					}
 				}
 
 				closew()
@@ -195,7 +199,11 @@ var wallet = &cli.Command{
 				}
 
 				for _, token := range w.Tokens {
-					stdout(token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
+					_, mintHost, _ := strings.Cut(token.Mint, "://")
+					if mintHost == "" {
+						mintHost = token.Mint
+					}
+					stdout(token.ID(), token.Proofs.Amount(), mintHost)
 				}
 
 				closew()
@@ -221,7 +229,11 @@ var wallet = &cli.Command{
 						for _, token := range w.Tokens {
 							if slices.Contains(ids, token.ID()) {
 								w.DropToken(ctx, token.ID())
-								log("dropped %s %d %s\n", token.ID(), token.Proofs.Amount(), strings.Split(token.Mint, "://")[1])
+								_, mintHost, _ := strings.Cut(token.Mint, "://")
+								if mintHost == "" {
+									mintHost = token.Mint
+								}
+								log("dropped %s %d %s\n", token.ID(), token.Proofs.Amount(), mintHost)
 							}
 						}
 
@@ -359,6 +371,10 @@ var wallet = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Flags: []cli.Flag{
 				&cli.StringFlag{
+					Name:  "target",
+					Usage: "npub, nprofile, nevent or hex pubkey",
+				},
+				&cli.StringFlag{
 					Name:  "mint",
 					Usage: "send from a specific mint",
 				},
@@ -368,9 +384,8 @@ var wallet = &cli.Command{
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				args := c.Args().Slice()
-				if len(args) < 2 {
-					return fmt.Errorf("must be called as `nak wallet nutzap <amount> <target>...")
+				if c.Args().Len() < 1 {
+					return fmt.Errorf("must be called as `nak wallet nutzap <amount> --target <target>...")
 				}
 
 				w, closew, err := prepareWallet(ctx, c)

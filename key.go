@@ -23,9 +23,11 @@ var key = &cli.Command{
 	Commands: []*cli.Command{
 		generate,
 		public,
+		expand,
 		encryptKey,
 		decryptKey,
 		combine,
+		validate,
 	},
 }
 
@@ -62,6 +64,37 @@ var public = &cli.Command{
 			} else {
 				stdout(hex.EncodeToString(pk.SerializeCompressed()[1:]))
 			}
+		}
+		return nil
+	},
+}
+
+var expand = &cli.Command{
+	Name:                      "expand",
+	Usage:                     "left-pads a hex key to 64 characters",
+	Description:               ``,
+	ArgsUsage:                 "[key]",
+	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		for keyhex := range getStdinLinesOrArgumentsFromSlice(c.Args().Slice()) {
+			keyhex = strings.TrimSpace(keyhex)
+			if keyhex == "" {
+				continue
+			}
+			if len(keyhex) > 64 {
+				ctx = lineProcessingError(ctx, "invalid hex key: length %d", len(keyhex))
+				continue
+			}
+			check := keyhex
+			if len(check)%2 == 1 {
+				check = "0" + check
+			}
+			if _, err := hex.DecodeString(check); err != nil {
+				ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
+				continue
+			}
+			keyhex = strings.ToLower(keyhex)
+			stdout(strings.Repeat("0", 64-len(keyhex)) + keyhex)
 		}
 		return nil
 	},
@@ -155,6 +188,53 @@ var decryptKey = &cli.Command{
 	},
 }
 
+var validate = &cli.Command{
+	Name:  "validate",
+	Usage: "validates a public key by attempting to parse it",
+	Description: `Accepts public keys in hex (64 characters) or npub format.
+Returns error if key is invalid, otherwise exits successfully.`,
+	ArgsUsage:                 "[pubkey...]",
+	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		for pk := range getStdinLinesOrArgumentsFromSlice(c.Args().Slice()) {
+			pk = strings.TrimSpace(pk)
+			if pk == "" {
+				continue
+			}
+
+			var pkBytes []byte
+			var err error
+
+			if strings.HasPrefix(pk, "npub1") {
+				_, data, err := nip19.Decode(pk)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid npub: %s", err)
+					continue
+				}
+				tmp := data.([32]byte)
+				pkBytes = tmp[:]
+			} else {
+				pkBytes, err = hex.DecodeString(pk)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid hex: %s", err)
+					continue
+				}
+				if len(pkBytes) != 32 {
+					ctx = lineProcessingError(ctx, "invalid pubkey length: expected 32 bytes, got %d", len(pkBytes))
+					continue
+				}
+			}
+
+			_, err = btcec.ParsePubKey(append([]byte{0x02}, pkBytes...))
+			if err != nil {
+				ctx = lineProcessingError(ctx, "invalid pubkey: %s", err)
+				continue
+			}
+		}
+		return nil
+	},
+}
+
 var combine = &cli.Command{
 	Name:  "combine",
 	Usage: "combines two or more pubkeys using musig2",
@@ -183,15 +263,13 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 		keyGroups := make([][]*btcec.PublicKey, 0, len(result.Keys))
 
 		for i, keyhex := range result.Keys {
-			keyb, err := hex.DecodeString(keyhex)
-			if err != nil {
-				return fmt.Errorf("error parsing key %s: %w", keyhex, err)
-			}
+			pk32, err := parsePubKey(keyhex)
+			if err == nil { /* we'll try both the 02 and the 03 prefix versions */
+				result.Keys[i] = pk32.Hex()
 
-			if len(keyb) == 32 /* we'll use both the 02 and the 03 prefix versions */ {
 				group := make([]*btcec.PublicKey, 2)
 				for i, prefix := range []byte{0x02, 0x03} {
-					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, keyb...))
+					pubk, err := btcec.ParsePubKey(append([]byte{prefix}, pk32[:]...))
 					if err != nil {
 						log("error parsing key %s: %s", keyhex, err)
 						continue
@@ -199,7 +277,16 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 					group[i] = pubk
 				}
 				keyGroups = append(keyGroups, group)
-			} else /* assume it's 33 */ {
+				continue
+			}
+
+			keyb, err := hex.DecodeString(keyhex)
+			if err != nil {
+				return fmt.Errorf("error parsing key %s: %w", keyhex, err)
+			}
+			if len(keyb) == 33 {
+				result.Keys[i] = hex.EncodeToString(keyb[1:])
+
 				pubk, err := btcec.ParsePubKey(keyb)
 				if err != nil {
 					return fmt.Errorf("error parsing key %s: %w", keyhex, err)
@@ -208,6 +295,8 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 
 				// remove the leading byte from the output just so it is all uniform
 				result.Keys[i] = result.Keys[i][2:]
+
+				continue
 			}
 		}
 
@@ -279,12 +368,13 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, key
 					continue
 				}
 				sk = data.(nostr.SecretKey)
-			}
-
-			sk, err := nostr.SecretKeyFromHex(sec)
-			if err != nil {
-				ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
-				continue
+			} else {
+				var err error
+				sk, err = nostr.SecretKeyFromHex(sec)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
+					continue
+				}
 			}
 
 			ch <- sk

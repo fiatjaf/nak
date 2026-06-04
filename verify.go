@@ -4,6 +4,7 @@ import (
 	"context"
 
 	"fiatjaf.com/nostr"
+	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -27,23 +28,35 @@ it outputs nothing if the verification is successful.`,
 
 			if err := json.Unmarshal([]byte(stdinEvent), &evt); err != nil {
 				ctx = lineProcessingError(ctx, "invalid event: %s", err)
-				logverbose("<>: invalid event.\n", evt.ID.Hex())
+				logverbose("%s\n", color.RedString("<>: invalid event."))
 				continue
 			}
 
-			if evt.GetID() != evt.ID {
-				ctx = lineProcessingError(ctx, "invalid .id, expected %s, got %s", evt.GetID(), evt.ID)
-				logverbose("%s: invalid id.\n", evt.ID.Hex())
+			impliedID := evt.GetID()
+			idsMatch := impliedID == evt.ID
+			logverbose(
+				"%s\n%s %s\n%s %s\n%s %s\n%s %s\n%s %s\n",
+				color.CyanString("verifying event:"),
+				color.BlueString("  event:     "), stdinEvent,
+				color.BlueString("  given id:  "), color.YellowString("%s", evt.ID),
+				color.BlueString("  serialized:"), string(evt.Serialize()),
+				color.BlueString("  implied id:"), color.YellowString("%s", impliedID),
+				color.BlueString("  ids match: "), color.New(map[bool]color.Attribute{true: color.FgGreen, false: color.FgRed}[idsMatch]).Sprint(idsMatch),
+			)
+
+			if impliedID != evt.ID {
+				ctx = lineProcessingError(ctx, "invalid .id, expected %s, got %s", impliedID, evt.ID)
+				logverbose("%s\n", color.RedString("invalid id: %s", evt.ID.Hex()))
 				continue
 			}
 
 			if !evt.VerifySignature() {
 				ctx = lineProcessingError(ctx, "invalid signature")
-				logverbose("%s: invalid signature.\n", evt.ID.Hex())
+				logverbose("%s\n", color.RedString("invalid signature: %s", evt.ID.Hex()))
 				continue
 			}
 
-			logverbose("%s: valid.\n", evt.ID.Hex())
+			logverbose("%s\n", color.GreenString("valid: %s", evt.ID.Hex()))
 		}
 
 		exitIfLineProcessingError(ctx)
