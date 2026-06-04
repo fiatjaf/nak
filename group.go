@@ -276,68 +276,32 @@ var group = &cli.Command{
 					return err
 				}
 
+				// stored events arrive newest-first before EOSE, so we buffer them
+				// from the end and print them in chronological order once EOSE
+				// arrives; live events are printed as they come.
 				eosed := false
-				var mu sync.Mutex
-				messages := make([]struct {
-					message  string
-					rendered bool
-				}, 200)
+				messages := make([]string, 200)
 				base := len(messages)
-
-				// must be called with mu held
-				tryRender := func(i int) {
-					// if all messages before these are loaded we can render this,
-					// otherwise we render whatever we can and stop
-					for m, msg := range messages[base:] {
-						if msg.rendered {
-							continue
-						}
-						if msg.message == "" {
-							break
-						}
-						messages[base+m].rendered = true
-						stdout(msg.message)
-					}
-				}
 
 				for {
 					select {
 					case evt := <-sub.Events:
-						mu.Lock()
-						var i int
+						meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
+						line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + evt.Content
 						if eosed {
-							i = len(messages)
-							messages = append(messages, struct {
-								message  string
-								rendered bool
-							}{})
+							stdout(line)
 						} else if base > 0 {
 							base--
-							i = base
-						} else {
-							// pre-EOSE buffer is full (relay returned more than the limit); drop.
-							mu.Unlock()
-							continue
+							messages[base] = line
 						}
-						mu.Unlock()
-
-						go func() {
-							meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
-							line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + evt.Content
-							mu.Lock()
-							messages[i].message = line
-							if eosed {
-								tryRender(i)
-							}
-							mu.Unlock()
-						}()
+						// else: pre-EOSE buffer is full (relay returned more than the limit); drop.
 					case reason := <-sub.ClosedReason:
 						stdout("closed:" + color.YellowString(reason))
 					case <-sub.EndOfStoredEvents:
-						mu.Lock()
 						eosed = true
-						tryRender(len(messages) - 1)
-						mu.Unlock()
+						for _, msg := range messages[base:] {
+							stdout(msg)
+						}
 					case <-sub.Context.Done():
 						return fmt.Errorf("subscription ended: %w", context.Cause(sub.Context))
 					}
