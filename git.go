@@ -115,20 +115,23 @@ aside from those, there is also:
 					defaultOwner = existingConfig.Owner
 				} else {
 					// extract info from nostr:// git remotes (this is just for migrating from ngit)
-					if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
-						remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-						for _, remote := range remotes {
-							if strings.Contains(remote, "nostr://") {
-								parts := strings.Fields(remote)
-								if len(parts) >= 2 {
-									nostrURL := parts[1]
-									// parse nostr://npub.../relay_hostname/identifier
-									if remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
-										defaultIdentifier = remoteIdentifier
-										defaultOwner = nip19.EncodeNpub(remoteOwner)
-									}
-								}
+					output, err := exec.Command("git", "remote", "-v").Output()
+					if err == nil {
+						for _, remote := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+							if !strings.Contains(remote, "nostr://") {
+								continue
 							}
+							parts := strings.Fields(remote)
+							if len(parts) < 2 {
+								continue
+							}
+							// parse nostr://npub.../relay_hostname/identifier
+							remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, parts[1])
+							if err != nil || len(relays) == 0 {
+								continue
+							}
+							defaultIdentifier = remoteIdentifier
+							defaultOwner = nip19.EncodeNpub(remoteOwner)
 						}
 					}
 				}
