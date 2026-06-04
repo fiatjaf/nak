@@ -215,8 +215,11 @@ example:
 							if err := easyjson.Unmarshal([]byte(scanner.Text()), &evt); err != nil {
 								continue
 							}
-							if err := store.SaveEvent(evt); err != nil || err == eventstore.ErrDupEvent {
-								continue
+							if err := store.SaveEvent(evt); err != nil {
+								if err == eventstore.ErrDupEvent {
+									continue
+								}
+								return fmt.Errorf("failed to save event from sync file: %w", err)
 							}
 						}
 						if err := scanner.Err(); err != nil {
