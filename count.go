@@ -44,17 +44,17 @@ var count = &cli.Command{
 				forcePreAuthSigner = nil
 			}
 
-			sys.Pool.RelayOptions.AuthHandler = func(ctx context.Context, _ *nostr.Relay, aevt *nostr.Event) error {
+			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
 				return authSigner(ctx, c, func(s string, args ...any) {
 					if strings.HasPrefix(s, "authenticating as") {
 						cleanUrl, _ := strings.CutPrefix(
-							nip42.GetRelayURLFromAuthEvent(*aevt),
+							nip42.GetRelayURLFromAuthEvent(*authEvent),
 							"wss://",
 						)
 						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
 					}
 					log(s+"\n", args...)
-				}, aevt)
+				}, authEvent)
 			}
 			relays := connectToAllRelays(
 				ctx,
