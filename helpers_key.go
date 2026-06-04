@@ -13,7 +13,7 @@ import (
 	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 )
 

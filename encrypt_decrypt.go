@@ -123,7 +123,7 @@ var decrypt = &cli.Command{
 
 			res, err := kr.Decrypt(ctx, ciphertext, source)
 			if err != nil {
-				return fmt.Errorf("failed to encrypt: %w", err)
+				return fmt.Errorf("failed to decrypt: %w", err)
 			}
 			stdout(res)
 		}

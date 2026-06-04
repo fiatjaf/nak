@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"net/textproto"
 	"os"
@@ -26,7 +25,7 @@ var app = &cli.Command{
 	Usage:                     "the nostr army knife command-line tool",
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
-		event,
+		eventCmd,
 		req,
 		filterCmd,
 		fetch,
@@ -44,17 +43,21 @@ var app = &cli.Command{
 		encrypt,
 		decrypt,
 		gift,
-		outbox,
+		outboxCmd,
 		wallet,
 		mcpServer,
 		curl,
 		fsCmd,
 		publish,
+		nsite,
 		git,
+		group,
 		nip,
 		syncCmd,
 		kanban,
 		spell,
+		profile,
+		validateCmd,
 	},
 	Version: version,
 	Flags: []cli.Flag{
@@ -65,7 +68,7 @@ var app = &cli.Command{
 				if home, err := os.UserHomeDir(); err == nil {
 					return filepath.Join(home, ".config/nak")
 				} else {
-					return filepath.Join("/dev/null")
+					return ""
 				}
 			})(),
 		},
@@ -101,17 +104,13 @@ var app = &cli.Command{
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		sys = sdk.NewSystem()
 
-		if err := initializeOutboxHintsDB(c, sys); err != nil {
-			return ctx, fmt.Errorf("failed to initialize outbox hints: %w", err)
-		}
+		setupLocalDatabases(c, sys)
 
-		sys.Pool = nostr.NewPool(nostr.PoolOptions{
-			AuthorKindQueryMiddleware: sys.TrackQueryAttempts,
-			EventMiddleware:           sys.TrackEventHints,
-			RelayOptions: nostr.RelayOptions{
-				RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
-			},
-		})
+		sys.Pool.QueryMiddleware = sys.TrackQueryAttempts
+		sys.Pool.EventMiddleware = sys.TrackEventHints
+		sys.Pool.RelayOptions = nostr.RelayOptions{
+			RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
+		}
 
 		return ctx, nil
 	},
@@ -122,6 +121,12 @@ func init() {
 		Name:  "version",
 		Usage: "prints version",
 	}
+	cli.HelpFlag = &cli.BoolFlag{
+		Name:        "help",
+		Usage:       "shows help",
+		HideDefault: true,
+		Local:       true,
+	}
 }
 
 func main() {
@@ -130,9 +135,7 @@ func main() {
 	// a megahack to enable this curl command proxy
 	if len(os.Args) > 2 && os.Args[1] == "curl" {
 		if err := realCurl(); err != nil {
-			if err != nil {
-				log(color.YellowString(err.Error()) + "\n")
-			}
+			log(color.YellowString(err.Error()) + "\n")
 			colors.reset()
 			os.Exit(1)
 		}
@@ -140,9 +143,7 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		if err != nil {
-			log("%s\n", color.RedString(err.Error()))
-		}
+		log("%s\n", color.RedString(err.Error()))
 		colors.reset()
 		os.Exit(1)
 	}

@@ -409,7 +409,7 @@ func parseMessageBuildNext(
 			skipCallback(getBoundKey(bound))
 			if _, skipped := skippedBounds[getBoundKey(bound)]; !skipped {
 				bw.WriteBound(nextMsg, bound)
-				negentropy.WriteVarInt(nextMsg, int(negentropy.SkipMode))
+				negentropy.WriteVarInt(nextMsg, uint64(negentropy.SkipMode))
 			}
 
 		case negentropy.FingerprintMode:
@@ -420,7 +420,7 @@ func parseMessageBuildNext(
 
 			if _, skipped := skippedBounds[getBoundKey(bound)]; !skipped {
 				bw.WriteBound(nextMsg, bound)
-				negentropy.WriteVarInt(nextMsg, int(negentropy.FingerprintMode))
+				negentropy.WriteVarInt(nextMsg, uint64(negentropy.FingerprintMode))
 				nextMsg.Write(acc.Buf[0:negentropy.FingerprintSize] /* idem */)
 			}
 		case negentropy.IdListMode:
@@ -452,7 +452,7 @@ func parseMessageBuildNext(
 				fingerprint := acc.GetFingerprint(numIds)
 
 				bw.WriteBound(nextMsg, bound)
-				negentropy.WriteVarInt(nextMsg, int(negentropy.FingerprintMode))
+				negentropy.WriteVarInt(nextMsg, uint64(negentropy.FingerprintMode))
 				nextMsg.Write(fingerprint[:])
 			}
 		default:

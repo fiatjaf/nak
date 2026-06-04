@@ -1,26 +1,33 @@
-//TODO kind 30618 or default
+// TODO kind 30618 or default
 package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip34"
+	"fiatjaf.com/nostr/nip34/gitnaturalapi"
+	"fiatjaf.com/nostr/nip34/grasp"
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
+
 type EnhancedRepository struct {
-    nip34.Repository
-    DefaultBranch string `json:"default_branch,omitempty"`
+	nip34.Repository
+	DefaultBranch string `json:"default_branch,omitempty"`
 }
 
 var git = &cli.Command{
@@ -32,6 +39,7 @@ aside from those, there is also:
   - 'nak git init' for setting up nip34 repository metadata; and
   - 'nak git sync' for getting the latest metadata update from nostr relays (called automatically by other commands)
 `,
+	Flags: defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name:  "init",
@@ -77,7 +85,7 @@ aside from those, there is also:
 				},
 				&cli.StringSliceFlag{
 					Name:  "maintainers",
-					Usage: "maintainer public keys as npub or hex (can be used multiple times)",
+					Usage: "maintainer public keys as npub, nip05 or hex (can be used multiple times)",
 				},
 				&cli.StringFlag{
 					Name:  "earliest-unique-commit",
@@ -113,20 +121,23 @@ aside from those, there is also:
 					defaultOwner = existingConfig.Owner
 				} else {
 					// extract info from nostr:// git remotes (this is just for migrating from ngit)
-					if output, err := exec.Command("git", "remote", "-v").Output(); err == nil {
-						remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-						for _, remote := range remotes {
-							if strings.Contains(remote, "nostr://") {
-								parts := strings.Fields(remote)
-								if len(parts) >= 2 {
-									nostrURL := parts[1]
-									// parse nostr://npub.../relay_hostname/identifier
-									if remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, nostrURL); err == nil && len(relays) > 0 {
-										defaultIdentifier = remoteIdentifier
-										defaultOwner = nip19.EncodeNpub(remoteOwner)
-									}
-								}
+					output, err := exec.Command("git", "remote", "-v").Output()
+					if err == nil {
+						for _, remote := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+							if !strings.Contains(remote, "nostr://") {
+								continue
 							}
+							parts := strings.Fields(remote)
+							if len(parts) < 2 {
+								continue
+							}
+							// parse nostr://npub.../relay_hostname/identifier
+							remoteOwner, remoteIdentifier, relays, err := parseRepositoryAddress(ctx, parts[1])
+							if err != nil || len(relays) == 0 {
+								continue
+							}
+							defaultIdentifier = remoteIdentifier
+							defaultOwner = nip19.EncodeNpub(remoteOwner)
 						}
 					}
 				}
@@ -159,7 +170,7 @@ aside from those, there is also:
 				var owner nostr.PubKey
 				var ownerStr string
 				if c.String("owner") != "" {
-					owner, err = parsePubKey(ownerStr)
+					owner, err = parsePubKey(c.String("owner"))
 					if err != nil {
 						return fmt.Errorf("invalid owner pubkey: %w", err)
 					}
@@ -167,7 +178,7 @@ aside from those, there is also:
 				} else if c.Bool("interactive") {
 					for {
 						if err := survey.AskOne(&survey.Input{
-							Message: "owner (npub or hex)",
+							Message: "owner (npub, nip05 or hex)",
 							Default: defaultOwner,
 						}, &ownerStr); err != nil {
 							return err
@@ -186,7 +197,7 @@ aside from those, there is also:
 				var fetchedRepo *nip34.Repository
 				if existingConfig.Identifier == "" {
 					log("  searching for existing events... ")
-					repo, _, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
+					repo, _, _, _, err := fetchRepositoryAndState(ctx, owner, identifier, nil)
 					if err == nil && repo.Event.ID != nostr.ZeroID {
 						fetchedRepo = &repo
 						log("found one from %s.\n", repo.Event.CreatedAt.Time().Format(time.DateOnly))
@@ -250,7 +261,13 @@ aside from those, there is also:
 				config.Owner = getValue(existingConfig.Owner, c.String("owner"), config.Owner)
 				config.GraspServers = getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), config.GraspServers)
 				config.EarliestUniqueCommit = getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), config.EarliestUniqueCommit)
-				config.Maintainers = getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
+				maintainers := getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
+				config.Maintainers = make([]string, 0, len(maintainers))
+				for _, m := range maintainers {
+					if pubkey, err := parsePubKey(m); err == nil {
+						config.Maintainers = append(config.Maintainers, pubkey.Hex())
+					}
+				}
 
 				if c.Bool("interactive") {
 					// prompt for name
@@ -274,7 +291,7 @@ aside from those, there is also:
 						"gitnostr.com",
 						"relay.ngit.dev",
 						"pyramid.fiatjaf.com",
-						"git.shakespeare.dyi",
+						"git.shakespeare.diy",
 					}, graspServerHost, nil)
 					if err != nil {
 						return err
@@ -283,6 +300,10 @@ aside from those, there is also:
 
 					// prompt for web URLs
 					webURLs, err := promptForStringList("web URLs", config.Web, []string{
+						fmt.Sprintf("https://viewsource.win/%s/%s",
+							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
+							config.Identifier,
+						),
 						fmt.Sprintf("https://gitworkshop.dev/%s/%s",
 							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
 							config.Identifier,
@@ -303,7 +324,7 @@ aside from those, there is also:
 						return err
 					}
 
-					// Prompt for maintainers
+					// prompt for maintainers
 					maintainers, err := promptForStringList("maintainers", config.Maintainers, []string{}, nil, func(s string) bool {
 						pk, err := parsePubKey(s)
 						if err != nil {
@@ -349,7 +370,6 @@ aside from those, there is also:
 		{
 			Name:  "sync",
 			Usage: "sync repository with relays",
-			Flags: defaultKeyFlags,
 			Action: func(ctx context.Context, c *cli.Command) error {
 				kr, _, _ := gatherKeyerFromArguments(ctx, c)
 				_, _, err := gitSync(ctx, kr)
@@ -359,7 +379,7 @@ aside from those, there is also:
 		{
 			Name:        "clone",
 			Usage:       "clone a NIP-34 repository from a nostr:// URI",
-			Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or an "naddr1..." code.`,
+			Description: `the <repository> parameter maybe in the form "<npub, hex, nprofile or nip05>/<identifier>", ngit-style like "nostr://<npub>/<relay>/<identifier>" or "nostr://<npub>/<identifier>" or an "naddr1..." code.`,
 			ArgsUsage:   "<repository> [directory]",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				args := c.Args()
@@ -373,7 +393,7 @@ aside from those, there is also:
 				}
 
 				// fetch repository metadata and state
-				repo, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+				repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
 				if err != nil {
 					return err
 				}
@@ -459,9 +479,193 @@ aside from those, there is also:
 			},
 		},
 		{
+			Name:      "download",
+			Usage:     "download a file from a NIP-34 repository",
+			ArgsUsage: "<repository> <path>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "output",
+					Aliases: []string{"O"},
+					Usage:   "output path (use '-' for stdout)",
+				},
+				&cli.StringFlag{
+					Name:    "ref",
+					Aliases: []string{"r"},
+					Usage:   "git ref/tag/branch/commit to read from",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() < 2 {
+					return fmt.Errorf("missing repository and path")
+				}
+
+				repo := args.Get(0)
+				path := args.Get(1)
+				outputPath := c.String("output")
+				ref := strings.TrimSpace(c.String("ref"))
+
+				if outputPath == "" {
+					cleaned := strings.TrimRight(path, "/")
+					base := filepath.Base(cleaned)
+					if base == "." || base == "/" || base == "" {
+						return fmt.Errorf("cannot determine output filename from path '%s', use --output", path)
+					}
+					outputPath = base
+				}
+
+				if outputPath != "-" {
+					if fi, err := os.Stat(outputPath); err == nil && fi.IsDir() {
+						return fmt.Errorf("output path '%s' is a directory", outputPath)
+					}
+				}
+
+				var gitURLs []string
+				if strings.HasPrefix(repo, "http://") || strings.HasPrefix(repo, "https://") {
+					gitURLs = []string{strings.TrimRight(repo, "/")}
+				} else {
+					owner, identifier, relayHints, err := parseRepositoryAddress(ctx, repo)
+					if err != nil {
+						return fmt.Errorf("failed to parse repository address '%s': %w", repo, err)
+					}
+
+					repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+					if err != nil {
+						var stateErr *StateErr
+						if ref == "" || !errors.As(err, &stateErr) {
+							return err
+						}
+					}
+
+					if ref == "" && state != nil && state.HEAD != "" {
+						ref = state.HEAD
+					}
+
+					for _, url := range repo.Clone {
+						if strings.HasPrefix(url, "http") {
+							gitURLs = append(gitURLs, url)
+						}
+					}
+				}
+
+				if len(gitURLs) == 0 {
+					return fmt.Errorf("no HTTP git URLs found for repository")
+				}
+
+				var lastErr error
+				for _, url := range gitURLs {
+					if lastErr != nil {
+						log("%s\n", color.HiRedString(lastErr.Error()))
+					}
+					lastErr = nil
+
+					{
+						printUrl := color.BlueString(url)
+						if grasp.IsGraspURL(url) {
+							printUrl = color.HiYellowString(strings.Split(url, "/")[2])
+						}
+						log("attempting download from %s... ", printUrl)
+					}
+
+					info, err := gitnaturalapi.GetInfoRefs(url)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					var commitHash string
+
+					if ref == "" {
+						if symref, ok := info.Symrefs["HEAD"]; ok && symref != "" {
+							commitHash, _ = info.Refs[symref]
+						} else if head, ok := info.Refs["HEAD"]; ok && head != "" {
+							commitHash = head
+						} else {
+							lastErr = fmt.Errorf("could not resolve default ref for %s", url)
+							continue
+						}
+					}
+
+					if gitHashRe.MatchString(ref) {
+						commitHash = ref
+					} else if strings.HasPrefix(ref, "refs/") {
+						if ch, ok := info.Refs[ref]; ok {
+							commitHash = ch
+						}
+					} else {
+						if ch, ok := info.Refs["refs/heads/"+ref]; ok {
+							commitHash = ch
+						} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
+							commitHash = ch
+						} else if sr, ok := info.Symrefs[ref]; ok && ch != "" {
+							commitHash, _ = info.Refs[sr]
+						}
+					}
+
+					if commitHash == "" {
+						lastErr = fmt.Errorf("couldn't get a commit hash for ref '%s'", ref)
+						continue
+					}
+
+					if !gitHashRe.MatchString(commitHash) {
+						lastErr = fmt.Errorf("couldn't invalid commit hash for ref '%s': '%s'", ref, commitHash)
+						continue
+					}
+
+					entry, err := gitnaturalapi.GetObjectByPath(url, commitHash, path)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+					if entry == nil {
+						lastErr = fmt.Errorf("path '%s' not found", path)
+						continue
+					}
+					if entry.IsDir {
+						lastErr = fmt.Errorf("path '%s' is a directory", path)
+						continue
+					}
+
+					obj, err := gitnaturalapi.GetObject(url, entry.Hash)
+					if err != nil {
+						lastErr = fmt.Errorf("download error: %s", err)
+						continue
+					}
+					if obj == nil {
+						lastErr = fmt.Errorf("object for '%s' not found", path)
+						continue
+					}
+					if obj.Type != gitnaturalapi.ObjectTypeBlob {
+						lastErr = fmt.Errorf("object at '%s' is not a file", path)
+						continue
+					}
+
+					if outputPath == "-" {
+						if _, err = os.Stdout.Write(obj.Data); err != nil {
+							log("\nprinted object %s to stdout\n", color.CyanString(obj.Hash))
+							return err
+						}
+					}
+
+					if err := os.WriteFile(outputPath, obj.Data, 0644); err != nil {
+						return fmt.Errorf("failed to write %s: %w", outputPath, err)
+					}
+
+					log("\nsaved object %s to %s\n", color.CyanString(obj.Hash), color.GreenString(outputPath))
+					return nil
+				}
+
+				if lastErr != nil {
+					log("%s\n", color.HiRedString(lastErr.Error()))
+				}
+
+				return fmt.Errorf("failed to download '%s' from '%s'", path, repo)
+			},
+		},
+		{
 			Name:  "push",
 			Usage: "push git changes",
-			Flags: append(defaultKeyFlags,
+			Flags: []cli.Flag{
 				&cli.BoolFlag{
 					Name:    "force",
 					Aliases: []string{"f"},
@@ -471,7 +675,7 @@ aside from those, there is also:
 					Name:  "tags",
 					Usage: "push all refs under refs/tags",
 				},
-			),
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				// setup signer
 				kr, _, err := gatherKeyerFromArguments(ctx, c)
@@ -490,15 +694,15 @@ aside from those, there is also:
 					return fmt.Errorf("failed to sync: %w", err)
 				}
 
-				// figure out which branches to push
-				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+				currentPk, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "push")
 				if err != nil {
 					return err
 				}
 
-				// check if signer matches owner or is in maintainers
-				if currentPk != repo.Event.PubKey && !slices.Contains(repo.Maintainers, currentPk) {
-					return fmt.Errorf("current user '%s' is not allowed to push", nip19.EncodeNpub(currentPk))
+				// figure out which branches to push
+				localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+				if err != nil {
+					return err
 				}
 
 				// get commit for the local branch
@@ -538,34 +742,37 @@ aside from those, there is also:
 					log("- setting HEAD to branch %s\n", color.CyanString(remoteBranch))
 				}
 
-				// add all refs/tags
-				output, err := exec.Command("git", "show-ref", "--tags").Output()
-				if err != nil {
-					return fmt.Errorf("failed to get local tags: %s", err)
-				} else {
-					lines := strings.Split(strings.TrimSpace(string(output)), "\n")
-					for _, line := range lines {
-						line = strings.TrimSpace(line)
-						if line == "" {
-							continue
-						}
-						parts := strings.Fields(line)
-						if len(parts) != 2 {
-							continue
-						}
-						commitHash := parts[0]
-						ref := parts[1]
-
-						tagName := strings.TrimPrefix(ref, "refs/tags/")
-
-						if !c.Bool("force") {
-							// if --force is not passed then we can't overwrite tags
-							if existingHash, exists := state.Tags[tagName]; exists && existingHash != commitHash {
-								return fmt.Errorf("tag %s that is already published pointing to %s, call with --force to overwrite", tagName, existingHash)
+				if c.Bool("tags") {
+					// add all refs/tags
+					output, err := exec.Command("git", "show-ref", "--tags").Output()
+					if err != nil && err.Error() != "exit status 1" {
+						// exit status 1 is returned when there are no tags, which should be ok for us
+						return fmt.Errorf("failed to get local tags: %s", err)
+					} else {
+						lines := strings.Split(strings.TrimSpace(string(output)), "\n")
+						for _, line := range lines {
+							line = strings.TrimSpace(line)
+							if line == "" {
+								continue
 							}
+							parts := strings.Fields(line)
+							if len(parts) != 2 {
+								continue
+							}
+							commitHash := parts[0]
+							ref := parts[1]
+
+							tagName := strings.TrimPrefix(ref, "refs/tags/")
+
+							if !c.Bool("force") {
+								// if --force is not passed then we can't overwrite tags
+								if existingHash, exists := state.Tags[tagName]; exists && existingHash != commitHash {
+									return fmt.Errorf("tag %s that is already published pointing to %s, call with --force to overwrite", tagName, existingHash)
+								}
+							}
+							state.Tags[tagName] = commitHash
+							log("- setting tag %s to commit %s\n", color.CyanString(tagName), color.CyanString(commitHash))
 						}
-						state.Tags[tagName] = commitHash
-						log("- setting tag %s to commit %s\n", color.CyanString(tagName), color.CyanString(commitHash))
 					}
 				}
 
@@ -824,7 +1031,7 @@ aside from those, there is also:
 						head := c.String("head")
 						subject := c.String("subject")
 						relay := c.String("relay")
-						
+
 						// Try to auto-detect base repository from nip34.json if not provided
 						if base == "" {
 							// Check if we have a local nip34.json file
@@ -935,6 +1142,603 @@ aside from those, there is also:
 				return fmt.Errorf("missing subcommand. Use 'create' to create a PR or 'update' to update an existing PR")
 			},
 		},
+		{
+			Name:        "patch",
+			Usage:       "patch-related operations",
+			Description: "when called directly, lists open patches; with an patch id prefix, displays that patch with threaded discussions.",
+			ArgsUsage:   "[id-prefix]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "applied",
+					Usage: "list only applied/merged patches",
+				},
+				&cli.BoolFlag{
+					Name:  "closed",
+					Usage: "list only closed patches",
+				},
+				&cli.BoolFlag{
+					Name:  "all",
+					Usage: "list all patches, including applied and closed",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				repo, err := readGitRepositoryFromConfig()
+				if err != nil {
+					return err
+				}
+
+				events, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
+				if err != nil {
+					return err
+				}
+
+				prefix := strings.TrimSpace(c.Args().First())
+				if prefix == "" {
+					// list
+					statuses, err := fetchIssueStatus(ctx, repo, events)
+					if err != nil {
+						return err
+					}
+
+					if len(events) == 0 {
+						log("no patches found\n")
+						return nil
+					}
+
+					showApplied := c.Bool("applied")
+					showClosed := c.Bool("closed")
+					showAll := c.Bool("all")
+
+					// preload metadata from everybody
+					wg := sync.WaitGroup{}
+					for _, evt := range events {
+						wg.Go(func() {
+							sys.FetchProfileMetadata(ctx, evt.PubKey)
+						})
+					}
+					wg.Wait()
+
+					// now render
+					for _, evt := range events {
+						id := evt.ID.Hex()
+
+						status := statusLabelForEvent(evt.ID, statuses, false)
+						if !showAll {
+							if showApplied || showClosed {
+								isApplied := status == "applied/merged"
+								isClosed := status == "closed"
+								if !(showApplied && isApplied || showClosed && isClosed) {
+									continue
+								}
+							} else if status == "applied/merged" || status == "closed" {
+								continue
+							}
+						}
+
+						date := evt.CreatedAt.Time().Format(time.DateOnly)
+						subject := patchSubjectPreview(evt, 72)
+						statusDisplayText := status
+						if status == "applied/merged" {
+							statusDisplayText = "applied"
+						}
+						statusDisplay := colorizeGitStatus(statusDisplayText)
+
+						if status == "applied/merged" {
+							if statusEvt, ok := statuses[evt.ID]; ok {
+								if commit := patchAppliedCommitPreview(statusEvt); commit != "" {
+									statusDisplay = statusDisplay + color.HiBlackString(" (%s)", commit)
+								}
+							}
+						}
+
+						stdout(color.CyanString(id[:6]), statusDisplay, color.HiBlackString(date), color.HiBlueString(authorPreview(ctx, evt.PubKey)), color.HiWhiteString(subject))
+					}
+
+					return nil
+				} else {
+					// view single
+					evt, err := findEventByPrefix(events, prefix)
+					if err != nil {
+						return err
+					}
+
+					statuses, err := fetchIssueStatus(ctx, repo, []nostr.RelayEvent{evt})
+					if err != nil {
+						return err
+					}
+
+					return showThreadWithComments(ctx, repo.Relays, evt, statusLabelForEvent(evt.ID, statuses, false), nil)
+				}
+			},
+			Commands: []*cli.Command{
+				{
+					Name:  "send",
+					Usage: "edit and send a patch event (kind 1617)",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						if c.Args().Len() != 1 {
+							return fmt.Errorf("must specify a commit to send as a patch, 'HEAD^' for the latest")
+						}
+
+						patchData, err := exec.Command("git", "format-patch", "--stdout", "--histogram", c.Args().First()).Output()
+						if err != nil {
+							stderr := ""
+							if ee, ok := err.(*exec.ExitError); ok {
+								stderr = strings.TrimSpace(string(ee.Stderr))
+							}
+							if stderr != "" {
+								return fmt.Errorf("git format-patch failed: %s", stderr)
+							}
+							return fmt.Errorf("git format-patch failed: %w", err)
+						}
+
+						if len(patchData) == 0 {
+							return fmt.Errorf("git format-patch returned empty output")
+						}
+						if len(patchData) > 10*1024 {
+							return fmt.Errorf("patch too large: %d bytes (limit is 10240 bytes)", len(patchData))
+						}
+
+						content, err := editWithDefaultEditor(
+							"nak-git-patch.patch",
+							string(patchData),
+							true,
+						)
+						if err != nil {
+							return err
+						}
+
+						if strings.TrimSpace(content) == "" {
+							return fmt.Errorf("empty patch content, aborting")
+						}
+						if len(content) > 10_000 {
+							return fmt.Errorf("patch too large: %d bytes (limit is 10000 bytes)", len(content))
+						}
+
+						cmd := exec.Command("git", "apply", "--check", "--3way", "--whitespace=nowarn", "-")
+						cmd.Stdin = strings.NewReader(content)
+
+						if out, err := cmd.CombinedOutput(); err != nil {
+							msg := strings.TrimSpace(string(out))
+							if msg == "" {
+								return fmt.Errorf("edited patch is not applicable")
+							}
+							return fmt.Errorf("edited patch is not applicable: %s", msg)
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1617,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+							},
+							Content: content,
+						}
+						if repo.EarliestUniqueCommitID != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"r", repo.EarliestUniqueCommitID})
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign patch event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this patch event"); err != nil {
+							return err
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:      "reply",
+					Usage:     "reply to a patch with a NIP-22 comment event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionReply(ctx, c, 1617, "patch", patchSubjectPreview)
+					},
+				},
+				{
+					Name:      "close",
+					Usage:     "close a patch by publishing a status event",
+					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "applied",
+							Usage: "mark the patch as applied instead of closed",
+						},
+					},
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionClose(ctx, c, 1617, "patch", c.Bool("applied"))
+					},
+				},
+				{
+					Name:      "apply",
+					Usage:     "apply a patch to current branch",
+					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "without-key",
+							Usage: "apply patch without requiring a signer and skip status publication",
+						},
+					},
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing patch id prefix")
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						var kr nostr.Keyer
+						signerPubkey := nostr.ZeroPK
+						if !c.Bool("without-key") {
+							kr, _, err = gatherKeyerFromArguments(ctx, c)
+							if err != nil {
+								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
+							}
+
+							signerPubkey, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "apply patches")
+							if err != nil {
+								return err
+							}
+						}
+
+						patches, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
+						if err != nil {
+							return err
+						}
+
+						evt, err := findEventByPrefix(patches, prefix)
+						if err != nil {
+							return err
+						}
+
+						previousHead := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							previousHead = strings.TrimSpace(string(output))
+						}
+
+						// apply patch
+						cmd := exec.Command("git", "am", "--3way")
+						cmd.Stdin = strings.NewReader(evt.Content)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						if err := cmd.Run(); err != nil {
+							return fmt.Errorf("failed to apply patch with git am: %w (if needed, run 'git am --abort')", err)
+						}
+
+						log("applied patch %s\n", color.GreenString(evt.ID.Hex()[:6]))
+
+						appliedCommits := []string{}
+						if previousHead != "" {
+							if output, err := exec.Command("git", "rev-list", "--reverse", previousHead+"..HEAD").Output(); err == nil {
+								for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+									commit := strings.TrimSpace(line)
+									if commit != "" {
+										appliedCommits = append(appliedCommits, commit)
+									}
+								}
+							}
+						}
+						if len(appliedCommits) == 0 {
+							if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+								commit := strings.TrimSpace(string(output))
+								if commit != "" {
+									appliedCommits = append(appliedCommits, commit)
+								}
+							}
+						}
+
+						if kr != nil {
+							statusEvt := nostr.Event{
+								CreatedAt: nostr.Now(),
+								Kind:      1631,
+								Tags: nostr.Tags{
+									nostr.Tag{"e", evt.ID.Hex()},
+									nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+									nostr.Tag{"p", evt.PubKey.Hex()},
+								},
+							}
+
+							if signerPubkey != repo.Event.PubKey {
+								statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"p", repo.Event.PubKey.Hex()})
+							}
+
+							if len(appliedCommits) > 0 {
+								tag := nostr.Tag{"applied-as-commits"}
+								tag = append(tag, appliedCommits...)
+								statusEvt.Tags = append(statusEvt.Tags, tag)
+							}
+
+							if err := kr.SignEvent(ctx, &statusEvt); err != nil {
+								return fmt.Errorf("patch applied, but failed to sign applied status event: %w", err)
+							}
+
+							if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
+								return fmt.Errorf("patch applied, but failed to publish applied status event: %w", err)
+							}
+						}
+
+						return nil
+					},
+				},
+			},
+		},
+		{
+			Name:        "issue",
+			Usage:       "issue-related operations",
+			Description: "when called directly, lists open issues; with an issue id prefix, displays that issue with threaded discussions.",
+			ArgsUsage:   "[id-prefix]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "closed",
+					Usage: "list only closed issues",
+				},
+				&cli.BoolFlag{
+					Name:  "all",
+					Usage: "list all issues, including closed",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				repo, err := readGitRepositoryFromConfig()
+				if err != nil {
+					return err
+				}
+
+				events, err := fetchGitRepoRelatedEvents(ctx, repo, 1621)
+				if err != nil {
+					return err
+				}
+
+				prefix := strings.TrimSpace(c.Args().First())
+				if prefix == "" {
+					// list
+					statuses, err := fetchIssueStatus(ctx, repo, events)
+					if err != nil {
+						return err
+					}
+
+					if len(events) == 0 {
+						log("no issues found\n")
+						return nil
+					}
+
+					showClosed := c.Bool("closed")
+					showAll := c.Bool("all")
+
+					// preload metadata from everybody
+					wg := sync.WaitGroup{}
+					for _, evt := range events {
+						wg.Go(func() {
+							sys.FetchProfileMetadata(ctx, evt.PubKey)
+						})
+					}
+					wg.Wait()
+
+					// now render
+					for _, evt := range events {
+						id := evt.ID.Hex()
+						status := statusLabelForEvent(evt.ID, statuses, true)
+						if !showAll {
+							if showClosed {
+								if status != "closed" {
+									continue
+								}
+							} else if status == "closed" {
+								continue
+							}
+						}
+
+						author := authorPreview(ctx, evt.PubKey)
+
+						subject := issueSubjectPreview(evt, 72)
+						date := evt.CreatedAt.Time().Format(time.DateOnly)
+						stdout(color.CyanString(id[:6]), colorizeGitStatus(status), color.HiBlackString(date), color.HiBlueString(author), color.HiWhiteString(subject))
+					}
+
+					return nil
+				} else {
+					// view single
+					evt, err := findEventByPrefix(events, prefix)
+					if err != nil {
+						return err
+					}
+
+					statuses, err := fetchIssueStatus(ctx, repo, []nostr.RelayEvent{evt})
+					if err != nil {
+						return err
+					}
+
+					return showThreadWithComments(ctx, repo.Relays, evt, statusLabelForEvent(evt.ID, statuses, true), nil)
+				}
+			},
+			Commands: []*cli.Command{
+				{
+					Name:  "create",
+					Usage: "edit and send an issue event (kind 1621)",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						_, selfName, selfNpub, err := keyerIdentity(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to get current identity: %w", err)
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						content, err := editWithDefaultEditor(
+							"nak-git-issue/NOTES_EDITMSG",
+							strings.TrimSpace(fmt.Sprintf(`# creating as '%s' ('%s')
+# creating issue on repository '%s'
+# the first line will be used as the issue subject
+everything is broken
+
+# the remaining lines will be the body
+please fix
+
+# lines starting with '#' are ignored
+`, selfName, selfNpub, repo.ID)),
+							true,
+						)
+						if err != nil {
+							return err
+						}
+
+						subject, body, err := parseIssueCreateContent(content)
+						if err != nil {
+							return err
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      1621,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+								nostr.Tag{"subject", subject},
+							},
+							Content: body,
+						}
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign issue event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "create this issue"); err != nil {
+							return err
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:      "reply",
+					Usage:     "reply to an issue with a NIP-22 comment event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionReply(ctx, c, 1621, "issue", issueSubjectPreview)
+					},
+				},
+				{
+					Name:      "close",
+					Usage:     "close an issue by publishing a status event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionClose(ctx, c, 1621, "issue", false)
+					},
+				},
+			},
+		},
+		{
+			Name:  "status",
+			Usage: "show repository status and synchronization information",
+			Action: func(ctx context.Context, c *cli.Command) error {
+				// read local config
+				localConfig, err := readNip34ConfigFile("")
+				if err != nil {
+					return fmt.Errorf("failed to read nip34.json: %w (run 'nak git init' first)", err)
+				}
+
+				// parse owner
+				owner, err := parsePubKey(localConfig.Owner)
+				if err != nil {
+					return fmt.Errorf("invalid owner public key: %w", err)
+				}
+
+				repo := localConfig.ToRepository()
+				stdout("\n" + color.CyanString("metadata:"))
+				stdout("  identifier:", color.CyanString(repo.ID))
+				stdout("  name:", color.CyanString(repo.Name))
+				stdout("  owner:", color.CyanString(nip19.EncodeNpub(repo.Event.PubKey)))
+				stdout("  description:", color.CyanString(repo.Description))
+				stdout("  web urls:")
+				for _, url := range repo.Web {
+					stdout("   ", url)
+				}
+				stdout("  earliest unique commit:", color.CyanString(repo.EarliestUniqueCommitID))
+
+				// fetch repository announcement and state from relays
+				_, _, upToDateRelays, state, err := fetchRepositoryAndState(
+					ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+				if err != nil {
+					// create a local repo object for display purposes
+					log("failed to fetch repository announcement from relays: %s\n", err)
+				}
+
+				if state == nil {
+					stdout(color.YellowString("\n repository state not published."))
+				}
+
+				stateHEAD, _ := state.Branches[state.HEAD]
+
+				stdout("\n" + color.CyanString("grasp status:"))
+				rows := make([][3]string, len(localConfig.GraspServers))
+				for s, server := range localConfig.GraspServers {
+					row := [3]string{}
+
+					url := graspServerHost(server)
+					row[0] = url
+
+					upToDate := upToDateRelays != nil && slices.ContainsFunc(upToDateRelays, func(s string) bool { return graspServerHost(s) == url })
+					if upToDate {
+						row[1] = color.GreenString("announcement up-to-date")
+					} else {
+						row[1] = color.YellowString("announcement outdated")
+					}
+
+					if state != nil {
+						remoteName := gitRemoteName(url)
+						refSpec := fmt.Sprintf("refs/remotes/%s/HEAD", remoteName)
+						lsRemoteCmd := exec.Command("git", "rev-parse", "--verify", refSpec)
+						commitOutput, err := lsRemoteCmd.Output()
+						if err != nil {
+							row[2] = color.YellowString("repository not pushed")
+						} else {
+							commit := strings.TrimSpace(string(commitOutput))
+							if commit == stateHEAD {
+								row[2] = color.GreenString("repository synced with state")
+							} else {
+								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", stateHEAD[0:5], commit[0:5])
+							}
+						}
+					}
+
+					rows[s] = row
+				}
+
+				maxCol := [3]int{}
+				for i := range maxCol {
+					for _, row := range rows {
+						if len(row[i]) > maxCol[i] {
+							maxCol[i] = len(row[i])
+						}
+					}
+				}
+				for _, row := range rows {
+					line := "  " + row[0] + strings.Repeat(" ", maxCol[0]-len(row[0])) + "   " + strings.Repeat(" ", maxCol[1]-len(row[1])) + row[1] + "   " + strings.Repeat(" ", maxCol[2]-len(row[2])) + row[2]
+					stdout(line)
+				}
+
+				return nil
+			},
+		},
 	},
 }
 
@@ -1008,6 +1812,472 @@ func promptForStringList(
 	return selected, nil
 }
 
+func readGitRepositoryFromConfig() (nip34.Repository, error) {
+	localConfig, err := readNip34ConfigFile("")
+	if err != nil {
+		return nip34.Repository{}, err
+	}
+
+	repo := localConfig.ToRepository()
+	if len(repo.Relays) == 0 {
+		return nip34.Repository{}, fmt.Errorf("no relays configured in nip34.json")
+	}
+
+	return repo, nil
+}
+
+func confirmGitEventToBeSent(evt nostr.Event, relays []string, question string) error {
+	pretty, err := json.MarshalIndent(evt, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to encode event for preview: %w", err)
+	}
+
+	stdout(string(pretty))
+	stdout("relays:", strings.Join(relays, " "))
+
+	if !askConfirmation(question + "? [y/n] ") {
+		return fmt.Errorf("aborted")
+	}
+
+	return nil
+}
+
+func publishGitEventToRepoRelays(ctx context.Context, evt nostr.Event, relays []string) error {
+	successes := make([]string, 0, len(relays))
+
+	for res := range sys.Pool.PublishMany(ctx, relays, evt) {
+		if res.Error != nil {
+			log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+		} else {
+			log("> published to %s\n", color.GreenString(res.Relay.URL))
+			successes = append(successes, res.Relay.URL)
+		}
+	}
+
+	if len(successes) == 0 {
+		return fmt.Errorf("failed to publish event to any relay")
+	}
+
+	nevent := nip19.EncodeNevent(evt.ID, successes, nostr.ZeroPK)
+	log("event: %s\n", color.CyanString(nevent))
+	return nil
+}
+
+func fetchGitRepoRelatedEvents(
+	ctx context.Context,
+	repo nip34.Repository,
+	kind nostr.Kind,
+) ([]nostr.RelayEvent, error) {
+	events := make([]nostr.RelayEvent, 0, 30)
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds: []nostr.Kind{kind},
+		Tags: nostr.TagMap{
+			"a": []string{fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+		},
+		Limit: 500,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		events = append(events, ie)
+	}
+	slices.SortFunc(events, nostr.CompareRelayEvent)
+	return events, nil
+}
+
+func fetchIssueStatus(
+	ctx context.Context,
+	repo nip34.Repository,
+	issues []nostr.RelayEvent,
+) (map[nostr.ID]nostr.Event, error) {
+	latest := make(map[nostr.ID]nostr.Event)
+	maintainers := repo.Maintainers
+	if !slices.Contains(maintainers, repo.PubKey) {
+		maintainers = append(maintainers, repo.PubKey)
+	}
+	eTags := make([]string, len(issues))
+	for i, iss := range issues {
+		eTags[i] = iss.ID.Hex()
+	}
+
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds:   []nostr.Kind{1630, 1631, 1632, 1633},
+		Tags:    nostr.TagMap{"e": eTags},
+		Authors: maintainers,
+		Limit:   500,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		targetHex := ""
+		for _, tag := range ie.Event.Tags {
+			if len(tag) < 2 || tag[0] != "e" {
+				continue
+			}
+			if targetHex == "" {
+				targetHex = tag[1]
+			}
+			if len(tag) >= 4 && tag[3] == "root" {
+				targetHex = tag[1]
+				break
+			}
+		}
+		if targetHex == "" {
+			continue
+		}
+		targetID, err := nostr.IDFromHex(targetHex)
+		if err != nil {
+			continue
+		}
+		if prev, ok := latest[targetID]; !ok || ie.Event.CreatedAt > prev.CreatedAt {
+			latest[targetID] = ie.Event
+		}
+	}
+
+	return latest, nil
+}
+
+func gitDiscussionReply(
+	ctx context.Context,
+	c *cli.Command,
+	discussionKind nostr.Kind,
+	discussionName string,
+	subjectPreview func(nostr.RelayEvent, int) string,
+) error {
+	prefix := strings.TrimSpace(c.Args().First())
+	if prefix == "" {
+		return fmt.Errorf("missing %s id prefix", discussionName)
+	}
+
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return fmt.Errorf("failed to gather keyer: %w", err)
+	}
+
+	_, selfName, selfNpub, err := keyerIdentity(ctx, kr)
+	if err != nil {
+		return fmt.Errorf("failed to get current identity: %w", err)
+	}
+
+	repo, err := readGitRepositoryFromConfig()
+	if err != nil {
+		return err
+	}
+
+	discussions, err := fetchGitRepoRelatedEvents(ctx, repo, discussionKind)
+	if err != nil {
+		return err
+	}
+
+	discussionEvt, err := findEventByPrefix(discussions, prefix)
+	if err != nil {
+		return err
+	}
+
+	comments, err := fetchThreadComments(ctx, repo.Relays, discussionEvt.ID, nil)
+	if err != nil {
+		return err
+	}
+
+	subject := subjectPreview(discussionEvt, 72)
+	if subject == "" {
+		subject = "<untitled>"
+	}
+	pm := sys.FetchProfileMetadata(ctx, discussionEvt.PubKey)
+	headerLines := []string{
+		fmt.Sprintf("commenting as '%s' ('%s')", selfName, selfNpub),
+		fmt.Sprintf("commenting on %s '%s' '%s' by '%s' ('%s') on repository '%s'", discussionName, discussionEvt.ID.Hex()[:6], subject, pm.ShortName(), pm.NpubShort(), repo.ID),
+	}
+
+	edited, err := editWithDefaultEditor(
+		fmt.Sprintf("nak-git-%s-reply/NOTES_EDITMSG", discussionName),
+		threadReplyEditorTemplate(ctx, headerLines, discussionEvt, comments),
+		true,
+	)
+	if err != nil {
+		return err
+	}
+
+	content, parentEvt, err := parseThreadReplyContent(discussionEvt, comments, edited)
+	if err != nil {
+		return err
+	}
+
+	if parentEvt.ID == discussionEvt.ID {
+		log("> replying to %s %s (%s)\n",
+			discussionName,
+			color.CyanString(discussionEvt.ID.Hex()[:6]),
+			color.HiWhiteString(subjectPreview(discussionEvt, 72)),
+		)
+	} else {
+		log("> replying to comment %s by %s on %s %s\n",
+			color.CyanString(parentEvt.ID.Hex()[:6]),
+			color.HiBlueString(authorPreview(ctx, parentEvt.PubKey)),
+			discussionName,
+			color.CyanString(discussionEvt.ID.Hex()[:6]),
+		)
+	}
+
+	evt := nostr.Event{
+		CreatedAt: nostr.Now(),
+		Kind:      1111,
+		Tags: nostr.Tags{
+			nostr.Tag{"E", discussionEvt.ID.Hex(), discussionEvt.Relay.URL},
+			nostr.Tag{"e", parentEvt.ID.Hex(), parentEvt.Relay.URL},
+			nostr.Tag{"P", discussionEvt.PubKey.Hex()},
+			nostr.Tag{"p", parentEvt.PubKey.Hex()},
+			nostr.Tag{"K", strconv.Itoa(int(discussionEvt.Kind))},
+		},
+		Content: content,
+	}
+	if err := kr.SignEvent(ctx, &evt); err != nil {
+		return fmt.Errorf("failed to sign %s reply event: %w", discussionName, err)
+	}
+	if err := confirmGitEventToBeSent(evt, repo.Relays, fmt.Sprintf("send this %s reply", discussionName)); err != nil {
+		return err
+	}
+
+	return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+}
+
+func gitDiscussionClose(
+	ctx context.Context,
+	c *cli.Command,
+	discussionKind nostr.Kind,
+	discussionName string,
+	applied bool,
+) error {
+	prefix := strings.TrimSpace(c.Args().First())
+	if prefix == "" {
+		return fmt.Errorf("missing %s id prefix", discussionName)
+	}
+
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return fmt.Errorf("failed to gather keyer: %w", err)
+	}
+
+	repo, err := readGitRepositoryFromConfig()
+	if err != nil {
+		return err
+	}
+
+	discussions, err := fetchGitRepoRelatedEvents(ctx, repo, discussionKind)
+	if err != nil {
+		return err
+	}
+
+	discussionEvt, err := findEventByPrefix(discussions, prefix)
+	if err != nil {
+		return err
+	}
+
+	signerPubkey, err := ensureGitRepositoryMaintainer(ctx, kr, repo, "close discussions")
+	if err != nil {
+		return err
+	}
+
+	statusKind := nostr.Kind(1632)
+	statusLabel := "closed"
+	if applied {
+		statusKind = 1631
+		statusLabel = "applied"
+	}
+
+	statusEvt := nostr.Event{
+		CreatedAt: nostr.Now(),
+		Kind:      statusKind,
+		Tags: nostr.Tags{
+			nostr.Tag{"e", discussionEvt.ID.Hex()},
+			nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+		},
+	}
+
+	if discussionEvt.PubKey != signerPubkey {
+		statusEvt.Tags = append(statusEvt.Tags,
+			nostr.Tag{"p", discussionEvt.PubKey.Hex()},
+		)
+	}
+
+	if signerPubkey != repo.Event.PubKey {
+		statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"p", repo.Event.PubKey.Hex()})
+	}
+
+	if err := kr.SignEvent(ctx, &statusEvt); err != nil {
+		return fmt.Errorf("failed to sign %s %s status event: %w", discussionName, statusLabel, err)
+	}
+
+	if err := confirmGitEventToBeSent(statusEvt, repo.Relays, fmt.Sprintf("mark this %s as %s", discussionName, statusLabel)); err != nil {
+		return err
+	}
+
+	if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
+		return fmt.Errorf("failed to publish %s %s status event: %w", discussionName, statusLabel, err)
+	}
+
+	log("marked %s %s as %s\n", discussionName, color.GreenString(discussionEvt.ID.Hex()[:6]), statusLabel)
+	return nil
+}
+
+func ensureGitRepositoryMaintainer(ctx context.Context, kr nostr.Keyer, repo nip34.Repository, action string) (nostr.PubKey, error) {
+	pubkey, err := kr.GetPublicKey(ctx)
+	if err != nil {
+		return nostr.ZeroPK, fmt.Errorf("failed to get signer public key: %w", err)
+	}
+
+	if pubkey != repo.Event.PubKey && !slices.Contains(repo.Maintainers, pubkey) {
+		return nostr.ZeroPK, fmt.Errorf("current user '%s' is not allowed to %s", nip19.EncodeNpub(pubkey), action)
+	}
+
+	return pubkey, nil
+}
+
+var (
+	patchPrefixRe = regexp.MustCompile(`(?i)^\[patch[^\]]*\]\s*`)
+	gitHashRe     = regexp.MustCompile(`^[0-9a-f]{7,64}$`)
+)
+
+func patchSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
+	for _, line := range strings.Split(evt.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "Subject:") {
+			continue
+		}
+
+		subject := strings.TrimSpace(strings.TrimPrefix(line, "Subject:"))
+		subject = strings.TrimSpace(patchPrefixRe.ReplaceAllString(subject, ""))
+		if subject == "" {
+			return ""
+		}
+
+		if maxChars <= 0 {
+			return subject
+		}
+
+		runes := []rune(subject)
+		if len(runes) <= maxChars {
+			return subject
+		}
+
+		if maxChars <= 3 {
+			return string(runes[:maxChars])
+		}
+
+		return string(runes[:maxChars-3]) + "..."
+	}
+
+	return ""
+}
+
+func issueSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
+	if tag := evt.Tags.Find("subject"); len(tag) >= 2 {
+		subject := strings.TrimSpace(tag[1])
+		if subject != "" {
+			return clampWithEllipsis(subject, maxChars)
+		}
+	}
+
+	for _, line := range strings.Split(evt.Content, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return clampWithEllipsis(line, maxChars)
+		}
+	}
+
+	return ""
+}
+
+func parseIssueCreateContent(content string) (subject string, body string, err error) {
+	lines := strings.Split(content, "\n")
+	var bodyb strings.Builder
+
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+
+		if subject == "" {
+			subject = line
+			continue
+		}
+
+		bodyb.WriteString(line)
+		bodyb.WriteByte('\n')
+	}
+
+	if subject == "" {
+		return "", "", fmt.Errorf("issue subject cannot be empty")
+	}
+
+	body = strings.TrimSpace(bodyb.String())
+	return subject, body, nil
+}
+
+func statusLabelForEvent(id nostr.ID, statuses map[nostr.ID]nostr.Event, isIssue bool) string {
+	statusEvt, ok := statuses[id]
+	if !ok {
+		return "open"
+	}
+
+	switch statusEvt.Kind {
+	case 1630:
+		return "open"
+	case 1631:
+		return "applied/merged"
+	case 1632:
+		return "closed"
+	case 1633:
+		return "draft"
+	default:
+		return "open"
+	}
+}
+
+func patchAppliedCommitPreview(statusEvt nostr.Event) string {
+	if statusEvt.Kind != 1631 {
+		return ""
+	}
+
+	if tag := statusEvt.Tags.Find("merge-commit"); len(tag) >= 2 {
+		return shortCommitID(tag[1], 5)
+	}
+
+	for _, tag := range statusEvt.Tags {
+		if len(tag) < 2 || tag[0] != "applied-as-commits" {
+			continue
+		}
+
+		for i := 1; i < len(tag); i++ {
+			if commit := shortCommitID(tag[i], 5); commit != "" {
+				return commit
+			}
+		}
+	}
+
+	return ""
+}
+
+func shortCommitID(commit string, n int) string {
+	commit = strings.TrimSpace(commit)
+	if commit == "" || n <= 0 {
+		return ""
+	}
+	if len(commit) <= n {
+		return commit
+	}
+	return commit[:n]
+}
+
+func colorizeGitStatus(status string) string {
+	switch status {
+	case "open":
+		return color.YellowString(status)
+	case "resolved", "applied/merged":
+		return color.GreenString(status)
+	case "closed":
+		return color.RedString(status)
+	case "draft":
+		return color.BlueString(status)
+	default:
+		return status
+	}
+}
+
 func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.RepositoryState, error) {
 	// read current nip34.json
 	localConfig, err := readNip34ConfigFile("")
@@ -1022,7 +2292,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 	}
 
 	// fetch repository announcement and state from relays
-	repo, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
+	repo, upToDateAnnouncementEvent, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
 	notUpToDate := func(graspServer string) bool {
 		return !slices.Contains(upToDateRelays, nostr.NormalizeURL(graspServer))
 	}
@@ -1042,33 +2312,40 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			}
 			log("some grasp servers (%v) are not up-to-date, will publish to them\n", relays)
 		}
-		// create a local repository object from config and publish it
-		localRepo := localConfig.ToRepository()
-
-		if signer != nil {
-			signerPk, err := signer.GetPublicKey(ctx)
-			if err != nil {
-				return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
-			}
-			if signerPk != owner {
-				return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
-			} else {
-				event := localRepo.ToEvent()
-				if err := signer.SignEvent(ctx, &event); err != nil {
-					return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+		var event nostr.Event
+		if upToDateAnnouncementEvent != nil {
+			// publish the latest event to the other relays
+			event = *upToDateAnnouncementEvent
+			repo = nip34.ParseRepository(event)
+		} else {
+			// create a local repository object from config and publish it
+			localRepo := localConfig.ToRepository()
+			if signer != nil {
+				signerPk, err := signer.GetPublicKey(ctx)
+				if err != nil {
+					return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
 				}
-
-				for res := range sys.Pool.PublishMany(ctx, relays, event) {
-					if res.Error != nil {
-						log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-					} else {
-						log("> published to %s\n", color.GreenString(res.RelayURL))
+				if signerPk != owner {
+					return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
+				} else {
+					event = localRepo.ToEvent()
+					if err := signer.SignEvent(ctx, &event); err != nil {
+						return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 					}
 				}
-				repo = localRepo
+			} else {
+				return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
 			}
-		} else {
-			return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
+
+			repo = localRepo
+		}
+
+		for res := range sys.Pool.PublishMany(ctx, relays, event) {
+			if res.Error != nil {
+				log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+			} else {
+				log("> published to %s\n", color.GreenString(res.RelayURL))
+			}
 		}
 	} else {
 		if err != nil {
@@ -1104,6 +2381,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 						} else {
 							log("local configuration is newer, publishing updated repository announcement...\n")
 							announcementEvent := localRepo.ToEvent()
+							announcementEvent.CreatedAt = nostr.Timestamp(configModTime.Unix())
 							if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
 								return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
 							}
@@ -1150,7 +2428,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			gitUpdateRefs(ctx, "", *state)
 		}
 	}
-		return repo, state, nil
+	return repo, state, nil
 
 }
 
@@ -1308,9 +2586,9 @@ func fetchRepositoryAndState(
 	pubkey nostr.PubKey,
 	identifier string,
 	relayHints []string,
-) (repo nip34.Repository, upToDateRelays []string, state *nip34.RepositoryState, err error) {
+) (repo nip34.Repository, upToDateAnnouncementEvent *nostr.Event, upToDateRelays []string, state *nip34.RepositoryState, err error) {
 	// fetch repository announcement (30617)
-	relays := appendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
+	relays := nostr.AppendUnique(relayHints, sys.FetchOutboxRelays(ctx, pubkey, 3)...)
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30617},
 		Authors: []nostr.PubKey{pubkey},
@@ -1329,13 +2607,15 @@ func fetchRepositoryAndState(
 
 			// reset this list as the previous was for relays with the older version
 			upToDateRelays = []string{ie.Relay.URL}
+
+			upToDateAnnouncementEvent = &ie.Event
 		} else if ie.Event.CreatedAt == repo.CreatedAt {
 			// we discard this because it's the same, but this relay is up-to-date
 			upToDateRelays = append(upToDateRelays, ie.Relay.URL)
 		}
 	}
 	if repo.Event.ID == nostr.ZeroID {
-		return repo, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
+		return repo, nil, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
 	}
 
 	// fetch repository state (30618)
@@ -1365,10 +2645,10 @@ func fetchRepositoryAndState(
 		}
 	}
 	if stateErr != nil {
-		return repo, upToDateRelays, state, stateErr
+		return repo, upToDateAnnouncementEvent, upToDateRelays, state, stateErr
 	}
 
-		return repo, upToDateRelays, state, nil
+	return repo, upToDateAnnouncementEvent, upToDateRelays, state, nil
 }
 
 type StateErr struct{ string }
@@ -1516,34 +2796,41 @@ func parseRepositoryAddress(
 		return ptr.PublicKey, ptr.Identifier, ptr.Relays, nil
 	}
 
-	// format 2: nostr://<npub>/<relay_hostname>/<identifier> (ngit-style)
+	// format 2: nostr://<npub_or_nip05>/<relay_hostname>/<identifier> (ngit-style)
+	// format 2b: nostr://<npub_or_nip05>/<identifier> (without relay)
 	if strings.HasPrefix(address, "nostr://") {
 		parts := strings.Split(address, "/")
-		if len(parts) != 5 {
+		if len(parts) == 5 {
+			// nostr://<owner>/<relay>/<identifier>
+			owner, err = parsePubKey(parts[2])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
+			}
+
+			relayHost := parts[3]
+			identifier = parts[4]
+
+			if strings.HasPrefix(relayHost, "wss:") || strings.HasPrefix(relayHost, "ws:") {
+				relayHints = []string{relayHost}
+			} else {
+				relayHints = []string{"wss://" + relayHost}
+			}
+
+			return owner, identifier, relayHints, nil
+		} else if len(parts) == 4 {
+			// nostr://<owner>/<identifier>
+			owner, err = parsePubKey(parts[2])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
+			}
+
+			identifier = parts[3]
+			return owner, identifier, nil, nil
+		} else {
 			return nostr.PubKey{}, "", nil, fmt.Errorf(
-				"invalid nostr URL format, expected nostr://<npub>/<relay_hostname>/<identifier>, got: %s", address,
+				"invalid nostr URL format, expected nostr://<npub|nip05>/<identifier> or nostr://<npub|nip05>/<relay>/<identifier>, got: %s", address,
 			)
 		}
-
-		prefix, data, err := nip19.Decode(parts[2])
-		if err != nil {
-			return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner public key: %w", err)
-		}
-		if prefix != "npub" {
-			return nostr.PubKey{}, "", nil, fmt.Errorf("expected npub in URL")
-		}
-		owner = data.(nostr.PubKey)
-		relayHost := parts[3]
-		identifier = parts[4]
-
-		// construct relay hint from hostname
-		if strings.HasPrefix(relayHost, "wss:") || strings.HasPrefix(relayHost, "ws:") {
-			relayHints = []string{relayHost}
-		} else {
-			relayHints = []string{"wss://" + relayHost}
-		}
-
-		return owner, identifier, relayHints, nil
 	}
 
 	// format 3: <npub, hex, nprofile or nip05>/<identifier>
@@ -1571,7 +2858,7 @@ func parseRepositoryAddress(
 			}
 		}
 	}
-		return owner, identifier, relayHints, nil
+	return owner, identifier, relayHints, nil
 }
 
 func figureOutBranches(c *cli.Command, refspec string, isPush bool) (
@@ -1752,12 +3039,12 @@ func getCurrentGitBranch(path string) (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("failed to get current git branch: %w", err)
 	}
-	
+
 	branch := strings.TrimSpace(string(output))
 	if branch == "" {
 		return "", fmt.Errorf("no current branch detected")
 	}
-	
+
 	return branch, nil
 }
 
@@ -1803,7 +3090,6 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 		return fmt.Errorf("failed to get signer pubkey: %w", err)
 	}
 
-
 	// Get current commit for head branch
 	cmd := exec.Command("git", "rev-parse", headBranch)
 	output, err := cmd.Output()
@@ -1846,10 +3132,10 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 	if relayURL != "" {
 		relays = append(relays, relayURL)
 	}
-	
+
 	// Add base repository relays
-	relays = appendUnique(relays, baseRelayHints...)
-	
+	relays = nostr.AppendUnique(relays, baseRelayHints...)
+
 	// Add local repository grasp servers
 	for _, server := range localConfig.GraspServers {
 		if !slices.Contains(relays, server) {
@@ -1892,10 +3178,10 @@ func createPullRequest(ctx context.Context, c *cli.Command, baseRepoAddr, baseBr
 	log("PR ID: %s\n", event.ID)
 	if c.Bool("verbose") {
 		pointer := nostr.EventPointer{
-			ID:        event.ID,
-			Relays:    relays,
-			Author:    signerPubkey,
-			Kind:      event.Kind,
+			ID:     event.ID,
+			Relays: relays,
+			Author: signerPubkey,
+			Kind:   event.Kind,
 		}
 		nevent := nip19.EncodePointer(pointer)
 		log("PR nevent: %s\n", nevent)
@@ -1976,7 +3262,7 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 	if relayURL != "" {
 		relays = append(relays, relayURL)
 	}
-	
+
 	// Add local repository grasp servers
 	for _, server := range localConfig.GraspServers {
 		if !slices.Contains(relays, server) {
@@ -2017,10 +3303,10 @@ func updatePullRequest(ctx context.Context, c *cli.Command, prID, headBranch, su
 	log("PR Update ID: %s\n", event.ID)
 	if c.Bool("verbose") {
 		pointer := nostr.EventPointer{
-			ID:        event.ID,
-			Relays:    relays,
-			Author:    signerPubkey,
-			Kind:      event.Kind,
+			ID:     event.ID,
+			Relays: relays,
+			Author: signerPubkey,
+			Kind:   event.Kind,
 		}
 		nevent := nip19.EncodePointer(pointer)
 		log("PR Update nevent: %s\n", nevent)
@@ -2228,10 +3514,10 @@ func createPullRequestWithSigner(ctx context.Context, signer nostr.Keyer, baseRe
 	if relayURL != "" {
 		relays = append(relays, relayURL)
 	}
-	
+
 	// Add base repository relays
-	relays = appendUnique(relays, baseRelayHints...)
-	
+	relays = nostr.AppendUnique(relays, baseRelayHints...)
+
 	// Add local repository grasp servers
 	for _, server := range localConfig.GraspServers {
 		if !slices.Contains(relays, server) {
@@ -2342,7 +3628,7 @@ func updatePullRequestWithSigner(ctx context.Context, signer nostr.Keyer, prID, 
 	if relayURL != "" {
 		relays = append(relays, relayURL)
 	}
-	
+
 	// Add local repository grasp servers
 	for _, server := range localConfig.GraspServers {
 		if !slices.Contains(relays, server) {

@@ -120,8 +120,10 @@ func realCurl() error {
 			keyFlags = append(keyFlags, arg)
 			if arg != "--prompt-sec" {
 				i++
-				val := os.Args[i+2]
-				keyFlags = append(keyFlags, val)
+				if i+2 >= len(os.Args) {
+					break
+				}
+				keyFlags = append(keyFlags, os.Args[i+2])
 			}
 		} else {
 			curlFlags = append(curlFlags, arg)

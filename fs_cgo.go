@@ -1,4 +1,4 @@
-//go:build !windows && !openbsd && !cgofuse
+//go:build cgofuse && !windows && !openbsd
 
 package main
 
@@ -13,10 +13,9 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/nak/nostrfs"
-	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
+	nostrfs "github.com/fiatjaf/nak/nostrfs_cgo"
 	"github.com/urfave/cli/v3"
+	"github.com/winfsp/cgofuse/fuse"
 )
 
 var fsCmd = &cli.Command{
@@ -83,21 +82,22 @@ var fsCmd = &cli.Command{
 
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
-		timeout := time.Second * 120
-		server, err := fs.Mount(mountpoint, root, &fs.Options{
-			MountOptions: fuse.MountOptions{
-				Debug:          isVerbose,
-				Name:           "nak",
-				FsName:         "nak",
-				RememberInodes: true,
-			},
-			AttrTimeout:  &timeout,
-			EntryTimeout: &timeout,
-			Logger:       nostr.DebugLogger,
-		})
-		if err != nil {
-			return fmt.Errorf("mount failed: %w", err)
+
+		// create cgofuse host
+		host := fuse.NewFileSystemHost(root)
+		host.SetCapReaddirPlus(true)
+		host.SetUseIno(true)
+
+		// mount the filesystem
+		mountArgs := []string{"-s", mountpoint}
+		if isVerbose {
+			mountArgs = append([]string{"-d"}, mountArgs...)
 		}
+
+		go func() {
+			host.Mount("", mountArgs)
+		}()
+
 		log("ok.\n")
 
 		// setup signal handling for clean unmount
@@ -107,17 +107,12 @@ var fsCmd = &cli.Command{
 		go func() {
 			<-ch
 			log("- unmounting... ")
-			err := server.Unmount()
-			if err != nil {
-				chErr <- fmt.Errorf("unmount failed: %w", err)
-			} else {
-				log("ok\n")
-				chErr <- nil
-			}
+			// cgofuse doesn't have explicit unmount, it unmounts on process exit
+			log("ok\n")
+			chErr <- nil
 		}()
 
-		// serve the filesystem until unmounted
-		server.Wait()
+		// wait for signals
 		return <-chErr
 	},
 }
