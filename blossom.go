@@ -283,28 +283,27 @@ if any of the files are not found the command will fail, otherwise it will succe
 					out, _ := json.Marshal(bd)
 					stdout(out)
 					return nil
-				} else {
-					for input := range getJsonsOrBlank() {
-						if input == "{}" {
-							continue
-						}
-
-						blobURL := input
-						if err := json.Unmarshal([]byte(input), &bd); err == nil {
-							blobURL = bd.URL
-						}
-						bd, err := client.MirrorBlob(ctx, blobURL)
-						if err != nil {
-							ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
-							continue
-						}
-						out, _ := json.Marshal(bd)
-						stdout(out)
-					}
-
-					exitIfLineProcessingError(ctx)
 				}
 
+				for input := range getJsonsOrBlank() {
+					if input == "{}" {
+						continue
+					}
+
+					blobURL := input
+					if err := json.Unmarshal([]byte(input), &bd); err == nil {
+						blobURL = bd.URL
+					}
+					bd, err := client.MirrorBlob(ctx, blobURL)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
+						continue
+					}
+					out, _ := json.Marshal(bd)
+					stdout(out)
+				}
+
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
