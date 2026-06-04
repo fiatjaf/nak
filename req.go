@@ -595,8 +595,8 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 		spl := strings.SplitN(tagFlag, "=", 2)
 		if len(spl) == 2 {
 			val := spl[1]
-			if len(spl) == 1 {
-				val = decodeTagValue(val, []rune(spl[0])[0])
+			if len(spl[0]) == 1 {
+				val = decodeTagValue(val, rune(spl[0][0]))
 			}
 			tags = append(tags, flagTag{spl[0], val})
 		} else {
