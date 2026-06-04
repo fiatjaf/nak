@@ -1,4 +1,4 @@
-//go:build !windows && !openbsd && !cgofuse
+//go:build windows
 
 package main
 
@@ -6,17 +6,15 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"os/signal"
-	"syscall"
+	"path/filepath"
 	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/nak/nostrfs"
-	"github.com/hanwen/go-fuse/v2/fs"
-	"github.com/hanwen/go-fuse/v2/fuse"
+	nostrfs "github.com/fiatjaf/nak/nostrfs_cgo"
 	"github.com/urfave/cli/v3"
+	"github.com/winfsp/cgofuse/fuse"
 )
 
 var fsCmd = &cli.Command{
@@ -83,41 +81,60 @@ var fsCmd = &cli.Command{
 
 		// create the server
 		log("- mounting at %s... ", color.HiCyanString(mountpoint))
-		timeout := time.Second * 120
-		server, err := fs.Mount(mountpoint, root, &fs.Options{
-			MountOptions: fuse.MountOptions{
-				Debug:          isVerbose,
-				Name:           "nak",
-				FsName:         "nak",
-				RememberInodes: true,
-			},
-			AttrTimeout:  &timeout,
-			EntryTimeout: &timeout,
-			Logger:       nostr.DebugLogger,
-		})
-		if err != nil {
-			return fmt.Errorf("mount failed: %w", err)
+
+		// create cgofuse host
+		host := fuse.NewFileSystemHost(root)
+		host.SetCapReaddirPlus(true)
+		host.SetUseIno(true)
+
+		// mount the filesystem - Windows/WinFsp version
+		// based on rclone cmount implementation
+		mountArgs := []string{
+			"-o", "uid=-1",
+			"-o", "gid=-1",
+			"--FileSystemName=nak",
 		}
+
+		// check if mountpoint is a drive letter or directory
+		isDriveLetter := len(mountpoint) == 2 && mountpoint[1] == ':'
+
+		if !isDriveLetter {
+			// winFsp primarily supports drive letters on Windows
+			// directory mounting may not work reliably
+			log("WARNING: directory mounting may not work on Windows (WinFsp limitation)\n")
+			log("         consider using a drive letter instead (e.g., 'nak fs Z:')\n")
+
+			// for directory mounts, follow rclone's approach:
+			// 1. check that mountpoint doesn't already exist
+			if _, err := os.Stat(mountpoint); err == nil {
+				return fmt.Errorf("mountpoint path already exists: %s (must not exist before mounting)", mountpoint)
+			} else if !os.IsNotExist(err) {
+				return fmt.Errorf("failed to check mountpoint: %w", err)
+			}
+
+			// 2. check that parent directory exists
+			parent := filepath.Join(mountpoint, "..")
+			if _, err := os.Stat(parent); err != nil {
+				if os.IsNotExist(err) {
+					return fmt.Errorf("parent of mountpoint directory does not exist: %s", parent)
+				}
+				return fmt.Errorf("failed to check parent directory: %w", err)
+			}
+
+			// 3. use network mode for directory mounts
+			mountArgs = append(mountArgs, "--VolumePrefix=\\nak\\"+filepath.Base(mountpoint))
+		}
+
+		if isVerbose {
+			mountArgs = append(mountArgs, "-o", "debug")
+		}
+		mountArgs = append(mountArgs, mountpoint)
+
 		log("ok.\n")
 
-		// setup signal handling for clean unmount
-		ch := make(chan os.Signal, 1)
-		chErr := make(chan error)
-		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-		go func() {
-			<-ch
-			log("- unmounting... ")
-			err := server.Unmount()
-			if err != nil {
-				chErr <- fmt.Errorf("unmount failed: %w", err)
-			} else {
-				log("ok\n")
-				chErr <- nil
-			}
-		}()
-
-		// serve the filesystem until unmounted
-		server.Wait()
-		return <-chErr
+		if !host.Mount("", mountArgs) {
+			return fmt.Errorf("failed to mount filesystem")
+		}
+		return nil
 	},
 }

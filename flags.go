@@ -11,6 +11,62 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
+type (
+	BoolIntFlag = cli.FlagBase[int, struct{}, boolIntValue]
+)
+
+type boolIntValue struct {
+	int            int
+	defaultWhenSet int
+	hasDefault     bool
+	hasBeenSet     bool
+}
+
+var _ cli.ValueCreator[int, struct{}] = boolIntValue{}
+
+func (t boolIntValue) Create(val int, p *int, c struct{}) cli.Value {
+	*p = val
+
+	return &boolIntValue{
+		defaultWhenSet: val,
+		hasDefault:     true,
+	}
+}
+
+func (t boolIntValue) IsBoolFlag() bool {
+	return true
+}
+
+func (t boolIntValue) ToString(b int) string { return "<<>>" }
+
+func (t *boolIntValue) Set(value string) error {
+	t.hasBeenSet = true
+	if value == "true" {
+		if t.hasDefault {
+			t.int = t.defaultWhenSet
+		} else {
+			t.int = 1
+		}
+		return nil
+	} else {
+		var err error
+		t.int, err = strconv.Atoi(value)
+		return err
+	}
+}
+
+func (t *boolIntValue) String() string { return fmt.Sprintf("%#v", t.int) }
+func (t *boolIntValue) Value() int     { return t.int }
+func (t *boolIntValue) Get() any       { return t.int }
+
+func getBoolInt(cmd *cli.Command, name string) int {
+	return cmd.Value(name).(int)
+}
+
+//
+//
+//
+
 type NaturalTimeFlag = cli.FlagBase[nostr.Timestamp, struct{}, naturalTimeValue]
 
 type naturalTimeValue struct {
@@ -49,10 +105,10 @@ func (t *naturalTimeValue) Set(value string) error {
 			DefaultTimezone: time.Local,
 			CurrentTime:     time.Now(),
 		}, value)
-		ts = date.Time
 		if err != nil {
 			return err
 		}
+		ts = date.Time
 	}
 
 	if t.timestamp != nil {
@@ -96,8 +152,8 @@ func (t pubkeyValue) Create(val nostr.PubKey, p *nostr.PubKey, c struct{}) cli.V
 func (t pubkeyValue) ToString(b nostr.PubKey) string { return t.pubkey.String() }
 
 func (t *pubkeyValue) Set(value string) error {
-	pk, err := nostr.PubKeyFromHex(value)
-	t.pubkey = pk
+	pubkey, err := parsePubKey(value)
+	t.pubkey = pubkey
 	t.hasBeenSet = true
 	return err
 }
@@ -127,6 +183,66 @@ func getPubKeySlice(cmd *cli.Command, name string) []nostr.PubKey {
 //
 //
 
+type PubKeyOrAddress struct {
+	PubKey nostr.PubKey
+	Addr   *nostr.EntityPointer
+}
+
+type (
+	pubKeyOrAddressValue struct {
+		value      PubKeyOrAddress
+		hasBeenSet bool
+	}
+	pubKeyOrAddressSlice = cli.SliceBase[PubKeyOrAddress, struct{}, pubKeyOrAddressValue]
+	PubKeyOrAddressFlag  = cli.FlagBase[[]PubKeyOrAddress, struct{}, pubKeyOrAddressSlice]
+)
+
+var _ cli.ValueCreator[PubKeyOrAddress, struct{}] = pubKeyOrAddressValue{}
+
+func (t pubKeyOrAddressValue) Create(val PubKeyOrAddress, p *PubKeyOrAddress, c struct{}) cli.Value {
+	*p = val
+	return &pubKeyOrAddressValue{
+		value: val,
+	}
+}
+
+func (t pubKeyOrAddressValue) ToString(b PubKeyOrAddress) string {
+	if b.Addr != nil {
+		return b.Addr.AsTagReference()
+	}
+	return b.PubKey.String()
+}
+
+func (t *pubKeyOrAddressValue) Set(value string) error {
+	pubkey, err1 := parsePubKey(value)
+	if err1 == nil {
+		t.value = PubKeyOrAddress{PubKey: pubkey}
+		t.hasBeenSet = true
+		return nil
+	}
+
+	addr, err2 := nostr.ParseAddrString(value)
+	if err2 == nil {
+		t.value = PubKeyOrAddress{Addr: &addr}
+		t.hasBeenSet = true
+		return nil
+	}
+
+	return fmt.Errorf("value is neither a pubkey or an address: %w; %w", err1, err2)
+}
+
+func (t *pubKeyOrAddressValue) String() string         { return fmt.Sprintf("%#v", t.value) }
+func (t *pubKeyOrAddressValue) Value() PubKeyOrAddress { return t.value }
+func (t *pubKeyOrAddressValue) Get() any               { return t.value }
+
+func getPubKeyOrAddressSlice(cmd *cli.Command, name string) []PubKeyOrAddress {
+	return cmd.Value(name).([]PubKeyOrAddress)
+}
+
+//
+//
+//
+
 type (
 	IDFlag = cli.FlagBase[nostr.ID, struct{}, idValue]
 )
@@ -147,8 +263,8 @@ func (t idValue) Create(val nostr.ID, p *nostr.ID, c struct{}) cli.Value {
 func (t idValue) ToString(b nostr.ID) string { return t.id.String() }
 
 func (t *idValue) Set(value string) error {
-	pk, err := nostr.IDFromHex(value)
-	t.id = pk
+	id, err := parseEventID(value)
+	t.id = id
 	t.hasBeenSet = true
 	return err
 }

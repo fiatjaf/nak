@@ -2,17 +2,27 @@ package main
 
 import (
 	"bufio"
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"net"
+	"net/http"
+	"net/url"
 	"os"
+	"path/filepath"
+	"strconv"
 	"sync/atomic"
 	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/eventstore/slicestore"
 	"fiatjaf.com/nostr/khatru"
+	"fiatjaf.com/nostr/khatru/blossom"
+	"fiatjaf.com/nostr/khatru/grasp"
 	"github.com/bep/debounce"
 	"github.com/fatih/color"
+	"github.com/puzpuzpuz/xsync/v3"
 	"github.com/urfave/cli/v3"
 )
 
@@ -36,9 +46,30 @@ var serve = &cli.Command{
 			Usage:       "file containing the initial batch of events that will be served by the relay as newline-separated JSON (jsonl)",
 			DefaultText: "the relay will start empty",
 		},
+		&cli.BoolFlag{
+			Name:  "negentropy",
+			Usage: "enable negentropy syncing",
+		},
+		&cli.BoolFlag{
+			Name:  "grasp",
+			Usage: "enable grasp server",
+		},
+		&cli.StringFlag{
+			Name:      "grasp-path",
+			Usage:     "where to store the repositories",
+			TakesFile: true,
+			Hidden:    true,
+		},
+		&cli.BoolFlag{
+			Name:  "blossom",
+			Usage: "enable blossom server",
+		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		db := &slicestore.SliceStore{}
+
+		var blobStore *xsync.MapOf[string, []byte]
+		var repoDir string
 
 		var scanner *bufio.Scanner
 		if path := c.String("events"); path != "" {
@@ -71,24 +102,138 @@ var serve = &cli.Command{
 		rl.Info.Software = "https://github.com/fiatjaf/nak"
 		rl.Info.Version = version
 
-		rl.UseEventstore(db, 1_000_000)
+		rl.UseEventstore(db, 500)
 
-		started := make(chan bool)
+		if c.Bool("negentropy") {
+			rl.Negentropy = true
+		}
+
 		exited := make(chan error)
 
 		hostname := c.String("hostname")
 		port := int(c.Uint("port"))
 
-		go func() {
-			err := rl.Start(hostname, port, started)
-			exited <- err
-		}()
+		totalConnections := atomic.Int32{}
+		rl.OnConnect = func(ctx context.Context) {
+			totalConnections.Add(1)
+			go func() {
+				<-ctx.Done()
+				totalConnections.Add(-1)
+			}()
+		}
 
+		d := debounce.New(time.Second * 2)
 		var printStatus func()
+		printStatus = func() {
+			d(func() {
+				totalEvents, err := db.CountEvents(nostr.Filter{})
+				if err != nil {
+					log("failed to count: %s\n", err)
+				}
+				subs := rl.GetListeningFilters()
+
+				blossomMsg := ""
+				if c.Bool("blossom") {
+					blobsStored := blobStore.Size()
+					blossomMsg = fmt.Sprintf("blobs: %s, ",
+						color.HiMagentaString("%d", blobsStored),
+					)
+				}
+
+				graspMsg := ""
+				if c.Bool("grasp") {
+					gitAnnounced := 0
+					gitStored := 0
+					for evt := range db.QueryEvents(nostr.Filter{Kinds: []nostr.Kind{nostr.Kind(30617)}}, 500) {
+						gitAnnounced++
+						identifier := evt.Tags.GetD()
+						if info, err := os.Stat(filepath.Join(repoDir, identifier)); err == nil && info.IsDir() {
+							gitStored++
+						}
+					}
+					graspMsg = fmt.Sprintf("git announced: %s, git stored: %s, ",
+						color.HiMagentaString("%d", gitAnnounced),
+						color.HiMagentaString("%d", gitStored),
+					)
+				}
+
+				log("  %s events: %s, %s%sconnections: %s, subscriptions: %s\n",
+					color.HiMagentaString("•"),
+					color.HiMagentaString("%d", totalEvents),
+					blossomMsg,
+					graspMsg,
+					color.HiMagentaString("%d", totalConnections.Load()),
+					color.HiMagentaString("%d", len(subs)),
+				)
+			})
+		}
+
+		if c.Bool("blossom") {
+			bs := blossom.New(rl, fmt.Sprintf("http://%s:%d", hostname, port))
+			bs.Store = blossom.NewMemoryBlobIndex()
+
+			blobStore = xsync.NewMapOf[string, []byte]()
+			bs.StoreBlob = func(ctx context.Context, sha256 string, ext string, body []byte) error {
+				blobStore.Store(sha256+ext, body)
+				log("    got %s %s\n", color.GreenString("blob stored"), sha256+ext)
+				printStatus()
+				return nil
+			}
+			bs.LoadBlob = func(ctx context.Context, sha256 string, ext string) (io.ReadSeeker, *url.URL, error) {
+				if body, ok := blobStore.Load(sha256 + ext); ok {
+					log("    got %s %s\n", color.BlueString("blob downloaded"), sha256+ext)
+					printStatus()
+					return bytes.NewReader(body), nil, nil
+				}
+				return nil, nil, nil
+			}
+			bs.DeleteBlob = func(ctx context.Context, sha256 string, ext string) error {
+				blobStore.Delete(sha256 + ext)
+				log("    got %s %s\n", color.RedString("blob deleted"), sha256+ext)
+				printStatus()
+				return nil
+			}
+		}
+
+		if c.Bool("grasp") {
+			repoDir = c.String("grasp-path")
+			if repoDir == "" {
+				var err error
+				repoDir, err = os.MkdirTemp("", "nak-serve-grasp-repos-")
+				if err != nil {
+					return fmt.Errorf("failed to create grasp repos directory: %w", err)
+				}
+			}
+			g := grasp.New(rl, repoDir)
+			g.OnRead = func(ctx context.Context, pubkey nostr.PubKey, repo string) (reject bool, reason string) {
+				log("    got %s %s %s\n", color.CyanString("git read"), pubkey.Hex(), repo)
+				printStatus()
+				return false, ""
+			}
+			g.OnWrite = func(ctx context.Context, pubkey nostr.PubKey, repo string) (reject bool, reason string) {
+				log("    got %s %s %s\n", color.YellowString("git write"), pubkey.Hex(), repo)
+				printStatus()
+				return false, ""
+			}
+		}
+
+		ln, err := net.Listen("tcp", net.JoinHostPort(hostname, strconv.Itoa(port)))
+		if err != nil {
+			return err
+		}
+
+		go func() {
+			exited <- http.Serve(ln, rl)
+		}()
 
 		// relay logging
 		rl.OnRequest = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
-			log("    got %s %v\n", color.HiYellowString("request"), colors.italic(filter))
+			negentropy := ""
+			if khatru.IsNegentropySession(ctx) {
+				negentropy = color.HiBlueString("negentropy ")
+			}
+
+			log("    got %s%s %v\n", negentropy, color.HiYellowString("request"), colors.italic(filter))
 			printStatus()
 			return false, ""
 		}
@@ -105,35 +250,11 @@ var serve = &cli.Command{
 			return false, ""
 		}
 
-		totalConnections := atomic.Int32{}
-		rl.OnConnect = func(ctx context.Context) {
-			totalConnections.Add(1)
-			go func() {
-				<-ctx.Done()
-				totalConnections.Add(-1)
-			}()
+		log("%s relay running at %s", color.HiRedString(">"), colors.boldf("ws://%s:%d", hostname, port))
+		if c.Bool("grasp") {
+			log(" (grasp repos at %s)", repoDir)
 		}
-
-		d := debounce.New(time.Second * 2)
-		printStatus = func() {
-			d(func() {
-				totalEvents, err := db.CountEvents(nostr.Filter{})
-				if err != nil {
-					log("failed to count: %s\n", err)
-				}
-				subs := rl.GetListeningFilters()
-
-				log("  %s events: %s, connections: %s, subscriptions: %s\n",
-					color.HiMagentaString("•"),
-					color.HiMagentaString("%d", totalEvents),
-					color.HiMagentaString("%d", totalConnections.Load()),
-					color.HiMagentaString("%d", len(subs)),
-				)
-			})
-		}
-
-		<-started
-		log("%s relay running at %s\n", color.HiRedString(">"), colors.boldf("ws://%s:%d", hostname, port))
+		log("\n")
 
 		return <-exited
 	},

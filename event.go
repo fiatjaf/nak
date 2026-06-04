@@ -24,7 +24,7 @@ const (
 	CATEGORY_EXTRAS       = "EXTRAS"
 )
 
-var event = &cli.Command{
+var eventCmd = &cli.Command{
 	Name:  "event",
 	Usage: "generates an encoded event and either prints it or sends it to a set of relays",
 	Description: `outputs an event built with the flags. if one or more relays are given as arguments, an attempt is also made to publish the event to these relays.
@@ -66,6 +66,18 @@ example:
 			Hidden: true,
 		},
 		// ~~~
+		&cli.BoolFlag{
+			Name:     "force-sign",
+			Usage:    "when an event is already signed and not modified it isn't signed again even when a different --sec is given, this option negates that",
+			Value:    false,
+			Category: CATEGORY_SIGNER,
+		},
+		&cli.BoolFlag{
+			Name:     "no-sign",
+			Usage:    "print the event without signing it, using the specified pubkey",
+			Value:    false,
+			Category: CATEGORY_SIGNER,
+		},
 		&cli.UintFlag{
 			Name:     "pow",
 			Usage:    "nip13 difficulty to target when doing hash work on the event id",
@@ -86,6 +98,12 @@ example:
 			Usage:    "print the nevent code (to stderr) after the event is published",
 			Category: CATEGORY_EXTRAS,
 		},
+		&cli.BoolFlag{
+			Name:        "outbox",
+			Usage:       "publish to the \"write\" relays of the author and to the \"read\" relays of anyone mentioned  in \"p\" tags",
+			DefaultText: "false, will only use manually-specified relays",
+			Category:    CATEGORY_EXTRAS,
+		},
 		&cli.UintFlag{
 			Name:        "kind",
 			Aliases:     []string{"k"},
@@ -93,6 +111,12 @@ example:
 			DefaultText: "1",
 			Value:       0,
 			Category:    CATEGORY_EVENT_FIELDS,
+		},
+		&PubKeyOrAddressFlag{
+			Name:     "author",
+			Aliases:  []string{"a"},
+			Usage:    "set the event pubkey or add an 'a' tag if it's an address",
+			Category: CATEGORY_EVENT_FIELDS,
 		},
 		&cli.StringFlag{
 			Name:        "content",
@@ -123,6 +147,11 @@ example:
 			Usage:    "shortcut for --tag d=<value>",
 			Category: CATEGORY_EVENT_FIELDS,
 		},
+		&cli.StringSliceFlag{
+			Name:     "h",
+			Usage:    "shortcut for --tag h=<value>",
+			Category: CATEGORY_EVENT_FIELDS,
+		},
 		&NaturalTimeFlag{
 			Name:        "created-at",
 			Aliases:     []string{"time", "ts"},
@@ -139,22 +168,8 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		// try to connect to the relays here
-		var relays []*nostr.Relay
+		relayUrls := c.Args().Slice()
 
-		if relayUrls := c.Args().Slice(); len(relayUrls) > 0 {
-			relays = connectToAllRelays(ctx, c, relayUrls, nil,
-				nostr.PoolOptions{
-					AuthHandler: func(ctx context.Context, authEvent *nostr.Event) error {
-						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-					},
-				},
-			)
-			if len(relays) == 0 {
-				log("failed to connect to any of the given relays.\n")
-				os.Exit(3)
-			}
-		}
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
 			return err
@@ -168,6 +183,11 @@ example:
 		// this is called when we have a valid json from stdin
 		handleEvent := func(stdinEvent string) error {
 			evt.Content = ""
+			evt.CreatedAt = 0
+			clear(evt.Tags)
+			evt.ID = nostr.ZeroID
+			evt.PubKey = nostr.ZeroPK
+			evt.Sig = [64]byte{}
 
 			kindWasSupplied := strings.Contains(stdinEvent, `"kind"`)
 			contentWasSupplied := strings.Contains(stdinEvent, `"content"`)
@@ -211,19 +231,28 @@ example:
 				if found {
 					// tags may also contain extra elements separated with a ";"
 					tagValues := strings.Split(tagValue, ";")
+					val := tagValues[0]
+					if len(tagName) == 1 {
+						val = decodeTagValue(val, rune(tagName[0]))
+					}
+					if len(tagValues) >= 1 {
+						tagValues[0] = val
+					}
 					tag = append(tag, tagValues...)
 				}
 				tags = append(tags, tag)
 			}
 
 			for _, etag := range c.StringSlice("e") {
-				if tags.FindWithValue("e", etag) == nil {
-					tags = append(tags, nostr.Tag{"e", etag})
+				decodedEtag := decodeTagValue(etag, 'e')
+				if tags.FindWithValue("e", decodedEtag) == nil {
+					tags = append(tags, nostr.Tag{"e", decodedEtag})
 				}
 			}
 			for _, ptag := range c.StringSlice("p") {
-				if tags.FindWithValue("p", ptag) == nil {
-					tags = append(tags, nostr.Tag{"p", ptag})
+				decodedPtag := decodeTagValue(ptag, 'p')
+				if tags.FindWithValue("p", decodedPtag) == nil {
+					tags = append(tags, nostr.Tag{"p", decodedPtag})
 				}
 			}
 			for _, dtag := range c.StringSlice("d") {
@@ -231,11 +260,39 @@ example:
 					tags = append(tags, nostr.Tag{"d", dtag})
 				}
 			}
+			for _, htag := range c.StringSlice("h") {
+				if tags.FindWithValue("h", htag) == nil {
+					tags = append(tags, nostr.Tag{"h", htag})
+				}
+			}
+
+			var authorPubKey nostr.PubKey
+			for _, a := range getPubKeyOrAddressSlice(c, "author") {
+				// is it an address?
+				if a.Addr != nil {
+					aTag := a.Addr.AsTagReference()
+					if tags.FindWithValue("a", aTag) == nil {
+						tags = append(tags, nostr.Tag{"a", aTag})
+					}
+					continue
+				}
+
+				// or is it an "author" pubkey?
+				if a.PubKey != nostr.ZeroPK {
+					if authorPubKey != nostr.ZeroPK {
+						return fmt.Errorf("multiple author pubkeys provided")
+					}
+					authorPubKey = a.PubKey
+				}
+			}
 			if len(tags) > 0 {
 				for _, tag := range tags {
 					evt.Tags = append(evt.Tags, tag)
 				}
 				mustRehashAndResign = true
+			}
+			if authorPubKey != nostr.ZeroPK {
+				evt.PubKey = authorPubKey
 			}
 
 			if c.IsSet("created-at") {
@@ -246,7 +303,7 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if c.IsSet("musig") || c.IsSet("sec") || c.IsSet("prompt-sec") {
+			if c.IsSet("musig") || c.Bool("force-sign") {
 				mustRehashAndResign = true
 			}
 
@@ -261,7 +318,7 @@ example:
 					if err != nil {
 						return err
 					}
-				} else {
+				} else if evt.PubKey == nostr.ZeroPK {
 					evt.PubKey, _ = kr.GetPublicKey(ctx)
 				}
 
@@ -272,7 +329,13 @@ example:
 				mustRehashAndResign = true
 			}
 
-			if evt.Sig == [64]byte{} || mustRehashAndResign {
+			if c.Bool("no-sign") {
+				if evt.PubKey == nostr.ZeroPK {
+					return fmt.Errorf("--no-sign requires a pubkey in the event or via --author")
+				}
+				evt.ID = nostr.ZeroID
+				evt.Sig = [64]byte{}
+			} else if evt.Sig == [64]byte{} || mustRehashAndResign {
 				if numSigners := c.Uint("musig"); numSigners > 1 {
 					// must do musig
 					pubkeys := c.StringSlice("musig-pubkey")
@@ -294,6 +357,42 @@ example:
 						err = fmt.Errorf("timeout waiting for bunker to respond")
 					}
 					return fmt.Errorf("error signing with provided key: %w", err)
+				}
+			}
+
+			var relays []*nostr.Relay
+			if len(relayUrls) > 0 || c.Bool("outbox") {
+				if c.Bool("outbox") {
+					if evt.PubKey != nostr.ZeroPK {
+						relayUrls = nostr.AppendUnique(relayUrls, sys.FetchWriteRelays(ctx, evt.PubKey)...)
+					}
+
+					seenPubkeys := make(map[nostr.PubKey]struct{}, len(evt.Tags))
+					for _, tag := range evt.Tags {
+						if len(tag) < 2 || (tag[0] != "p" && tag[0] != "P") {
+							continue
+						}
+						pk, err := nostr.PubKeyFromHex(tag[1])
+						if err != nil {
+							continue
+						}
+						if _, ok := seenPubkeys[pk]; ok {
+							continue
+						}
+						seenPubkeys[pk] = struct{}{}
+						relayUrls = nostr.AppendUnique(relayUrls, sys.FetchInboxRelays(ctx, pk, 15)...)
+					}
+				}
+
+				if len(relayUrls) > 0 {
+					sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
+					}
+					relays = connectToAllRelays(ctx, c, relayUrls, nil)
+					if len(relays) == 0 {
+						log("failed to connect to any of the given relays.\n")
+						os.Exit(3)
+					}
 				}
 			}
 
@@ -333,7 +432,8 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 		if c.Bool("confirm") {
 			relaysStr := make([]string, len(relays))
 			for i, r := range relays {
-				relaysStr[i] = strings.ToLower(strings.Split(r.URL, "://")[1])
+				_, after, _ := strings.Cut(r.URL, "://")
+				relaysStr[i] = strings.ToLower(after)
 			}
 			time.Sleep(time.Millisecond * 10)
 			if !askConfirmation("publish to [ " + strings.Join(relaysStr, " ") + " ]? ") {
@@ -403,12 +503,19 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 			}
 		} else {
 			// normal dumb flow
-			for _, relay := range relays {
+			for i, relay := range relays {
 			publish:
 				cleanUrl, _ := strings.CutPrefix(relay.URL, "wss://")
 				log("publishing to %s... ", color.CyanString(cleanUrl))
 				ctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 				defer cancel()
+
+				if !relay.IsConnected() {
+					if new_, err := sys.Pool.EnsureRelay(relay.URL); err == nil {
+						relays[i] = new_
+						relay = new_
+					}
+				}
 
 				err := relay.Publish(ctx, evt)
 				if err == nil {

@@ -17,7 +17,7 @@ var encrypt = &cli.Command{
 		defaultKeyFlags,
 		&PubKeyFlag{
 			Name:     "recipient-pubkey",
-			Aliases:  []string{"p", "tgt", "target", "pubkey"},
+			Aliases:  []string{"p", "tgt", "target", "pubkey", "to"},
 			Required: true,
 		},
 		&cli.BoolFlag{
@@ -79,7 +79,7 @@ var decrypt = &cli.Command{
 		defaultKeyFlags,
 		&PubKeyFlag{
 			Name:     "sender-pubkey",
-			Aliases:  []string{"p", "src", "source", "pubkey"},
+			Aliases:  []string{"p", "src", "source", "pubkey", "from"},
 			Required: true,
 		},
 		&cli.BoolFlag{
@@ -111,7 +111,7 @@ var decrypt = &cli.Command{
 				}
 				plaintext, err := nip04.Decrypt(ciphertext, ss)
 				if err != nil {
-					return fmt.Errorf("failed to encrypt as nip04: %w", err)
+					return fmt.Errorf("failed to decrypt as nip04: %w", err)
 				}
 				stdout(plaintext)
 			}
@@ -123,7 +123,7 @@ var decrypt = &cli.Command{
 
 			res, err := kr.Decrypt(ctx, ciphertext, source)
 			if err != nil {
-				return fmt.Errorf("failed to encrypt: %w", err)
+				return fmt.Errorf("failed to decrypt: %w", err)
 			}
 			stdout(res)
 		}

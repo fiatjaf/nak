@@ -3,11 +3,12 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
+	"unsafe"
 
-	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb0/blossom"
 	"github.com/urfave/cli/v3"
@@ -20,7 +21,7 @@ var blossomCmd = &cli.Command{
 	Usage:                     "an army knife for blossom things",
 	DisableSliceFlagSeparator: true,
 	Flags: append(defaultKeyFlags,
-		&cli.StringFlag{
+		&cli.StringSliceFlag{
 			Name:     "server",
 			Aliases:  []string{"s"},
 			Usage:    "the hostname of the target mediaserver",
@@ -38,11 +39,15 @@ var blossomCmd = &cli.Command{
 				var client *blossom.Client
 				pubkey := c.Args().First()
 				if pubkey != "" {
-					if pk, err := nostr.PubKeyFromHex(pubkey); err != nil {
+					pk, err := parsePubKey(pubkey)
+					if err != nil {
 						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
-					} else {
-						client = blossom.NewClient(c.String("server"), keyer.NewReadOnlySigner(pk))
 					}
+					servers := c.StringSlice("server")
+					if err != nil {
+						return err
+					}
+					client = blossom.NewClient(servers[0], keyer.NewReadOnlySigner(pk))
 				} else {
 					var err error
 					client, err = getBlossomClient(ctx, c)
@@ -70,9 +75,15 @@ var blossomCmd = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			ArgsUsage:                 "[files...]",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				client, err := getBlossomClient(ctx, c)
+				keyer, _, err := gatherKeyerFromArguments(ctx, c)
 				if err != nil {
 					return err
+				}
+
+				servers := c.StringSlice("server")
+
+				if len(servers) == 0 {
+					return fmt.Errorf("no server specified")
 				}
 
 				if isPiped() {
@@ -85,33 +96,35 @@ var blossomCmd = &cli.Command{
 					if err != nil {
 						return fmt.Errorf("failed to read stdin: %w", err)
 					}
-
-					bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
-					if err != nil {
-						return err
-					}
-
-					j, _ := json.Marshal(bd)
-					stdout(string(j))
-				} else {
-					// get filenames from arguments
-					hasError := false
-					for _, fpath := range c.Args().Slice() {
-						bd, err := client.UploadFilePath(ctx, fpath)
+					for _, server := range servers {
+						client := blossom.NewClient(server, keyer)
+						bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s\n", err)
-							hasError = true
+							ctx = lineProcessingError(ctx, "failed to upload to '%s': %s", server, err)
 							continue
 						}
 
 						j, _ := json.Marshal(bd)
 						stdout(string(j))
 					}
+				} else {
+					// get filenames from arguments
+					for _, fpath := range c.Args().Slice() {
+						for _, server := range servers {
+							client := blossom.NewClient(server, keyer)
+							bd, err := client.UploadFilePath(ctx, fpath)
+							if err != nil {
+								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %s", fpath, server, err)
+								continue
+							}
 
-					if hasError {
-						os.Exit(3)
+							j, _ := json.Marshal(bd)
+							stdout(string(j))
+						}
 					}
 				}
+
+				exitIfLineProcessingError(ctx)
 
 				return nil
 			},
@@ -138,12 +151,24 @@ var blossomCmd = &cli.Command{
 				outputs := c.StringSlice("output")
 
 				hasError := false
-				for i, hash := range c.Args().Slice() {
+				var hash [32]byte
+				for i, hhash := range c.Args().Slice() {
+					if len(hhash) != 64 {
+						log("invalid blob hash '%s'\n", hhash)
+						hasError = true
+						continue
+					}
+					if _, err := hex.Decode(hash[:], unsafe.Slice(unsafe.StringData(hhash), 64)); err != nil {
+						log("invalid blob hash '%s': %s\n", hhash, err)
+						hasError = true
+						continue
+					}
+
 					if len(outputs)-1 >= i && outputs[i] != "--" {
 						// save to this file
 						err := client.DownloadToFile(ctx, hash, outputs[i])
 						if err != nil {
-							fmt.Fprintf(os.Stderr, "%s\n", err)
+							log("download failed for '%s': %s\n", hhash, err)
 							hasError = true
 						}
 					} else {
@@ -230,12 +255,55 @@ if any of the files are not found the command will fail, otherwise it will succe
 			},
 		},
 		{
-			Name:                      "mirror",
-			Usage:                     "",
-			Description:               ``,
+			Name:  "mirror",
+			Usage: "mirrors a from a server to another",
+			Description: `examples:
+  mirroring a single blob:
+    nak blossom mirror https://nostr.download/5672be22e6da91c12b929a0f46b9e74de8b5366b9b19a645ff949c24052f9ad4 -s blossom.band
+
+  mirroring all blobs from a certain pubkey from one server to the other:
+    nak blossom list 78ce6faa72264387284e647ba6938995735ec8c7d5c5a65737e55130f026307d -s nostr.download | nak blossom mirror -s blossom.band`,
 			DisableSliceFlagSeparator: true,
-			ArgsUsage:                 "",
 			Action: func(ctx context.Context, c *cli.Command) error {
+				client, err := getBlossomClient(ctx, c)
+				if err != nil {
+					return err
+				}
+
+				var bd blossom.BlobDescriptor
+				if input := c.Args().First(); input != "" {
+					blobURL := input
+					if err := json.Unmarshal([]byte(input), &bd); err == nil {
+						blobURL = bd.URL
+					}
+					bd, err := client.MirrorBlob(ctx, blobURL)
+					if err != nil {
+						return err
+					}
+					out, _ := json.Marshal(bd)
+					stdout(out)
+					return nil
+				}
+
+				for input := range getJsonsOrBlank() {
+					if input == "{}" {
+						continue
+					}
+
+					blobURL := input
+					if err := json.Unmarshal([]byte(input), &bd); err == nil {
+						blobURL = bd.URL
+					}
+					bd, err := client.MirrorBlob(ctx, blobURL)
+					if err != nil {
+						ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
+						continue
+					}
+					out, _ := json.Marshal(bd)
+					stdout(out)
+				}
+
+				exitIfLineProcessingError(ctx)
 				return nil
 			},
 		},
@@ -247,5 +315,9 @@ func getBlossomClient(ctx context.Context, c *cli.Command) (*blossom.Client, err
 	if err != nil {
 		return nil, err
 	}
-	return blossom.NewClient(c.String("server"), keyer), nil
+	servers := c.StringSlice("server")
+	if err != nil {
+		return nil, err
+	}
+	return blossom.NewClient(servers[0], keyer), nil
 }

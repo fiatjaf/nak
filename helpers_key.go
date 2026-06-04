@@ -13,7 +13,7 @@ import (
 	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 )
 
@@ -77,7 +77,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 			clientKey = nostr.Generate()
 		}
 
-		logverbose("[nip46]: connecting to %s with client key %s", bunkerURL, clientKey.Hex())
+		logverbose("[nip46]: connecting to %s with client key %s\n", bunkerURL, clientKey.Hex())
 
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
 			log(color.CyanString("[nip46]: open the following URL: %s"), s)

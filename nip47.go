@@ -172,7 +172,7 @@ func (c *nip47Client) info(ctx context.Context) (*nostr.Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer sub.Close()
+	defer sub.Unsub()
 
 	for {
 		select {
@@ -236,7 +236,7 @@ func (c *nip47Client) method(ctx context.Context, req *nip47Request) (*nip47Resp
 	if err != nil {
 		return nil, err
 	}
-	defer sub.Close()
+	defer sub.Unsub()
 
 	var resEvent nostr.Event
 	select {

@@ -7,24 +7,27 @@ import (
 	"fmt"
 	"iter"
 	"math/rand"
-	"net/http"
-	"net/textproto"
 	"net/url"
 	"os"
+	"os/exec"
+	"path/filepath"
 	"runtime"
 	"slices"
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/chzyer/readline"
 	"github.com/fatih/color"
 	jsoniter "github.com/json-iterator/go"
-	"github.com/mattn/go-tty"
+	"github.com/mattn/go-isatty"
+	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/term"
 )
@@ -44,8 +47,14 @@ var (
 )
 
 func isPiped() bool {
-	stat, _ := os.Stdin.Stat()
-	return stat.Mode()&os.ModeCharDevice == 0
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		panic(err)
+	}
+
+	mode := stat.Mode()
+	is := mode&os.ModeCharDevice == 0
+	return is
 }
 
 func getJsonsOrBlank() iter.Seq[string] {
@@ -53,6 +62,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 	var finalJsonErr error
 	return func(yield func(string) bool) {
+		stopped := false
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			// we're look for an event, but it may be in multiple lines, so if json parsing fails
 			// we'll try the next line until we're successful
@@ -67,6 +77,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 			finalJsonErr = nil
 
 			if !yield(stdinEvent) {
+				stopped = true
 				return false
 			}
 
@@ -74,8 +85,14 @@ func getJsonsOrBlank() iter.Seq[string] {
 			return true
 		})
 
+		if stopped {
+			return
+		}
+
 		if !hasStdin {
-			yield("{}")
+			if !yield("{}") {
+				return
+			}
 		}
 
 		if finalJsonErr != nil {
@@ -86,15 +103,23 @@ func getJsonsOrBlank() iter.Seq[string] {
 
 func getStdinLinesOrBlank() iter.Seq[string] {
 	return func(yield func(string) bool) {
+		stopped := false
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			if !yield(stdinLine) {
+				stopped = true
 				return false
 			}
 			return true
 		})
 
+		if stopped {
+			return
+		}
+
 		if !hasStdin {
-			yield("")
+			if !yield("") {
+				return
+			}
 		}
 	}
 }
@@ -161,22 +186,16 @@ func connectToAllRelays(
 	c *cli.Command,
 	relayUrls []string,
 	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error), // if this exists we will force preauth
-	opts nostr.PoolOptions,
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
-	for _, url := range relayUrls {
-		if !nostr.IsValidRelayURL(nostr.NormalizeURL(url)) {
+	for i, url := range relayUrls {
+		url = nostr.NormalizeURL(url)
+		relayUrls[i] = url
+		if !nostr.IsValidRelayURL(url) {
 			log("invalid relay URL: %s\n", url)
 			os.Exit(4)
 		}
 	}
-
-	opts.EventMiddleware = sys.TrackEventHints
-	opts.PenaltyBox = true
-	opts.RelayOptions = nostr.RelayOptions{
-		RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/s"}},
-	}
-	sys.Pool = nostr.NewPool(opts)
 
 	relays := make([]*nostr.Relay, 0, len(relayUrls))
 
@@ -222,7 +241,7 @@ func connectToAllRelays(
 	} else {
 		// simple flow
 		for _, url := range relayUrls {
-			log("connecting to %s... ", color.CyanString(url))
+			log("connecting to %s... ", color.CyanString(strings.Split(url, "/")[2]))
 			relay := connectToSingleRelay(ctx, c, url, preAuthSigner, nil, log)
 			if relay != nil {
 				relays = append(relays, relay)
@@ -253,7 +272,7 @@ func connectToSingleRelay(
 			for range 5 {
 				if err := relay.Auth(ctx, func(ctx context.Context, authEvent *nostr.Event) error {
 					challengeTag := authEvent.Tags.Find("challenge")
-					if challengeTag[1] == "" {
+					if challengeTag == nil || len(challengeTag) < 2 || challengeTag[1] == "" {
 						return fmt.Errorf("auth not received yet *****") // what a giant hack
 					}
 					return preAuthSigner(ctx, c, logthis, authEvent)
@@ -312,6 +331,10 @@ func supportsDynamicMultilineMagic() bool {
 		return false
 	}
 	if !term.IsTerminal(0) {
+		return false
+	}
+
+	if !isatty.IsTerminal(os.Stdout.Fd()) {
 		return false
 	}
 
@@ -403,19 +426,6 @@ func clampError(err error, prefixAlreadyPrinted int) string {
 	return msg
 }
 
-func appendUnique[A comparable](list []A, newEls ...A) []A {
-ex:
-	for _, newEl := range newEls {
-		for _, el := range list {
-			if el == newEl {
-				continue ex
-			}
-		}
-		list = append(list, newEl)
-	}
-	return list
-}
-
 func askConfirmation(msg string) bool {
 	if isPiped() {
 		tty, err := tty.Open()
@@ -459,22 +469,167 @@ func askConfirmation(msg string) bool {
 	}
 }
 
+func parsePubKey(value string) (nostr.PubKey, error) {
+	if nip05.IsValidIdentifier(value) {
+		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+		pp, err := nip05.QueryIdentifier(ctx, value)
+		cancel()
+		if err != nil {
+			return nostr.ZeroPK, err
+		}
+		return pp.PublicKey, nil
+	}
+
+	pk, err := nostr.PubKeyFromHex(value)
+	if err == nil {
+		return pk, nil
+	}
+
+	if prefix, decoded, err := nip19.Decode(value); err == nil {
+		switch prefix {
+		case "npub":
+			if pk, ok := decoded.(nostr.PubKey); ok {
+				return pk, nil
+			}
+		case "nprofile":
+			if profile, ok := decoded.(nostr.ProfilePointer); ok {
+				return profile.PublicKey, nil
+			}
+		}
+	}
+
+	return nostr.PubKey{}, fmt.Errorf("invalid pubkey (\"%s\"): expected hex, npub, or nprofile", value)
+}
+
+func parseEventID(value string) (nostr.ID, error) {
+	id, err := nostr.IDFromHex(value)
+	if err == nil {
+		return id, nil
+	}
+
+	if prefix, decoded, err := nip19.Decode(value); err == nil {
+		switch prefix {
+		case "note":
+			if id, ok := decoded.(nostr.ID); ok {
+				return id, nil
+			}
+		case "nevent":
+			if event, ok := decoded.(nostr.EventPointer); ok {
+				return event.ID, nil
+			}
+		}
+	}
+
+	return nostr.ID{}, fmt.Errorf("invalid event id (\"%s\"): expected hex, note, or nevent", value)
+}
+
+func decodeTagValue(value string, letter rune) string {
+	letter = unicode.ToLower(letter)
+
+	if letter == 'p' {
+		if nip05.IsValidIdentifier(value) {
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
+			pp, err := nip05.QueryIdentifier(ctx, value)
+			cancel()
+			if err == nil {
+				return pp.PublicKey.Hex()
+			}
+		}
+	}
+
+	if (letter == 'p' && (strings.HasPrefix(value, "npub1") || strings.HasPrefix(value, "nprofile1"))) ||
+		((letter == 'a' || letter == 'q') && strings.HasPrefix(value, "naddr1")) ||
+		((letter == 'e' || letter == 'q') && (strings.HasPrefix(value, "nevent1") || strings.HasPrefix(value, "note1"))) {
+		if ptr, err := nip19.ToPointer(value); err == nil {
+			return ptr.AsTagReference()
+		}
+	}
+	return value
+}
+
+func editWithDefaultEditor(filename string, initialContent string, wipe bool) (string, error) {
+	fullpath := filepath.Join(os.TempDir(), filename)
+
+	if err := os.MkdirAll(filepath.Dir(fullpath), 0700); err != nil {
+		return "", fmt.Errorf("failed to create temp directory: %w", err)
+	}
+
+	if wipe {
+		if err := os.Remove(fullpath); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return "", fmt.Errorf("failed to remove temp file: %w", err)
+		}
+	}
+
+	tmp, err := os.OpenFile(fullpath, os.O_RDWR|os.O_CREATE|os.O_EXCL, 0600)
+	if err != nil {
+		return "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+
+	if _, err := tmp.WriteString(initialContent); err != nil {
+		tmp.Close()
+		return "", fmt.Errorf("failed to write temp file: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return "", fmt.Errorf("failed to close temp file: %w", err)
+	}
+
+	editor := strings.TrimSpace(os.Getenv("VISUAL"))
+	if editor == "" {
+		editor = strings.TrimSpace(os.Getenv("EDITOR"))
+	}
+	if editor == "" {
+		editor = "edit"
+	}
+
+	parts := strings.Fields(editor)
+	if len(parts) == 0 {
+		return "", fmt.Errorf("failed to parse editor command '%s'", editor)
+	}
+
+	args := append(parts[1:], tmp.Name())
+	cmd := exec.Command(parts[0], args...)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	if err := cmd.Run(); err != nil {
+		return "", fmt.Errorf("editor command failed: %w", err)
+	}
+
+	data, err := os.ReadFile(tmp.Name())
+	if err != nil {
+		return "", fmt.Errorf("failed to read edited temp file: %w", err)
+	}
+
+	return string(data), nil
+}
+
+func clampWithEllipsis(s string, size int) string {
+	if len(s) <= size {
+		return s
+	}
+	return s[0:size-1] + "…"
+}
+
 var colors = struct {
-	reset    func(...any) (int, error)
-	italic   func(...any) string
-	italicf  func(string, ...any) string
-	bold     func(...any) string
-	boldf    func(string, ...any) string
-	error    func(...any) string
-	errorf   func(string, ...any) string
-	success  func(...any) string
-	successf func(string, ...any) string
+	reset      func(...any) (int, error)
+	italic     func(...any) string
+	italicf    func(string, ...any) string
+	bold       func(...any) string
+	boldf      func(string, ...any) string
+	underline  func(...any) string
+	underlinef func(string, ...any) string
+	error      func(...any) string
+	errorf     func(string, ...any) string
+	success    func(...any) string
+	successf   func(string, ...any) string
 }{
 	color.New(color.Reset).Print,
 	color.New(color.Italic).Sprint,
 	color.New(color.Italic).Sprintf,
 	color.New(color.Bold).Sprint,
 	color.New(color.Bold).Sprintf,
+	color.New(color.Underline).Sprint,
+	color.New(color.Underline).Sprintf,
 	color.New(color.Bold, color.FgHiRed).Sprint,
 	color.New(color.Bold, color.FgHiRed).Sprintf,
 	color.New(color.Bold, color.FgHiGreen).Sprint,
