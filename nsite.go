@@ -198,9 +198,9 @@ var nsite = &cli.Command{
 
 				stdout(evt.String())
 				if identifier == "" {
-					stdout(nip19.EncodeNpub(pk))
+					log(nip19.EncodeNpub(pk) + "\n")
 				} else {
-					stdout(nip5a.PubKeyToBase36(pk) + identifier)
+					log(nip5a.PubKeyToBase36(pk) + identifier + "\n")
 				}
 
 				return publishFlow(ctx, c, kr, evt, relays)
