@@ -598,7 +598,9 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 	if ids := getIDSlice(c, "id"); len(ids) > 0 {
 		filter.IDs = append(filter.IDs, ids...)
 	}
-	filter.Kinds = getKindSlice(c, "kind")
+	if kinds := getKindSlice(c, "kind"); len(kinds) > 0 {
+		filter.Kinds = append(filter.Kinds, kinds...)
+	}
 	if search := c.String("search"); search != "" {
 		filter.Search = search
 	}
