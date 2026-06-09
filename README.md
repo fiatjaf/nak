@@ -57,6 +57,18 @@ nevent1qqs94ee3h0rhz8mc2y76zjf8cjxvw9p6j8nv45zktlwy6uacjea86kgpzfmhxue69uhkummnw
 }
 ```
 
+### fetch events for a Namecoin `.bit` NIP-05 identifier
+NIP-05 identifiers ending in `.bit` are resolved via the Namecoin
+blockchain over ElectrumX, instead of the usual DNS + HTTPS lookup.
+This gives users a censorship-resistant identity that doesn't depend
+on DNS. Supported input shapes: `example.bit`, `alice@example.bit`,
+`d/example`, `id/alice`. Works in `fetch`, `decode`, and anywhere
+else nak accepts a NIP-05 identifier.
+```shell
+~> nak fetch nostr:m@testls.bit | jq -r .pubkey | head -1
+6cdebccabda1dfa058ab85352a79509b592b2bdfa0370325e28ec1cb4f18667d
+```
+
 ### fetch all events except those that are present in a given line-delimited json file (negentropy sync)
 ```shell
 ~> nak req --only-missing ./events.jsonl -k 30617 pyramid.fiatjaf.com
