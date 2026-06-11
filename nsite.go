@@ -32,6 +32,10 @@ var nsite = &cli.Command{
 			DisableSliceFlagSeparator: true,
 			Flags: []cli.Flag{
 				&cli.BoolFlag{
+					Name:  "outbox",
+					Usage: "append given relays to user's outbox relays instead of using them exclusively",
+				},
+				&cli.BoolFlag{
 					Name:  "root",
 					Usage: "publish root site as kind 15128",
 				},
@@ -198,7 +202,15 @@ var nsite = &cli.Command{
 					return fmt.Errorf("error signing manifest event: %w", err)
 				}
 
-				relayURLs := nostr.AppendUnique(sys.FetchWriteRelays(ctx, pk), c.Args().Slice()[1:]...)
+				givenRelays := c.Args().Slice()[1:]
+				var relayURLs []string
+				if len(givenRelays) == 0 {
+					relayURLs = sys.FetchWriteRelays(ctx, pk)
+				} else if c.Bool("outbox") {
+					relayURLs = nostr.AppendUnique(sys.FetchWriteRelays(ctx, pk), givenRelays...)
+				} else {
+					relayURLs = givenRelays
+				}
 				if len(relayURLs) == 0 {
 					return fmt.Errorf("no relays to publish this nsite to")
 				}
