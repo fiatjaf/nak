@@ -23,7 +23,7 @@ example:
 	echo "I agree!" | nak publish --reply nevent1...
 	echo "tagged post" | nak publish -t t=mytag -t e=someeventid`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, authFlags},
 		&cli.StringFlag{
 			Name:  "reply",
 			Usage: "event id, naddr1 or nevent1 code to reply to",
@@ -39,11 +39,6 @@ example:
 			Usage:       "unix timestamp value for the created_at field",
 			DefaultText: "now",
 			Value:       nostr.Now(),
-		},
-		&cli.BoolFlag{
-			Name:     "auth",
-			Usage:    "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{
 			Name:     "nevent",

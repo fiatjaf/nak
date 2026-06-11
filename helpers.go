@@ -22,7 +22,6 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
-	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/schema"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/chzyer/readline"
@@ -352,29 +351,6 @@ func supportsDynamicMultilineMagic() bool {
 	return true
 }
 
-func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error) {
-	defer func() {
-		if err != nil {
-			cleanUrl, _ := strings.CutPrefix(nip42.GetRelayURLFromAuthEvent(*authEvent), "wss://")
-			log("%s auth failed: %s", colors.errorf(cleanUrl), err)
-		}
-	}()
-
-	if !c.Bool("auth") && !c.Bool("force-pre-auth") {
-		return fmt.Errorf("auth required, but --auth flag not given")
-	}
-	kr, _, err := gatherKeyerFromArguments(ctx, c)
-	if err != nil {
-		return err
-	}
-
-	pk, _ := kr.GetPublicKey(ctx)
-	npub := nip19.EncodeNpub(pk)
-	log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
-
-	return kr.SignEvent(ctx, authEvent)
-}
-
 func lineProcessingError(ctx context.Context, msg string, args ...any) context.Context {
 	log(msg+"\n", args...)
 	return context.WithValue(ctx, LINE_PROCESSING_ERROR, true)
@@ -696,4 +672,18 @@ var colors = struct {
 	color.New(color.Bold, color.FgHiRed).Sprintf,
 	color.New(color.Bold, color.FgHiGreen).Sprint,
 	color.New(color.Bold, color.FgHiGreen).Sprintf,
+}
+
+func combineFlags(flagSlices [][]cli.Flag, extraFlags ...cli.Flag) []cli.Flag {
+	total := 0
+	for _, s := range flagSlices {
+		total += len(s)
+	}
+	total += len(extraFlags)
+	result := make([]cli.Flag, 0, total)
+	for _, s := range flagSlices {
+		result = append(result, s...)
+	}
+	result = append(result, extraFlags...)
+	return result
 }

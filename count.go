@@ -20,21 +20,8 @@ var count = &cli.Command{
 	Usage:                     "generates encoded COUNT messages and optionally use them to talk to relays",
 	Description:               `like 'nak req', but does a "COUNT" call instead. Will attempt to perform HyperLogLog aggregation if more than one relay is specified.`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
-		append(reqFilterFlags,
-			&cli.BoolFlag{
-				Name:  "auth",
-				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-			},
-			&cli.BoolFlag{
-				Name:     "force-pre-auth",
-				Aliases:  []string{"fpa"},
-				Usage:    "after connecting, for a nip42 \"AUTH\" message to be received, act on it and only then send the \"COUNT\"",
-				Category: CATEGORY_SIGNER,
-			},
-		)...,
-	),
-	ArgsUsage: "[relay...]",
+	Flags:                     combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags}),
+	ArgsUsage:                 "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		biggerUrlSize := 0
 		relayUrls := c.Args().Slice()

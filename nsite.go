@@ -23,7 +23,7 @@ var nsite = &cli.Command{
 	Usage:                     "publishes and downloads nip-5A static sites",
 	ArgsUsage:                 "<directory> [relay...]",
 	DisableSliceFlagSeparator: true,
-	Flags:                     defaultKeyFlags,
+	Flags:                     combineFlags([][]cli.Flag{defaultKeyFlags, authFlags}),
 	Commands: []*cli.Command{
 		{
 			Name:                      "upload",
@@ -59,9 +59,9 @@ var nsite = &cli.Command{
 					DefaultText: "defaults to the publisher's list of preferred blossom servers",
 				},
 				&cli.StringSliceFlag{
-					Name:     "tag",
-					Aliases:  []string{"t"},
-					Usage:    "inject extra tag into the manifest event, e.g. -t source=<url> or -t title=\"My Site\"",
+					Name:    "tag",
+					Aliases: []string{"t"},
+					Usage:   "inject extra tag into the manifest event, e.g. -t action=profile",
 				},
 				&cli.BoolFlag{
 					Name:    "yes",

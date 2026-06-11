@@ -21,18 +21,12 @@ var fetch = &cli.Command{
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
-		append(reqFilterFlags,
-			&cli.StringSliceFlag{
-				Name:    "relay",
-				Aliases: []string{"r"},
-				Usage:   "also use these relays to fetch from",
-			},
-			&cli.BoolFlag{
-				Name:  "auth",
-				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-			},
-		)...,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags},
+		&cli.StringSliceFlag{
+			Name:    "relay",
+			Aliases: []string{"r"},
+			Usage:   "also use these relays to fetch from",
+		},
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {

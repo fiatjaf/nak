@@ -28,12 +28,7 @@ var group = &cli.Command{
 	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <relay>'<identifier>" where host.tld is the relay and identifier is the group identifier.`,
 	DisableSliceFlagSeparator: true,
 	ArgsUsage:                 "<subcommand> <relay>'<identifier> [flags]",
-	Flags: append(defaultKeyFlags,
-		&cli.BoolFlag{
-			Name:  "auth",
-			Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-		},
-	),
+	Flags:                     combineFlags([][]cli.Flag{defaultKeyFlags, authFlags}),
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
 			return authSigner(ctx, c, func(s string, args ...any) {

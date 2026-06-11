@@ -105,7 +105,7 @@ var wallet = &cli.Command{
 	Usage:                     "displays the current wallet balance",
 	Description:               "all wallet data is stored on Nostr relays, signed and encrypted with the given key, and reloaded again from relays on every call.\n\nthe same data can be accessed by other compatible nip60 clients.",
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
 		&cli.BoolFlag{
 			Name:  "stream",
 			Usage: "keep listening for wallet-related events and logging them",

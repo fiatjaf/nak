@@ -43,69 +43,57 @@ it can also take a filter from stdin, optionally modify it with flags and send i
 example:
 		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
-		append(reqFilterFlags,
-			&cli.StringFlag{
-				Name:  "jq",
-				Usage: "filter returned events with jq expression",
-			},
-			&cli.BoolFlag{
-				Name:  "no-verify",
-				Usage: "skip event signature verification from relays",
-			},
-			&cli.StringFlag{
-				Name:      "only-missing",
-				Usage:     "use nip77 negentropy to only fetch events that aren't present in the given jsonl file",
-				TakesFile: true,
-			},
-			&cli.BoolFlag{
-				Name:  "ids-only",
-				Usage: "use nip77 to fetch just a list of ids",
-			},
-			&cli.BoolFlag{
-				Name:        "stream",
-				Usage:       "keep the subscription open, printing all events as they are returned",
-				DefaultText: "false, will close on EOSE",
-			},
-			&cli.BoolFlag{
-				Name:        "outbox",
-				Usage:       "read from \"write\" relays of \"authors\" and/or from the \"read\" relays of any \"#p\" or \"#P\" tags",
-				DefaultText: "false, will only use manually-specified relays",
-			},
-			&cli.UintFlag{
-				Name:    "outbox-relays-per-pubkey",
-				Aliases: []string{"n"},
-				Usage:   "number of outbox relays to use for each pubkey",
-				Value:   3,
-			},
-			&cli.BoolFlag{
-				Name:        "paginate",
-				Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
-				DefaultText: "false",
-			},
-			&cli.DurationFlag{
-				Name:  "paginate-interval",
-				Usage: "time between queries when using --paginate",
-			},
-			&cli.BoolFlag{
-				Name:  "bare",
-				Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
-			},
-			&cli.BoolFlag{
-				Name:  "auth",
-				Usage: "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-			},
-			&cli.BoolFlag{
-				Name:     "force-pre-auth",
-				Aliases:  []string{"fpa"},
-				Usage:    "after connecting, for a nip42 \"AUTH\" message to be received, act on it and only then send the \"REQ\"",
-				Category: CATEGORY_SIGNER,
-			},
-			&cli.BoolFlag{
-				Name:  "spell",
-				Usage: "output a spell event (kind 777) instead of a filter",
-			},
-		)...,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags},
+		&cli.StringFlag{
+			Name:  "jq",
+			Usage: "filter returned events with jq expression",
+		},
+		&cli.BoolFlag{
+			Name:  "no-verify",
+			Usage: "skip event signature verification from relays",
+		},
+		&cli.StringFlag{
+			Name:      "only-missing",
+			Usage:     "use nip77 negentropy to only fetch events that aren't present in the given jsonl file",
+			TakesFile: true,
+		},
+		&cli.BoolFlag{
+			Name:  "ids-only",
+			Usage: "use nip77 to fetch just a list of ids",
+		},
+		&cli.BoolFlag{
+			Name:        "stream",
+			Usage:       "keep the subscription open, printing all events as they are returned",
+			DefaultText: "false, will close on EOSE",
+		},
+		&cli.BoolFlag{
+			Name:        "outbox",
+			Usage:       "read from \"write\" relays of \"authors\" and/or from the \"read\" relays of any \"#p\" or \"#P\" tags",
+			DefaultText: "false, will only use manually-specified relays",
+		},
+		&cli.UintFlag{
+			Name:    "outbox-relays-per-pubkey",
+			Aliases: []string{"n"},
+			Usage:   "number of outbox relays to use for each pubkey",
+			Value:   3,
+		},
+		&cli.BoolFlag{
+			Name:        "paginate",
+			Usage:       "make multiple REQs to the relay decreasing the value of 'until' until 'limit' or 'since' conditions are met",
+			DefaultText: "false",
+		},
+		&cli.DurationFlag{
+			Name:  "paginate-interval",
+			Usage: "time between queries when using --paginate",
+		},
+		&cli.BoolFlag{
+			Name:  "bare",
+			Usage: "when printing the filter, print just the filter, not enveloped in a [\"REQ\", ...] array",
+		},
+		&cli.BoolFlag{
+			Name:  "spell",
+			Usage: "output a spell event (kind 777) instead of a filter",
+		},
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {

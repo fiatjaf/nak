@@ -9,6 +9,7 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip46"
 	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
@@ -18,6 +19,20 @@ import (
 )
 
 var defaultKey = nostr.KeyOne.Hex()
+
+var authFlags = []cli.Flag{
+	&cli.BoolFlag{
+		Name:     "auth",
+		Usage:    "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
+		Category: CATEGORY_AUTH,
+	},
+	&cli.BoolFlag{
+		Name:     "force-pre-auth",
+		Aliases:  []string{"fpa"},
+		Usage:    "after connecting, wait for a nip42 \"AUTH\" message to be received, act on it and only then send the query",
+		Category: CATEGORY_AUTH,
+	},
+}
 
 var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
@@ -115,6 +130,29 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 	}
 
 	return sk, nil, nil
+}
+
+func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error) {
+	defer func() {
+		if err != nil {
+			cleanUrl, _ := strings.CutPrefix(nip42.GetRelayURLFromAuthEvent(*authEvent), "wss://")
+			log("%s auth failed: %s", colors.errorf(cleanUrl), err)
+		}
+	}()
+
+	if !c.Bool("auth") && !c.Bool("force-pre-auth") {
+		return fmt.Errorf("auth required, but --auth flag not given")
+	}
+	kr, _, err := gatherKeyerFromArguments(ctx, c)
+	if err != nil {
+		return err
+	}
+
+	pk, _ := kr.GetPublicKey(ctx)
+	npub := nip19.EncodeNpub(pk)
+	log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
+
+	return kr.SignEvent(ctx, authEvent)
 }
 
 func promptDecrypt(ncryptsec string) (nostr.SecretKey, error) {

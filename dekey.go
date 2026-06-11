@@ -20,7 +20,7 @@ var dekey = &cli.Command{
 	Usage:                     "handles NIP-4E decoupled encryption keys",
 	Description:               "maybe this picture will explain better than I can do here for now: https://cdn.azzamo.net/89c543d261ad0d665c1dea78f91e527c2e39e7fe503b440265a3c47e63c9139f.png",
 	DisableSliceFlagSeparator: true,
-	Flags: append(defaultKeyFlags,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
 		&cli.StringFlag{
 			Name:  "device",
 			Usage: "name of this device that will be published and displayed on other clients",

@@ -22,7 +22,7 @@ var fsCmd = &cli.Command{
 	Usage:       "mount a FUSE filesystem that exposes Nostr events as files.",
 	Description: `(experimental)`,
 	ArgsUsage:   "<mountpoint>",
-	Flags: append(defaultKeyFlags,
+	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
 		&PubKeyFlag{
 			Name:  "pubkey",
 			Usage: "public key from where to to prepopulate directories",

@@ -19,7 +19,7 @@ example:
 		nak filter '{"kind": 1, "content": "hello"}' '{"kinds": [1]}' -k 0
 `,
 	DisableSliceFlagSeparator: true,
-	Flags: append(append([]cli.Flag{}, reqFilterFlags...),
+	Flags: combineFlags([][]cli.Flag{reqFilterFlags},
 		&cli.StringFlag{
 			Name:  "jq",
 			Usage: "filter matching events with jq expression",
