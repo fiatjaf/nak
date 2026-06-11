@@ -6,8 +6,10 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -157,7 +159,16 @@ var app = &cli.Command{
 			RequestHeader: http.Header{textproto.CanonicalMIMEHeaderKey("user-agent"): {"nak/b"}},
 		}
 		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-			return authSigner(ctx, c, log, authEvent)
+			return authSigner(ctx, c, func(s string, args ...any) {
+				if strings.HasPrefix(s, "authenticating as") {
+					cleanUrl, _ := strings.CutPrefix(
+						nip42.GetRelayURLFromAuthEvent(*authEvent),
+						"wss://",
+					)
+					s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
+				}
+				log(s+"\n", args...)
+			}, authEvent)
 		}
 
 		return ctx, nil
