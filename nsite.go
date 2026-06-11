@@ -54,6 +54,11 @@ var nsite = &cli.Command{
 					Usage:       "blossom server hostname or URL, can be given multiple times",
 					DefaultText: "defaults to the publisher's list of preferred blossom servers",
 				},
+				&cli.StringSliceFlag{
+					Name:     "tag",
+					Aliases:  []string{"t"},
+					Usage:    "inject extra tag into the manifest event, e.g. -t source=<url> or -t title=\"My Site\"",
+				},
 				&cli.BoolFlag{
 					Name:    "yes",
 					Aliases: []string{"y"},
@@ -179,6 +184,16 @@ var nsite = &cli.Command{
 				}
 
 				evt := manifest.ToEvent()
+
+				for _, tagFlag := range c.StringSlice("tag") {
+					tagName, tagValue, found := strings.Cut(tagFlag, "=")
+					tag := []string{tagName}
+					if found {
+						tag = append(tag, strings.Split(tagValue, ";")...)
+					}
+					evt.Tags = append(evt.Tags, tag)
+				}
+
 				if err := kr.SignEvent(ctx, &evt); err != nil {
 					return fmt.Errorf("error signing manifest event: %w", err)
 				}
