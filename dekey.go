@@ -20,7 +20,7 @@ var dekey = &cli.Command{
 	Usage:                     "handles NIP-4E decoupled encryption keys",
 	Description:               "maybe this picture will explain better than I can do here for now: https://cdn.azzamo.net/89c543d261ad0d665c1dea78f91e527c2e39e7fe503b440265a3c47e63c9139f.png",
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		&cli.StringFlag{
 			Name:  "device",
 			Usage: "name of this device that will be published and displayed on other clients",
@@ -87,7 +87,7 @@ var dekey = &cli.Command{
 		// get relays for the user
 		log("fetching write relays for %s\n", color.CyanString(nip19.EncodeNpub(userPub)))
 		relays := sys.FetchWriteRelays(ctx, userPub)
-		relayList := connectToAllRelays(ctx, c, relays, nil)
+		relayList := connectToAllRelays(ctx, c, relays)
 		if len(relayList) == 0 {
 			return fmt.Errorf("no relays to use")
 		}

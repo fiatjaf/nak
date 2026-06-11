@@ -19,7 +19,6 @@ var curl = &cli.Command{
 	Name:                      "curl",
 	Usage:                     "calls curl but with a nip98 header",
 	Description:               "accepts all flags and arguments exactly as they would be passed to curl.",
-	Flags:                     defaultKeyFlags,
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		kr, _, err := gatherKeyerFromArguments(ctx, c)

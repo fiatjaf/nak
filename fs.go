@@ -24,7 +24,7 @@ var fsCmd = &cli.Command{
 	Usage:       "mount a FUSE filesystem that exposes Nostr events as files.",
 	Description: `(experimental)`,
 	ArgsUsage:   "<mountpoint>",
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		&PubKeyFlag{
 			Name:  "pubkey",
 			Usage: "public key from where to to prepopulate directories",

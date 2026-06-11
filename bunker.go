@@ -225,7 +225,7 @@ var bunker = &cli.Command{
 				}
 			}
 		}
-		relays := connectToAllRelays(ctx, c, allRelays, nil)
+		relays := connectToAllRelays(ctx, c, allRelays)
 		if len(relays) == 0 {
 			log("failed to connect to any of the given relays.\n")
 			os.Exit(3)

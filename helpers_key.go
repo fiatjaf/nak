@@ -18,46 +18,6 @@ import (
 	"github.com/urfave/cli/v3"
 )
 
-var defaultKey = nostr.KeyOne.Hex()
-
-var authFlags = []cli.Flag{
-	&cli.BoolFlag{
-		Name:     "auth",
-		Usage:    "always perform nip42 \"AUTH\" when facing an \"auth-required: \" rejection and try again",
-		Category: CATEGORY_AUTH,
-	},
-	&cli.BoolFlag{
-		Name:     "force-pre-auth",
-		Aliases:  []string{"fpa"},
-		Usage:    "after connecting, wait for a nip42 \"AUTH\" message to be received, act on it and only then send the query",
-		Category: CATEGORY_AUTH,
-	},
-}
-
-var defaultKeyFlags = []cli.Flag{
-	&cli.StringFlag{
-		Name:        "sec",
-		Usage:       "secret key to sign the event, as nsec, ncryptsec or hex, or a bunker URL",
-		DefaultText: "the key '01'",
-		Category:    CATEGORY_SIGNER,
-		Sources:     cli.EnvVars("NOSTR_SECRET_KEY"),
-		Value:       defaultKey,
-		HideDefault: true,
-	},
-	&cli.BoolFlag{
-		Name:     "prompt-sec",
-		Usage:    "prompt the user to paste a hex or nsec with which to sign the event",
-		Category: CATEGORY_SIGNER,
-	},
-	&cli.StringFlag{
-		Name:        "connect-as",
-		Usage:       "private key to use when communicating with nip46 bunkers",
-		DefaultText: "a random key",
-		Category:    CATEGORY_SIGNER,
-		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),
-	},
-}
-
 func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer, nostr.SecretKey, error) {
 	key, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
 	if err != nil {
@@ -136,13 +96,14 @@ func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...
 	defer func() {
 		if err != nil {
 			cleanUrl, _ := strings.CutPrefix(nip42.GetRelayURLFromAuthEvent(*authEvent), "wss://")
-			log("%s auth failed: %s", colors.errorf(cleanUrl), err)
+			log("%s auth failed: %s\n", colors.errorf(cleanUrl), err)
 		}
 	}()
 
 	if !c.Bool("auth") && !c.Bool("force-pre-auth") {
 		return fmt.Errorf("auth required, but --auth flag not given")
 	}
+
 	kr, _, err := gatherKeyerFromArguments(ctx, c)
 	if err != nil {
 		return err

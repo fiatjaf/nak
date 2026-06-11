@@ -7,10 +7,8 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip45"
 	"fiatjaf.com/nostr/nip45/hyperloglog"
-	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
 )
@@ -20,34 +18,16 @@ var count = &cli.Command{
 	Usage:                     "generates encoded COUNT messages and optionally use them to talk to relays",
 	Description:               `like 'nak req', but does a "COUNT" call instead. Will attempt to perform HyperLogLog aggregation if more than one relay is specified.`,
 	DisableSliceFlagSeparator: true,
-	Flags:                     combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags}),
+	Flags:                     combineFlags([][]cli.Flag{reqFilterFlags}),
 	ArgsUsage:                 "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		biggerUrlSize := 0
 		relayUrls := c.Args().Slice()
 		if len(relayUrls) > 0 {
-			forcePreAuthSigner := authSigner
-			if !c.Bool("force-pre-auth") {
-				forcePreAuthSigner = nil
-			}
-
-			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-				return authSigner(ctx, c, func(s string, args ...any) {
-					if strings.HasPrefix(s, "authenticating as") {
-						cleanUrl, _ := strings.CutPrefix(
-							nip42.GetRelayURLFromAuthEvent(*authEvent),
-							"wss://",
-						)
-						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-					}
-					log(s+"\n", args...)
-				}, authEvent)
-			}
 			relays := connectToAllRelays(
 				ctx,
 				c,
 				relayUrls,
-				forcePreAuthSigner,
 			)
 			if len(relays) == 0 {
 				log("failed to connect to any of the given relays.\n")

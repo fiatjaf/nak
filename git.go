@@ -33,7 +33,6 @@ aside from those, there is also:
   - 'nak git init' for setting up nip34 repository metadata; and
   - 'nak git sync' for getting the latest metadata update from nostr relays (called automatically by other commands)
 `,
-	Flags: defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name:  "init",

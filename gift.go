@@ -24,7 +24,6 @@ var gift = &cli.Command{
 
 a decoupled key (if it has been created or received with "nak dekey" previously) will be used by default.`,
 	DisableSliceFlagSeparator: true,
-	Flags:                     defaultKeyFlags,
 	Commands: []*cli.Command{
 		{
 			Name: "wrap",

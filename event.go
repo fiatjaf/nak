@@ -41,7 +41,7 @@ example:
 		echo '{"id":"a889df6a387419ff204305f4c2d296ee328c3cd4f8b62f205648a541b4554dfb","pubkey":"c6047f9441ed7d6d3045406e95c07cd85c778e4b8cef3ca7abac09b95c709ee5","created_at":1698623783,"kind":1,"tags":[],"content":"hello from the nostr army knife","sig":"84876e1ee3e726da84e5d195eb79358b2b3eaa4d9bd38456fde3e8a2af3f1cd4cda23f23fda454869975b3688797d4c66e12f4c51c1b43c6d2997c5e61865661"}' | nak event wss://offchain.pub
 		echo '{"tags": [["t", "spam"]]}' | nak event -c 'this is spam'`,
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, authFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		// ~ these args are only for the convoluted musig2 signing process
 		// they will be generally copy-shared-pasted across some manual coordination method between participants
 		&cli.UintFlag{
@@ -392,10 +392,7 @@ example:
 				}
 
 				if len(relayUrls) > 0 {
-					sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-						return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-					}
-					relays = connectToAllRelays(ctx, c, relayUrls, nil)
+					relays = connectToAllRelays(ctx, c, relayUrls)
 					if len(relays) == 0 {
 						log("failed to connect to any of the given relays.\n")
 						os.Exit(3)

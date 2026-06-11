@@ -187,7 +187,6 @@ func connectToAllRelays(
 	ctx context.Context,
 	c *cli.Command,
 	relayUrls []string,
-	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error), // if this exists we will force preauth
 ) []*nostr.Relay {
 	// first pass to check if these are valid relay URLs
 	for i, url := range relayUrls {
@@ -232,7 +231,7 @@ func connectToAllRelays(
 			colorizepreamble(color.CyanString)
 
 			go func() {
-				relay := connectToSingleRelay(ctx, c, url, preAuthSigner, colorizepreamble, logthis)
+				relay := connectToSingleRelay(ctx, c, url, colorizepreamble, logthis)
 				if relay != nil {
 					relays = append(relays, relay)
 				}
@@ -244,7 +243,7 @@ func connectToAllRelays(
 		// simple flow
 		for _, url := range relayUrls {
 			log("connecting to %s... ", color.CyanString(strings.Split(url, "/")[2]))
-			relay := connectToSingleRelay(ctx, c, url, preAuthSigner, nil, log)
+			relay := connectToSingleRelay(ctx, c, url, nil, log)
 			if relay != nil {
 				relays = append(relays, relay)
 			}
@@ -259,12 +258,11 @@ func connectToSingleRelay(
 	ctx context.Context,
 	c *cli.Command,
 	url string,
-	preAuthSigner func(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error),
 	colorizepreamble func(c func(string, ...any) string),
 	logthis func(s string, args ...any),
 ) *nostr.Relay {
 	if relay, err := sys.Pool.EnsureRelay(url); err == nil {
-		if preAuthSigner != nil {
+		if c.Bool("force-pre-auth") {
 			if colorizepreamble != nil {
 				colorizepreamble(color.YellowString)
 			}
@@ -277,7 +275,7 @@ func connectToSingleRelay(
 					if challengeTag == nil || len(challengeTag) < 2 || challengeTag[1] == "" {
 						return fmt.Errorf("auth not received yet *****") // what a giant hack
 					}
-					return preAuthSigner(ctx, c, logthis, authEvent)
+					return authSigner(ctx, c, logthis, authEvent)
 				}); err == nil {
 					// auth succeeded
 					goto preauthSuccess

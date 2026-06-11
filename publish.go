@@ -23,7 +23,7 @@ example:
 	echo "I agree!" | nak publish --reply nevent1...
 	echo "tagged post" | nak publish -t t=mytag -t e=someeventid`,
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, authFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		&cli.StringFlag{
 			Name:  "reply",
 			Usage: "event id, naddr1 or nevent1 code to reply to",
@@ -150,10 +150,7 @@ example:
 		relayUrls = nostr.AppendUnique(relayUrls, replyRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, c.Args().Slice()...)
 
-		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-			return authSigner(ctx, c, func(s string, args ...any) {}, authEvent)
-		}
-		relays := connectToAllRelays(ctx, c, relayUrls, nil)
+		relays := connectToAllRelays(ctx, c, relayUrls)
 
 		if len(relays) == 0 {
 			if len(relayUrls) == 0 {

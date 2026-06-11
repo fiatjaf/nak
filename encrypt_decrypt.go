@@ -13,8 +13,7 @@ var encrypt = &cli.Command{
 	Usage:                     "encrypts a string with nip44 (or nip04 if specified using a flag) and returns the resulting ciphertext as base64",
 	ArgsUsage:                 "[plaintext string]",
 	DisableSliceFlagSeparator: true,
-	Flags: append(
-		defaultKeyFlags,
+	Flags: []cli.Flag{
 		&PubKeyFlag{
 			Name:     "recipient-pubkey",
 			Aliases:  []string{"p", "tgt", "target", "pubkey", "to"},
@@ -24,7 +23,7 @@ var encrypt = &cli.Command{
 			Name:  "nip04",
 			Usage: "use nip04 encryption instead of nip44",
 		},
-	),
+	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		target := getPubKey(c, "recipient-pubkey")
 
@@ -75,8 +74,7 @@ var decrypt = &cli.Command{
 	Usage:                     "decrypts a base64 nip44 ciphertext (or nip04 if specified using a flag) and returns the resulting plaintext",
 	ArgsUsage:                 "[ciphertext base64]",
 	DisableSliceFlagSeparator: true,
-	Flags: append(
-		defaultKeyFlags,
+	Flags: []cli.Flag{
 		&PubKeyFlag{
 			Name:     "sender-pubkey",
 			Aliases:  []string{"p", "src", "source", "pubkey", "from"},
@@ -86,7 +84,7 @@ var decrypt = &cli.Command{
 			Name:  "nip04",
 			Usage: "use nip04 encryption instead of nip44",
 		},
-	),
+	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		source := getPubKey(c, "sender-pubkey")
 

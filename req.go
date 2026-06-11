@@ -15,10 +15,8 @@ import (
 	"fiatjaf.com/nostr/eventstore"
 	"fiatjaf.com/nostr/eventstore/slicestore"
 	"fiatjaf.com/nostr/eventstore/wrappers"
-	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip77"
 	"fiatjaf.com/nostr/schema"
-	"github.com/fatih/color"
 	"github.com/mailru/easyjson"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/sync/errgroup"
@@ -43,7 +41,7 @@ it can also take a filter from stdin, optionally modify it with flags and send i
 example:
 		echo '{"kinds": [1], "#t": ["test"]}' | nak req -l 5 -k 4549 --tag t=spam wss://nostr-pub.wellorder.net`,
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags},
+	Flags: combineFlags([][]cli.Flag{reqFilterFlags},
 		&cli.StringFlag{
 			Name:  "jq",
 			Usage: "filter returned events with jq expression",
@@ -135,30 +133,10 @@ example:
 		}
 
 		if len(relayUrls) > 0 && !negentropy {
-			// this is used both for the normal AUTH (after "auth-required:" is received) or forced pre-auth
-			// connect to all relays we expect to use in this call in parallel
-			forcePreAuthSigner := authSigner
-			if !c.Bool("force-pre-auth") {
-				forcePreAuthSigner = nil
-			}
-
-			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-				return authSigner(ctx, c, func(s string, args ...any) {
-					if strings.HasPrefix(s, "authenticating as") {
-						cleanUrl, _ := strings.CutPrefix(
-							nip42.GetRelayURLFromAuthEvent(*authEvent),
-							"wss://",
-						)
-						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-					}
-					log(s+"\n", args...)
-				}, authEvent)
-			}
 			relays := connectToAllRelays(
 				ctx,
 				c,
 				relayUrls,
-				forcePreAuthSigner,
 			)
 
 			// stop here already if all connections failed

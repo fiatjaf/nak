@@ -19,9 +19,7 @@ var mcpServer = &cli.Command{
 	Usage:                     "pander to the AI gods",
 	Description:               ``,
 	DisableSliceFlagSeparator: true,
-	Flags: append(
-		defaultKeyFlags,
-	),
+	Flags:                     []cli.Flag{},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		s := server.NewMCPServer(
 			"nak",

@@ -5,9 +5,9 @@ import (
 	"sync/atomic"
 	"syscall"
 
+	"fiatjaf.com/nostr"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
-	"fiatjaf.com/nostr"
 )
 
 type AsyncFile struct {

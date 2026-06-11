@@ -3,14 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"strings"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
-	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/sdk/hints"
-	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )
 
@@ -21,7 +18,7 @@ var fetch = &cli.Command{
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags, reqFilterFlags, authFlags},
+	Flags: combineFlags([][]cli.Flag{reqFilterFlags},
 		&cli.StringSliceFlag{
 			Name:    "relay",
 			Aliases: []string{"r"},
@@ -107,19 +104,6 @@ var fetch = &cli.Command{
 			if len(relays) == 0 {
 				ctx = lineProcessingError(ctx, "no relay hints found")
 				continue
-			}
-
-			sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-				return authSigner(ctx, c, func(s string, args ...any) {
-					if strings.HasPrefix(s, "authenticating as") {
-						cleanUrl, _ := strings.CutPrefix(
-							nip42.GetRelayURLFromAuthEvent(*authEvent),
-							"wss://",
-						)
-						s = "authenticating to " + color.CyanString(cleanUrl) + " as" + s[len("authenticating as"):]
-					}
-					log(s+"\n", args...)
-				}, authEvent)
 			}
 
 			found := false

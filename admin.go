@@ -25,7 +25,6 @@ var admin = &cli.Command{
 		nak admin changerelayname myrelay.com --name "My Relay"`,
 	ArgsUsage:                 "<relay-url>",
 	DisableSliceFlagSeparator: true,
-	Flags:                     defaultKeyFlags,
 	Commands: (func() []*cli.Command {
 		methods := []struct {
 			method string

@@ -20,7 +20,7 @@ var blossomCmd = &cli.Command{
 	UseShortOptionHandling:    true,
 	Usage:                     "an army knife for blossom things",
 	DisableSliceFlagSeparator: true,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		&cli.StringSliceFlag{
 			Name:     "server",
 			Aliases:  []string{"s"},

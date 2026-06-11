@@ -23,7 +23,7 @@ var spell = &cli.Command{
 	Usage:       "downloads a spell event and executes its REQ request",
 	ArgsUsage:   "[nevent_code]",
 	Description: `fetches a spell event (kind 777) and executes REQ command encoded in its tags.`,
-	Flags: combineFlags([][]cli.Flag{defaultKeyFlags},
+	Flags: combineFlags([][]cli.Flag{},
 		&cli.StringFlag{
 			Name:  "pub",
 			Usage: "public key to run spells in the context of (if you don't want to pass a --sec)",

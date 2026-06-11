@@ -23,7 +23,7 @@ var nsite = &cli.Command{
 	Usage:                     "publishes and downloads nip-5A static sites",
 	ArgsUsage:                 "<directory> [relay...]",
 	DisableSliceFlagSeparator: true,
-	Flags:                     combineFlags([][]cli.Flag{defaultKeyFlags, authFlags}),
+	Flags:                     combineFlags([][]cli.Flag{}),
 	Commands: []*cli.Command{
 		{
 			Name:                      "upload",
@@ -215,10 +215,7 @@ var nsite = &cli.Command{
 					return fmt.Errorf("no relays to publish this nsite to")
 				}
 
-				sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
-					return authSigner(ctx, c, func(string, ...any) {}, authEvent)
-				}
-				relays := connectToAllRelays(ctx, c, relayURLs, nil)
+				relays := connectToAllRelays(ctx, c, relayURLs)
 				if len(relays) == 0 {
 					return fmt.Errorf("failed to connect to any of [ %v ]", relayURLs)
 				}
