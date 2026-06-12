@@ -78,9 +78,7 @@ var syncCmd = &cli.Command{
 
 				// every 30 ids do a fetch-and-publish
 				if len(pending[idx].ids) == 30 {
-					for evt := range pending[idx].src.QueryEvents(nostr.Filter{IDs: pending[idx].ids}) {
-						pending[idx].dst.Publish(ctx, evt)
-					}
+					fetchAndPublish(ctx, pending[idx].src, pending[idx].dst, pending[idx].ids)
 					pending[idx].ids = pending[idx].ids[:0]
 				}
 			}
@@ -88,9 +86,7 @@ var syncCmd = &cli.Command{
 			// do it for the remaining ids
 			for _, op := range pending {
 				if len(op.ids) > 0 {
-					for evt := range op.src.QueryEvents(nostr.Filter{IDs: op.ids}) {
-						op.dst.Publish(ctx, evt)
-					}
+					fetchAndPublish(ctx, op.src, op.dst, op.ids)
 				}
 			}
 		})
@@ -99,6 +95,35 @@ var syncCmd = &cli.Command{
 
 		return err
 	},
+}
+
+// fetchAndPublish drains every event from src, then publishes them to dst
+// concurrently. Two problems are avoided:
+//
+//  1. Publishing inline while ranging over QueryEvents lets a slow dst
+//     back-pressure the src subscription, so we drain src fully first.
+//  2. Publish blocks up to 7s per event waiting for an OK. Publishing
+//     sequentially makes total time scale with the number of events times that
+//     wait, so under load an outer deadline can cut the sync off with most
+//     events still unsent. Publishing concurrently overlaps the OK waits so the
+//     EVENT frames all leave promptly.
+//
+// Publish errors are surfaced rather than silently dropped.
+func fetchAndPublish(ctx context.Context, src, dst *nostr.Relay, ids []nostr.ID) {
+	events := make([]nostr.Event, 0, len(ids))
+	for evt := range src.QueryEvents(nostr.Filter{IDs: ids}) {
+		events = append(events, evt)
+	}
+
+	wg := sync.WaitGroup{}
+	for _, evt := range events {
+		wg.Go(func() {
+			if err := dst.Publish(ctx, evt); err != nil {
+				logverbose("failed to publish %s to %s: %s\n", evt.ID.Hex(), dst.URL, err)
+			}
+		})
+	}
+	wg.Wait()
 }
 
 type ThirdPartyNegentropy struct {
