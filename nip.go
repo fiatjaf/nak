@@ -5,12 +5,14 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"os/exec"
 	"runtime"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 type nipInfo struct {
@@ -129,7 +131,18 @@ examples:
 		}
 
 		// render markdown
-		rendered, err := glamour.Render(string(body), "auto")
+		width, _, err := term.GetSize(int(os.Stdout.Fd()))
+		if err != nil || width < 80 {
+			width = 120
+		}
+		r, err := glamour.NewTermRenderer(
+			glamour.WithAutoStyle(),
+			glamour.WithWordWrap(width),
+		)
+		if err != nil {
+			return fmt.Errorf("failed to create renderer: %w", err)
+		}
+		rendered, err := r.Render(string(body))
 		if err != nil {
 			return fmt.Errorf("failed to render markdown: %w", err)
 		}
