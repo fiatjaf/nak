@@ -97,18 +97,19 @@ var syncCmd = &cli.Command{
 	},
 }
 
-// fetchAndPublish drains every event from src, then publishes them to dst
-// concurrently. Two problems are avoided:
+// fetchAndPublish drains every event from src before publishing to dst.
 //
-//  1. Publishing inline while ranging over QueryEvents lets a slow dst
-//     back-pressure the src subscription, so we drain src fully first.
-//  2. Publish blocks up to 7s per event waiting for an OK. Publishing
-//     sequentially makes total time scale with the number of events times that
-//     wait, so under load an outer deadline can cut the sync off with most
-//     events still unsent. Publishing concurrently overlaps the OK waits so the
-//     EVENT frames all leave promptly.
+// QueryEvents subscribes with go-nostr's default 7s MaxWaitForEOSE, an absolute
+// timer from subscription start. sub.Events is unbuffered, so once the timer
+// fires any event not yet handed to the consumer is dropped (the dispatch
+// goroutine takes its eoseTimedOut branch) and a fake EOSE ends the range. The
+// old loop published inline, and Publish blocks up to 7s per event waiting for
+// an OK, so under load the slow publish stalled the consumer, the source sub
+// hit its EOSE deadline, and the rest of the batch was silently discarded.
 //
-// Publish errors are surfaced rather than silently dropped.
+// Draining into a slice consumes every event within the EOSE window, then
+// publishes afterward. Publishing concurrently is a throughput bonus, not the
+// fix. Publish errors are surfaced rather than dropped.
 func fetchAndPublish(ctx context.Context, src, dst *nostr.Relay, ids []nostr.ID) {
 	events := make([]nostr.Event, 0, len(ids))
 	for evt := range src.QueryEvents(nostr.Filter{IDs: ids}) {
