@@ -45,6 +45,10 @@ var nsite = &cli.Command{
 					Usage:   "publish named site as kind 35128 with this d tag",
 				},
 				&cli.StringFlag{
+					Name:  "title",
+					Usage: "a human-readable title for the site",
+				},
+				&cli.StringFlag{
 					Name:  "description",
 					Usage: "a human-readable description of the site",
 				},
@@ -103,6 +107,7 @@ var nsite = &cli.Command{
 					Root:        root,
 					Identifier:  identifier,
 					Paths:       make(map[string][32]byte),
+					Title:       c.String("title"),
 					Description: c.String("description"),
 					Source:      c.String("source"),
 				}
