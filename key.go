@@ -28,6 +28,7 @@ var key = &cli.Command{
 		decryptKey,
 		combine,
 		validate,
+		defaultCommand,
 	},
 }
 
@@ -231,6 +232,17 @@ Returns error if key is invalid, otherwise exits successfully.`,
 				continue
 			}
 		}
+		return nil
+	},
+}
+
+var defaultCommand = &cli.Command{
+	Name:                      "default",
+	Usage:                     "prints the default secret key",
+	Description:               `the default secret key is generated differently for each machine (or falls back to a hardcoded one in case of failure), it is not save in any way, but this command makes it available if that is needed.`,
+	DisableSliceFlagSeparator: true,
+	Action: func(ctx context.Context, c *cli.Command) error {
+		stdout(nip19.EncodeNsec(defaultKey()))
 		return nil
 	},
 }

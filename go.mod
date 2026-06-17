@@ -29,6 +29,7 @@ require (
 
 require (
 	fiatjaf.com/lib v0.3.7
+	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/lithammer/fuzzysearch v1.1.8

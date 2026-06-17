@@ -185,7 +185,7 @@ var bunker = &cli.Command{
 		if config.Secret.Plain == nil && config.Secret.Encrypted == nil {
 			sec := os.Getenv("NOSTR_SECRET_KEY")
 			if sec == "" {
-				sec = defaultKey
+				sec = defaultKey().Hex()
 			}
 			sk, err := nostr.SecretKeyFromHex(sec)
 			if err != nil {

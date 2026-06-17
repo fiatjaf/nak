@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/sha256"
 	"fmt"
 	"os"
 	"strings"
@@ -13,10 +14,25 @@ import (
 	"fiatjaf.com/nostr/nip46"
 	"fiatjaf.com/nostr/nip49"
 	"github.com/chzyer/readline"
+	"github.com/denisbrodbeck/machineid"
 	"github.com/fatih/color"
 	"github.com/mattn/go-tty/v2"
 	"github.com/urfave/cli/v3"
 )
+
+// the default secret key we will use when "--sec" is not provided
+func defaultKey() nostr.SecretKey {
+	mid, err := machineid.ID()
+	if err != nil {
+		k := nostr.SecretKey{}
+		k[29] = 'n'
+		k[30] = 'a'
+		k[31] = 'k'
+		return k
+	}
+
+	return sha256.Sum256([]byte(mid))
+}
 
 func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer, nostr.SecretKey, error) {
 	key, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
