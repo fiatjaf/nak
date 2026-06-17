@@ -65,7 +65,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 				return nostr.SecretKey{}, nil, fmt.Errorf("bunker client key '%s' is invalid: %w", clientKeyHex, err)
 			}
 		} else {
-			clientKey = nostr.Generate()
+			clientKey = defaultKey()
 		}
 
 		logverbose("[nip46]: connecting to %s with client key %s\n", bunkerURL, clientKey.Hex())

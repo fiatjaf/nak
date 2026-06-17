@@ -46,7 +46,7 @@ var defaultKeyFlags = []cli.Flag{
 	&cli.StringFlag{
 		Name:        "connect-as",
 		Usage:       "private key to use when communicating with nip46 bunkers",
-		DefaultText: "a random key",
+		DefaultText: "the default key (see `nak key default`)",
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),
 	},
