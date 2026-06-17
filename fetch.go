@@ -24,9 +24,18 @@ var fetch = &cli.Command{
 			Aliases: []string{"r"},
 			Usage:   "also use these relays to fetch from",
 		},
+		&cli.StringFlag{
+			Name:  "jq",
+			Usage: "filter returned events with jq expression",
+		},
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
+		jq, err := jqPrepare(c.String("jq"))
+		if err != nil {
+			return err
+		}
+
 		for code := range getStdinLinesOrArguments(c.Args()) {
 			filter := nostr.Filter{}
 			var authorHint nostr.PubKey
@@ -111,7 +120,20 @@ var fetch = &cli.Command{
 				Label: "nak-fetch",
 			}) {
 				found = true
-				stdout(ie.Event)
+				var out string
+				if jq == nil {
+					out = ie.Event.String()
+				} else {
+					v, matches, err := jq(ie.Event)
+					if err != nil {
+						return fmt.Errorf("jq filter failed: %w", err)
+					}
+					if !matches {
+						continue
+					}
+					out, _ = json.MarshalToString(v)
+				}
+				stdout(out)
 			}
 
 			if !found {

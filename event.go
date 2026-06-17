@@ -90,6 +90,11 @@ example:
 			Usage:    "print the event enveloped in a [\"EVENT\", ...] message ready to be sent to a relay",
 			Category: CATEGORY_EXTRAS,
 		},
+		&cli.StringFlag{
+			Name:     "jq",
+			Usage:    "filter returned events with jq expression",
+			Category: CATEGORY_EXTRAS,
+		},
 		&cli.BoolFlag{
 			Name:     "nevent",
 			Usage:    "print the nevent code (to stderr) after the event is published",
@@ -178,6 +183,11 @@ example:
 		relayUrls := c.Args().Slice()
 
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
+		if err != nil {
+			return err
+		}
+
+		jq, err := jqPrepare(c.String("jq"))
 		if err != nil {
 			return err
 		}
@@ -401,15 +411,26 @@ example:
 			}
 
 			// print event as json
-			var result string
-			if c.Bool("envelope") {
-				j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
-				result = string(j)
+			if jq == nil {
+				var result string
+				if c.Bool("envelope") {
+					j, _ := json.Marshal(nostr.EventEnvelope{Event: evt})
+					result = string(j)
+				} else {
+					j, _ := easyjson.Marshal(&evt)
+					result = string(j)
+				}
+				stdout(result)
 			} else {
-				j, _ := easyjson.Marshal(&evt)
-				result = string(j)
+				v, matches, err := jq(evt)
+				if err != nil {
+					return fmt.Errorf("jq filter failed: %w", err)
+				}
+				if matches {
+					out, _ := json.MarshalToString(v)
+					stdout(out)
+				}
 			}
-			stdout(result)
 
 			return publishFlow(ctx, c, kr, evt, relays)
 		}
