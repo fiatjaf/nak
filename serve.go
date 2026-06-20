@@ -64,6 +64,14 @@ var serve = &cli.Command{
 			Name:  "blossom",
 			Usage: "enable blossom server",
 		},
+		&cli.BoolFlag{
+			Name:  "auth",
+			Usage: "require AUTH for all operations",
+		},
+		&cli.BoolFlag{
+			Name:  "eager-auth",
+			Usage: "send AUTH challenge immediately on connect",
+		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
 		db := &slicestore.SliceStore{}
@@ -116,10 +124,17 @@ var serve = &cli.Command{
 		totalConnections := atomic.Int32{}
 		rl.OnConnect = func(ctx context.Context) {
 			totalConnections.Add(1)
+			if c.Bool("eager-auth") {
+				khatru.RequestAuth(ctx)
+			}
 			go func() {
 				<-ctx.Done()
 				totalConnections.Add(-1)
 			}()
+		}
+
+		rl.OnAuth = func(ctx context.Context, pubkey nostr.PubKey) {
+			log("    got %s %s\n", color.GreenString("authenticated"), pubkey.Hex())
 		}
 
 		d := debounce.New(time.Second * 2)
@@ -228,23 +243,47 @@ var serve = &cli.Command{
 
 		// relay logging
 		rl.OnRequest = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
+			if c.Bool("auth") {
+				if _, isAuthed := khatru.GetAuthed(ctx); !isAuthed {
+					return true, "auth-required: subscribe"
+				}
+			}
+
 			negentropy := ""
 			if khatru.IsNegentropySession(ctx) {
 				negentropy = color.HiBlueString("negentropy ")
 			}
 
-			log("    got %s%s %v\n", negentropy, color.HiYellowString("request"), colors.italic(filter))
+			authedString := ""
+			if pubkey, ok := khatru.GetAuthed(ctx); ok {
+				authedString = fmt.Sprintf(" from %s", color.GreenString(pubkey.Hex()))
+			}
+
+			log("    got %s%s %v%s\n",
+				negentropy, color.HiYellowString("request"), colors.italic(filter), authedString)
 			printStatus()
 			return false, ""
 		}
 
 		rl.OnCount = func(ctx context.Context, filter nostr.Filter) (reject bool, msg string) {
+			if c.Bool("auth") {
+				if _, isAuthed := khatru.GetAuthed(ctx); !isAuthed {
+					return true, "auth-required: count"
+				}
+			}
+
 			log("    got %s %v\n", color.HiCyanString("count request"), colors.italic(filter))
 			printStatus()
 			return false, ""
 		}
 
 		rl.OnEvent = func(ctx context.Context, event nostr.Event) (reject bool, msg string) {
+			if c.Bool("auth") {
+				if _, isAuthed := khatru.GetAuthed(ctx); !isAuthed {
+					return true, "auth-required: event"
+				}
+			}
+
 			log("    got %s %v\n", color.BlueString("event"), colors.italic(event))
 			printStatus()
 			return false, ""
