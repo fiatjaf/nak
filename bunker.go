@@ -44,15 +44,6 @@ var bunker = &cli.Command{
 			OnlyOnce: true,
 			Category: PERSISTENCE,
 		},
-		&cli.StringFlag{
-			Name:        "sec",
-			Usage:       "secret key to sign the event, as hex or nsec",
-			DefaultText: "the key '1'",
-		},
-		&cli.BoolFlag{
-			Name:  "prompt-sec",
-			Usage: "prompt the user to paste a hex or nsec with which to sign the event",
-		},
 		&cli.StringSliceFlag{
 			Name:    "authorized-secrets",
 			Aliases: []string{"s"},
