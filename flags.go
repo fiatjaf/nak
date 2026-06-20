@@ -132,6 +132,45 @@ func getNaturalDate(cmd *cli.Command, name string) nostr.Timestamp {
 //
 
 type (
+	SecretKeyFlag = cli.FlagBase[nostr.SecretKey, struct{}, secretkeyValue]
+)
+
+type secretkeyValue struct {
+	secretkey  nostr.SecretKey
+	hasBeenSet bool
+}
+
+var _ cli.ValueCreator[nostr.SecretKey, struct{}] = secretkeyValue{}
+
+func (t secretkeyValue) Create(val nostr.SecretKey, p *nostr.SecretKey, c struct{}) cli.Value {
+	*p = val
+	return &secretkeyValue{
+		secretkey: val,
+	}
+}
+
+func (t secretkeyValue) ToString(b nostr.SecretKey) string { return t.secretkey.String() }
+
+func (t *secretkeyValue) Set(value string) error {
+	secretkey, err := parseSecretKey(value)
+	t.secretkey = secretkey
+	t.hasBeenSet = true
+	return err
+}
+
+func (t *secretkeyValue) String() string         { return fmt.Sprintf("%#v", t.secretkey) }
+func (t *secretkeyValue) Value() nostr.SecretKey { return t.secretkey }
+func (t *secretkeyValue) Get() any               { return t.secretkey }
+
+func getSecretKey(cmd *cli.Command, name string) nostr.SecretKey {
+	return cmd.Value(name).(nostr.SecretKey)
+}
+
+//
+//
+//
+
+type (
 	PubKeyFlag = cli.FlagBase[nostr.PubKey, struct{}, pubkeyValue]
 )
 

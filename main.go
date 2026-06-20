@@ -43,12 +43,13 @@ var defaultKeyFlags = []cli.Flag{
 		Usage:    "prompt the user to paste a hex or nsec with which to sign the event",
 		Category: CATEGORY_SIGNER,
 	},
-	&cli.StringFlag{
+	&SecretKeyFlag{
 		Name:        "connect-as",
 		Usage:       "private key to use when communicating with nip46 bunkers",
-		DefaultText: "the default key (see `nak key default`)",
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),
+		Value:       defaultKey(),
+		DefaultText: "the default key (see `nak key default`)",
 	},
 }
 

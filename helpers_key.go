@@ -9,7 +9,6 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
-	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip46"
 	"fiatjaf.com/nostr/nip49"
@@ -41,10 +40,10 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer,
 	}
 
 	var kr nostr.Keyer
-	if bunker != nil {
-		kr = keyer.NewBunkerSignerFromBunkerClient(bunker)
-	} else {
+	if bunker == nil {
 		kr = keyer.NewPlainKeySigner(key)
+	} else {
+		kr = keyer.NewBunkerSignerFromBunkerClient(bunker)
 	}
 
 	return kr, key, nil
@@ -52,25 +51,15 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer,
 
 func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (nostr.SecretKey, *nip46.BunkerClient, error) {
 	sec := c.String("sec")
+
 	if strings.HasPrefix(sec, "bunker://") {
 		// it's a bunker
 		bunkerURL := sec
-		clientKeyHex := c.String("connect-as")
-		var clientKey nostr.SecretKey
 
-		if clientKeyHex != "" {
-			var err error
-			clientKey, err = nostr.SecretKeyFromHex(clientKeyHex)
-			if err != nil {
-				return nostr.SecretKey{}, nil, fmt.Errorf("bunker client key '%s' is invalid: %w", clientKeyHex, err)
-			}
-		} else {
-			clientKey = defaultKey()
-		}
-
+		clientKey := getSecretKey(c, "connect-as")
 		logverbose("[nip46]: connecting to %s with client key %s\n", bunkerURL, clientKey.Hex())
 
-		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, nil, func(s string) {
+		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, sys.Pool, func(s string) {
 			log(color.CyanString("[nip46]: open the following URL: %s"), s)
 		})
 		if err != nil {
@@ -96,16 +85,8 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		return sk, nil, nil
 	}
 
-	if prefix, ski, err := nip19.Decode(sec); err == nil && prefix == "nsec" {
-		return ski.(nostr.SecretKey), nil, nil
-	}
-
-	sk, err := nostr.SecretKeyFromHex(sec)
-	if err != nil {
-		return nostr.SecretKey{}, nil, fmt.Errorf("invalid secret key: %w", err)
-	}
-
-	return sk, nil, nil
+	sk, err := parseSecretKey(sec)
+	return sk, nil, err
 }
 
 func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...any), authEvent *nostr.Event) (err error) {
@@ -120,14 +101,19 @@ func authSigner(ctx context.Context, c *cli.Command, log func(s string, args ...
 		return fmt.Errorf("auth required, but --auth flag not given")
 	}
 
-	kr, _, err := gatherKeyerFromArguments(ctx, c)
-	if err != nil {
-		return err
+	var kr nostr.Keyer
+
+	if nip46.IsBunkerClientOperation(ctx) {
+		kr = keyer.NewPlainKeySigner(getSecretKey(c, "connect-as"))
+	} else {
+		kr, _, err = gatherKeyerFromArguments(ctx, c)
+		if err != nil {
+			return err
+		}
 	}
 
 	pk, _ := kr.GetPublicKey(ctx)
-	npub := nip19.EncodeNpub(pk)
-	log("authenticating as %s... ", color.YellowString("%s…%s", npub[0:7], npub[58:]))
+	log("authenticating as %s... ", color.YellowString("%s…", pk.Hex()[0:16]))
 
 	return kr.SignEvent(ctx, authEvent)
 }

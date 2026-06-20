@@ -478,6 +478,19 @@ func parsePubKey(value string) (nostr.PubKey, error) {
 	return nostr.PubKey{}, fmt.Errorf("invalid pubkey (\"%s\"): expected hex, npub, or nprofile", value)
 }
 
+func parseSecretKey(input string) (nostr.SecretKey, error) {
+	if prefix, ski, err := nip19.Decode(input); err == nil && prefix == "nsec" {
+		return ski.(nostr.SecretKey), nil
+	}
+
+	sk, err := nostr.SecretKeyFromHex(input)
+	if err != nil {
+		return nostr.SecretKey{}, fmt.Errorf("invalid secret key: %w", err)
+	}
+
+	return sk, nil
+}
+
 func parseEventID(value string) (nostr.ID, error) {
 	id, err := nostr.IDFromHex(value)
 	if err == nil {

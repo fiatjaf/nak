@@ -3,7 +3,7 @@ module github.com/fiatjaf/nak
 go 1.25
 
 require (
-	fiatjaf.com/nostr v0.0.0-20260615112943-0616b30ab35c
+	fiatjaf.com/nostr v0.0.0-20260620232658-8389bac80c5f
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6
