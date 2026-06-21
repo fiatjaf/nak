@@ -3,6 +3,8 @@ package main
 import (
 	"context"
 
+	stdjson "encoding/json"
+
 	"fiatjaf.com/nostr/nip19"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -16,6 +18,24 @@ var profile = &cli.Command{
 example usage:
   nak profile npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps
   nak profile user@example.com`,
+	Flags: []cli.Flag{
+		&cli.BoolFlag{
+			Name:  "name",
+			Usage: "print only the name",
+		},
+		&cli.BoolFlag{
+			Name:  "picture",
+			Usage: "print only the picture URL",
+		},
+		&cli.BoolFlag{
+			Name:  "about",
+			Usage: "print only the about text",
+		},
+		&cli.BoolFlag{
+			Name:  "metadata",
+			Usage: "print the profile metadata as JSON",
+		},
+	},
 	ArgsUsage: "[pubkey]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for pubkeyInput := range getStdinLinesOrArguments(c.Args()) {
@@ -26,6 +46,24 @@ example usage:
 			}
 
 			pm := sys.FetchProfileMetadata(ctx, pk)
+
+			if c.Bool("name") {
+				stdout(pm.Name)
+				continue
+			}
+			if c.Bool("picture") {
+				stdout(pm.Picture)
+				continue
+			}
+			if c.Bool("about") {
+				stdout(pm.About)
+				continue
+			}
+			if c.Bool("metadata") {
+				j, _ := stdjson.Marshal(pm)
+				stdout(string(j))
+				continue
+			}
 
 			npub := nip19.EncodeNpub(pk)
 			stdout(colors.bold("pubkey (hex):"), pk.Hex())

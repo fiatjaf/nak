@@ -167,6 +167,9 @@ relays:
    wss://140.f7z.io (write)
    wss://r.f7z.io (read/write)
 follows: 1051
+~>
+~> nak profile f7z.io --name
+PABLOF7z
 ```
 
 ### sign an event using a bunker provider (amber, promenade etc)
