@@ -14,6 +14,9 @@ def value(tagName): tag(tagName)[1];
 def has(tagName): (tags(tagName) | length) > 0;
 def hasnt(tagName): (tags(tagName) | length) == 0;
 def has_value(tagName; tagValue): tags(tagName) | map(select(.[1] == tagValue)) | length > 0;
+def date: .created_at | gmtime | strftime("%Y-%m-%d");
+def time: .created_at | gmtime | strftime("%H:%M:%S");
+def datetime: .created_at | gmtime | strftime("%Y-%m-%dT%H:%M:%SZ");
 `
 
 type jqProcessor func(nostr.Event) (any, bool, error)
