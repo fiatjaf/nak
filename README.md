@@ -311,6 +311,28 @@ type the password to decrypt your secret key: ********
 ~> nak req -i 412f2d3e73acc312942c055ac2a695dc60bf58ff97e06689a8a79e97796c4cdb relay.westernbtc.com | jq -r .content > ~/.jq
 ```
 
+### filter and transform events with the built-in `--jq` helpers
+
+extra-filter events with `select()` based on tags:
+
+```shell
+~> nak req -k 1 -l 10 relay.damus.io --jq 'select(has("t"))'
+```
+
+extract a tag value:
+
+```shell
+~> nak req -k 1 -l 10 -t t=gm relay.damus.io --jq 'value("t")'
+```
+
+make an event easier to read by removing fields and adding human-readable time:
+
+```shell
+~> nak req -k 1 -l 5 relay.damus.io --jq '. + { d: datetime } | del(.sig, .created_at)'
+```
+
+you can do these same things by piping to standalone `jq`, take the functions in https://github.com/fiatjaf/nak/blob/master/jq.go#L10 and add them to your `~/.jq` file.
+
 ### watch a NIP-53 livestream (zap.stream, amethyst, shosho etc)
 ```shell
 ~> # this requires the jq utils from the step above
