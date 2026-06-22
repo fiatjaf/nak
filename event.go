@@ -96,6 +96,11 @@ example:
 			Category: CATEGORY_EXTRAS,
 		},
 		&cli.BoolFlag{
+			Name:     "jq-raw",
+			Usage:    "print --jq string results without JSON quoting, like `jq -r`",
+			Category: CATEGORY_EXTRAS,
+		},
+		&cli.BoolFlag{
 			Name:     "nevent",
 			Usage:    "print the nevent code (to stderr) after the event is published",
 			Category: CATEGORY_EXTRAS,
@@ -187,7 +192,7 @@ example:
 			return err
 		}
 
-		jq, err := jqPrepare(c.String("jq"))
+		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {
 			return err
 		}
@@ -422,12 +427,11 @@ example:
 				}
 				stdout(result)
 			} else {
-				v, matches, err := jq(evt)
+				out, matches, err := jq(evt)
 				if err != nil {
 					return fmt.Errorf("jq filter failed: %w", err)
 				}
 				if matches {
-					out, _ := json.MarshalToString(v)
 					stdout(out)
 				}
 			}

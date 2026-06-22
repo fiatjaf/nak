@@ -28,10 +28,14 @@ var fetch = &cli.Command{
 			Name:  "jq",
 			Usage: "filter returned events with jq expression",
 		},
+		&cli.BoolFlag{
+			Name:  "jq-raw",
+			Usage: "print --jq string results without JSON quoting, like `jq -r`",
+		},
 	),
 	ArgsUsage: "[nip05_or_nip19_code]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		jq, err := jqPrepare(c.String("jq"))
+		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {
 			return err
 		}
@@ -131,7 +135,7 @@ var fetch = &cli.Command{
 					if !matches {
 						continue
 					}
-					out, _ = json.MarshalToString(v)
+					out = v
 				}
 				stdout(out)
 			}

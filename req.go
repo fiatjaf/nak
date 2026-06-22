@@ -47,6 +47,10 @@ example:
 			Usage: "filter returned events with jq expression",
 		},
 		&cli.BoolFlag{
+			Name:  "jq-raw",
+			Usage: "print --jq string results without JSON quoting, like `jq -r`",
+		},
+		&cli.BoolFlag{
 			Name:  "no-verify",
 			Usage: "skip event signature verification from relays",
 		},
@@ -124,7 +128,7 @@ example:
 			return fmt.Errorf("relay URLs are incompatible with --bare or --spell")
 		}
 
-		jq, err := jqPrepare(c.String("jq"))
+		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {
 			return err
 		}
@@ -437,7 +441,7 @@ readevents:
 				if !matches {
 					continue
 				}
-				out, _ = json.MarshalToString(v)
+				out = v
 			}
 			stdout(out)
 
@@ -641,7 +645,7 @@ func (p PrintingQuerierPublisher) Publish(ctx context.Context, evt nostr.Event) 
 			if !matches {
 				return nil
 			}
-			out, _ = json.MarshalToString(v)
+			out = v
 		}
 		stdout(out)
 		return nil
