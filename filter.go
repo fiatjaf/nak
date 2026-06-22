@@ -24,6 +24,10 @@ example:
 			Name:  "jq",
 			Usage: "filter matching events with jq expression",
 		},
+		&cli.BoolFlag{
+			Name:  "jq-raw",
+			Usage: "print --jq string results without JSON quoting, like `jq -r`",
+		},
 	),
 	ArgsUsage: "[event_json] [base_filter_json]",
 	Action: func(ctx context.Context, c *cli.Command) error {
@@ -59,7 +63,7 @@ example:
 			return err
 		}
 
-		jq, err := jqPrepare(c.String("jq"))
+		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {
 			return err
 		}
@@ -104,7 +108,7 @@ example:
 					if !matches {
 						continue
 					}
-					out, _ = json.MarshalToString(v)
+					out = v
 				}
 				stdout(out)
 			} else {

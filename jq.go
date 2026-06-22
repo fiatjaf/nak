@@ -19,9 +19,11 @@ def time: .created_at | gmtime | strftime("%H:%M:%S");
 def datetime: .created_at | gmtime | strftime("%Y-%m-%dT%H:%M:%SZ");
 `
 
-type jqProcessor func(nostr.Event) (any, bool, error)
+// jqProcessor runs the compiled jq expression against an event and returns the
+// rendered output string. When matches is false the event should be skipped.
+type jqProcessor func(nostr.Event) (out string, matches bool, err error)
 
-func jqPrepare(expr string) (jqProcessor, error) {
+func jqPrepare(expr string, raw bool) (jqProcessor, error) {
 	if expr == "" {
 		return nil, nil
 	}
@@ -36,28 +38,41 @@ func jqPrepare(expr string) (jqProcessor, error) {
 		return nil, fmt.Errorf("failed to compile jq expression: %w", err)
 	}
 
-	return func(evt nostr.Event) (any, bool, error) {
+	return func(evt nostr.Event) (string, bool, error) {
 		input, err := toJQInput(evt)
 		if err != nil {
-			return nil, false, err
+			return "", false, err
 		}
 
 		iter := code.Run(input)
 		for {
 			v, ok := iter.Next()
 			if !ok {
-				return v, false, nil
+				return "", false, nil
 			}
 
 			if err, ok := v.(error); ok {
-				return v, false, err
+				return "", false, err
 			}
 
 			if jqTruthy(v) {
-				return v, true, nil
+				return jqStringify(v, raw), true, nil
 			}
 		}
 	}, nil
+}
+
+// jqStringify renders a jq result value. In raw mode string results are printed
+// without JSON quoting (like `jq -r`); non-string results are always
+// JSON-encoded.
+func jqStringify(v any, raw bool) string {
+	if raw {
+		if s, ok := v.(string); ok {
+			return s
+		}
+	}
+	out, _ := json.MarshalToString(v)
+	return out
 }
 
 func toJQInput(v any) (any, error) {

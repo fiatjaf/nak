@@ -229,3 +229,17 @@ func TestNaturalTimestamps(t *testing.T) {
 	require.Equal(t, nostr.Timestamp(1526711839), evt.CreatedAt)
 	require.Equal(t, "nn", evt.Content)
 }
+
+func TestEventJQ(t *testing.T) {
+	// default: string results come out JSON-quoted, like plain jq
+	quoted := call(t, "nak event --ts 1699485669 -c hello --jq .content")
+	require.Equal(t, `"hello"`, quoted)
+
+	// --jq-raw: string results come out unquoted, like `jq -r`
+	raw := call(t, "nak event --ts 1699485669 -c hello --jq .content --jq-raw")
+	require.Equal(t, "hello", raw)
+
+	// --jq-raw on a non-string result is still JSON-encoded, like `jq -r`
+	num := call(t, "nak event --ts 1699485669 -k 7 --jq .kind --jq-raw")
+	require.Equal(t, "7", num)
+}
