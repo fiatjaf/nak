@@ -47,6 +47,17 @@ var admin = &cli.Command{
 			{"blockip", []string{"ip", "reason"}},
 			{"unblockip", []string{"ip", "reason"}},
 			{"listblockedips", nil},
+			{"listallowedevents", nil},
+			{"listdisallowedkinds", nil},
+			{"supportedmethods", nil},
+			{"stats", nil},
+			{"grantadmin", []string{"pubkey", "methods"}},
+			{"revokeadmin", []string{"pubkey", "methods"}},
+			{"createrole", []string{"role_id", "label", "description", "color", "order"}},
+			{"editrole", []string{"role_id", "label", "description", "color", "order"}},
+			{"deleterole", []string{"role_id"}},
+			{"assignrole", []string{"pubkey", "role_id"}},
+			{"unassignrole", []string{"pubkey", "role_id"}},
 		}
 
 		commands := make([]*cli.Command, 0, len(methods))
@@ -166,10 +177,16 @@ var admin = &cli.Command{
 func declareFlag(argName string) cli.Flag {
 	usage := "parameter for this management RPC call, see https://nips.nostr.com/86 for more information."
 	switch argName {
-	case "kind":
+	case "pubkey":
+		return &PubKeyFlag{Name: argName, Usage: usage}
+	case "id":
+		return &IDFlag{Name: argName, Usage: usage}
+	case "kind", "order":
 		return &cli.IntFlag{Name: argName, Required: true, Usage: usage}
 	case "reason":
 		return &cli.StringFlag{Name: argName, Usage: usage}
+	case "methods":
+		return &cli.StringSliceFlag{Name: argName, Required: true, Usage: usage}
 	default:
 		return &cli.StringFlag{Name: argName, Required: true, Usage: usage}
 	}
@@ -177,8 +194,14 @@ func declareFlag(argName string) cli.Flag {
 
 func getArgument(c *cli.Command, argName string) any {
 	switch argName {
-	case "kind":
+	case "pubkey":
+		return getPubKey(c, argName)
+	case "id":
+		return getID(c, argName)
+	case "kind", "order":
 		return c.Int(argName)
+	case "methods":
+		return c.StringSlice(argName)
 	default:
 		return c.String(argName)
 	}
