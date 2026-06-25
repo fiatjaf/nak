@@ -181,7 +181,7 @@ func declareFlag(argName string) cli.Flag {
 		return &PubKeyFlag{Name: argName, Usage: usage}
 	case "id":
 		return &IDFlag{Name: argName, Usage: usage}
-	case "kind", "order":
+	case "kind", "order", "color":
 		return &cli.IntFlag{Name: argName, Required: true, Usage: usage}
 	case "reason":
 		return &cli.StringFlag{Name: argName, Usage: usage}
@@ -198,7 +198,7 @@ func getArgument(c *cli.Command, argName string) any {
 		return getPubKey(c, argName)
 	case "id":
 		return getID(c, argName)
-	case "kind", "order":
+	case "kind", "order", "color":
 		return c.Int(argName)
 	case "methods":
 		return c.StringSlice(argName)
