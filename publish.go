@@ -124,9 +124,39 @@ example:
 				evt.Tags = append(evt.Tags, nostr.Tag{"K", fmt.Sprint(replyEvent.Kind)})
 			}
 
-			// add reply tags
+			// add reply tags per NIP-10
+			rootID := ""
+			rootRelay := ""
+			for _, tag := range replyEvent.Tags {
+				if len(tag) >= 2 && tag[0] == "e" {
+					if len(tag) >= 4 && tag[3] == "root" {
+						rootID = tag[1]
+						if len(tag) >= 3 {
+							rootRelay = tag[2]
+						}
+						break
+					}
+					if rootID == "" {
+						rootID = tag[1]
+						if len(tag) >= 3 {
+							rootRelay = tag[2]
+						}
+					}
+				}
+			}
+			if rootID == "" {
+				// replying to root event
+				evt.Tags = append(evt.Tags,
+					nostr.Tag{"e", replyEvent.ID.Hex(), "", "root"},
+				)
+			} else {
+				// replying to a reply
+				evt.Tags = append(evt.Tags,
+					nostr.Tag{"e", rootID, rootRelay, "root"},
+					nostr.Tag{"e", replyEvent.ID.Hex(), "", "reply"},
+				)
+			}
 			evt.Tags = append(evt.Tags,
-				nostr.Tag{"e", replyEvent.ID.Hex(), "", "reply"},
 				nostr.Tag{"p", replyEvent.PubKey.Hex()},
 			)
 
