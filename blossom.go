@@ -238,6 +238,10 @@ if any of the files are not found the command will fail, otherwise it will succe
 
 				hasError := false
 				for _, hash := range c.Args().Slice() {
+					if len(hash) > 32 {
+						hash = hash[0:32]
+					}
+
 					err := client.Check(ctx, hash)
 					if err != nil {
 						hasError = true
@@ -281,7 +285,7 @@ if any of the files are not found the command will fail, otherwise it will succe
 						return err
 					}
 					out, _ := json.Marshal(bd)
-					stdout(out)
+					stdout(string(out))
 					return nil
 				}
 
@@ -300,7 +304,7 @@ if any of the files are not found the command will fail, otherwise it will succe
 						continue
 					}
 					out, _ := json.Marshal(bd)
-					stdout(out)
+					stdout(string(out))
 				}
 
 				exitIfLineProcessingError(ctx)
