@@ -8,7 +8,6 @@ import (
 	"strings"
 
 	"fiatjaf.com/nostr"
-	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/sdk"
 	"github.com/urfave/cli/v3"
 )
@@ -34,6 +33,10 @@ example:
 		&cli.StringFlag{
 			Name:  "reply",
 			Usage: "event id, naddr1 or nevent1 code to reply to",
+		},
+		&cli.StringFlag{
+			Name:  "comment",
+			Usage: "event id, naddr1 or nevent1 code to comment on (NIP-22 kind 1111, takes precedence over --reply)",
 		},
 		&cli.StringSliceFlag{
 			Name:    "tag",
@@ -84,81 +87,67 @@ example:
 			evt.CreatedAt = getNaturalDate(c, "created-at")
 		}
 
-		// handle reply flag
+		// handle reply/comment flag
+		// --comment takes precedence over --reply
+		target := c.String("comment")
+		isComment := c.IsSet("comment")
+		if target == "" {
+			target = c.String("reply")
+		}
 		var replyRelays []string
-		if replyTo := c.String("reply"); replyTo != "" {
-			var replyEvent *nostr.Event
-
-			// try to decode as nevent or naddr first
-			if strings.HasPrefix(replyTo, "nevent1") || strings.HasPrefix(replyTo, "naddr1") {
-				_, value, err := nip19.Decode(replyTo)
-				if err != nil {
-					return fmt.Errorf("invalid reply target: %w", err)
-				}
-
-				switch pointer := value.(type) {
-				case nostr.EventPointer:
-					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
-				case nostr.EntityPointer:
-					replyEvent, _, err = sys.FetchSpecificEvent(ctx, pointer, sdk.FetchSpecificEventParameters{})
-				default:
-					return fmt.Errorf("unexpected reply target type: %T", value)
-				}
-				if err != nil {
-					return fmt.Errorf("failed to fetch reply target event: %w", err)
-				}
-			} else {
-				// try as raw event ID
-				id, err := nostr.IDFromHex(replyTo)
-				if err != nil {
-					return fmt.Errorf("invalid event id: %w", err)
-				}
-				replyEvent, _, err = sys.FetchSpecificEvent(ctx, nostr.EventPointer{ID: id}, sdk.FetchSpecificEventParameters{})
-				if err != nil {
-					return fmt.Errorf("failed to fetch reply target event: %w", err)
-				}
+		if target != "" {
+			replyEvent, relayHints, err := sys.FetchSpecificEventFromInput(ctx, target, sdk.FetchSpecificEventParameters{})
+			if err != nil {
+				return fmt.Errorf("failed to fetch reply target event: %w", err)
 			}
 
-			if replyEvent.Kind != 1 {
+			if isComment || replyEvent.Kind != 1 {
+				// NIP-22 comment
 				evt.Kind = 1111
-				evt.Tags = append(evt.Tags, nostr.Tag{"K", fmt.Sprint(replyEvent.Kind)})
-			}
+				buildNIP22Tags(&evt, replyEvent, relayHints)
+			} else {
+				// NIP-10 reply
+				if replyEvent.Kind != 1 {
+					evt.Kind = 1111
+					evt.Tags = append(evt.Tags, nostr.Tag{"K", fmt.Sprint(replyEvent.Kind)})
+				}
 
-			// add reply tags per NIP-10
-			rootID := ""
-			rootRelay := ""
-			for _, tag := range replyEvent.Tags {
-				if len(tag) >= 2 && tag[0] == "e" {
-					if len(tag) >= 4 && tag[3] == "root" {
-						rootID = tag[1]
-						if len(tag) >= 3 {
-							rootRelay = tag[2]
+				// add reply tags per NIP-10
+				rootID := ""
+				rootRelay := ""
+				for _, tag := range replyEvent.Tags {
+					if len(tag) >= 2 && tag[0] == "e" {
+						if len(tag) >= 4 && tag[3] == "root" {
+							rootID = tag[1]
+							if len(tag) >= 3 {
+								rootRelay = tag[2]
+							}
+							break
 						}
-						break
-					}
-					if rootID == "" {
-						rootID = tag[1]
-						if len(tag) >= 3 {
-							rootRelay = tag[2]
+						if rootID == "" {
+							rootID = tag[1]
+							if len(tag) >= 3 {
+								rootRelay = tag[2]
+							}
 						}
 					}
 				}
-			}
-			if rootID == "" {
-				// replying to root event
+				if rootID == "" {
+					// replying to root event
+					evt.Tags = append(evt.Tags,
+						nostr.Tag{"e", replyEvent.ID.Hex(), "", "root"},
+					)
+				} else {
+					// replying to a reply
+					evt.Tags = append(evt.Tags,
+						nostr.Tag{"e", rootID, rootRelay, "root"},
+						nostr.Tag{"e", replyEvent.ID.Hex(), "", "reply"},
+					)
+				}
 				evt.Tags = append(evt.Tags,
-					nostr.Tag{"e", replyEvent.ID.Hex(), "", "root"},
-				)
-			} else {
-				// replying to a reply
-				evt.Tags = append(evt.Tags,
-					nostr.Tag{"e", rootID, rootRelay, "root"},
-					nostr.Tag{"e", replyEvent.ID.Hex(), "", "reply"},
+					nostr.Tag{"p", replyEvent.PubKey.Hex()},
 				)
 			}
-			evt.Tags = append(evt.Tags,
-				nostr.Tag{"p", replyEvent.PubKey.Hex()},
-			)
 
 			replyRelays = sys.FetchInboxRelays(ctx, replyEvent.PubKey, 3)
 		}
@@ -216,4 +205,110 @@ example:
 		// publish (like event.go)
 		return publishFlow(ctx, c, kr, evt, relays)
 	},
+}
+
+func buildNIP22Tags(evt *nostr.Event, target *nostr.Event, relayHints []string) {
+	var relayHint string
+	if len(relayHints) > 0 {
+		relayHint = relayHints[0]
+	}
+
+	dtag := func() string {
+		for _, tag := range target.Tags {
+			if len(tag) >= 2 && tag[0] == "d" {
+				return tag[1]
+			}
+		}
+		return ""
+	}
+
+	// find root scope in target's uppercase NIP-22 tags
+	var rootScopeName, rootScopeValue, rootScopeRelay, rootKind, rootPubkey string
+	for _, tag := range target.Tags {
+		if len(tag) >= 2 && (tag[0] == "E" || tag[0] == "A" || tag[0] == "I") {
+			rootScopeName = tag[0]
+			rootScopeValue = tag[1]
+			if len(tag) >= 3 {
+				rootScopeRelay = tag[2]
+			}
+			break
+		}
+	}
+
+	if rootScopeName != "" {
+		for _, tag := range target.Tags {
+			if len(tag) >= 2 && tag[0] == "K" {
+				rootKind = tag[1]
+				break
+			}
+		}
+		for _, tag := range target.Tags {
+			if len(tag) >= 2 && tag[0] == "P" {
+				rootPubkey = tag[1]
+				break
+			}
+		}
+	} else {
+		if target.Kind.IsAddressable() || target.Kind.IsReplaceable() {
+			rootScopeName = "A"
+			rootScopeValue = fmt.Sprintf("%d:%s:%s", target.Kind, target.PubKey.Hex(), dtag())
+		} else {
+			rootScopeName = "E"
+			rootScopeValue = target.ID.Hex()
+		}
+		rootScopeRelay = relayHint
+		rootKind = fmt.Sprint(target.Kind)
+		rootPubkey = target.PubKey.Hex()
+	}
+
+	// root scope tag
+	rootScopeTag := nostr.Tag{rootScopeName, rootScopeValue}
+	if rootScopeRelay != "" {
+		rootScopeTag = append(rootScopeTag, rootScopeRelay)
+	}
+	if rootScopeName == "E" && rootPubkey != "" {
+		rootScopeTag = append(rootScopeTag, rootPubkey)
+	}
+	evt.Tags = append(evt.Tags, rootScopeTag)
+
+	if rootKind != "" {
+		evt.Tags = append(evt.Tags, nostr.Tag{"K", rootKind})
+	}
+	if rootPubkey != "" && rootScopeName != "I" {
+		evt.Tags = append(evt.Tags, nostr.Tag{"P", rootPubkey})
+	}
+
+	// parent tags (lowercase) - always reference the target event
+	if rootScopeName == "I" {
+		iTag := nostr.Tag{"i", rootScopeValue}
+		if rootScopeRelay != "" {
+			iTag = append(iTag, rootScopeRelay)
+		}
+		evt.Tags = append(evt.Tags, iTag)
+	} else {
+		if target.Kind.IsAddressable() || target.Kind.IsReplaceable() {
+			aValue := fmt.Sprintf("%d:%s:%s", target.Kind, target.PubKey.Hex(), dtag())
+			aTag := nostr.Tag{"a", aValue}
+			if relayHint != "" {
+				aTag = append(aTag, relayHint)
+			}
+			evt.Tags = append(evt.Tags, aTag)
+		}
+		eTag := nostr.Tag{"e", target.ID.Hex()}
+		if relayHint != "" {
+			eTag = append(eTag, relayHint)
+		}
+		if target.PubKey != (nostr.PubKey{}) {
+			eTag = append(eTag, target.PubKey.Hex())
+		}
+		evt.Tags = append(evt.Tags, eTag)
+	}
+
+	evt.Tags = append(evt.Tags, nostr.Tag{"k", fmt.Sprint(target.Kind)})
+
+	pTag := nostr.Tag{"p", target.PubKey.Hex()}
+	if relayHint != "" {
+		pTag = append(pTag, relayHint)
+	}
+	evt.Tags = append(evt.Tags, pTag)
 }
