@@ -15,15 +15,22 @@ import (
 
 var publish = &cli.Command{
 	Name:  "publish",
-	Usage: "publishes a note with content from stdin",
-	Description: `reads content from stdin and publishes it as a note, optionally as a reply to another note.
+	Usage: "publishes a note with content from stdin or argument",
+	Description: `reads content and publishes it as a note, optionally as a reply to another note.
+Either pipe content or pass it as the first argument.
 
 example:
 	echo "hello world" | nak publish
+	nak publish "hello world"
 	echo "I agree!" | nak publish --reply nevent1...
-	echo "tagged post" | nak publish -t t=mytag -t e=someeventid`,
+	nak publish -t t=mytag -t e=someeventid "tagged post"`,
 	DisableSliceFlagSeparator: true,
 	Flags: combineFlags([][]cli.Flag{},
+		&cli.StringSliceFlag{
+			Name:    "relay",
+			Aliases: []string{"r"},
+			Usage:   "also publish to these relays",
+		},
 		&cli.StringFlag{
 			Name:  "reply",
 			Usage: "event id, naddr1 or nevent1 code to reply to",
@@ -52,9 +59,17 @@ example:
 		},
 	),
 	Action: func(ctx context.Context, c *cli.Command) error {
-		content, err := io.ReadAll(os.Stdin)
-		if err != nil {
-			return fmt.Errorf("failed to read from stdin: %w", err)
+		var content []byte
+		if isPiped() {
+			var err error
+			content, err = io.ReadAll(os.Stdin)
+			if err != nil {
+				return fmt.Errorf("failed to read from stdin: %w", err)
+			}
+		} else if firstArg := c.Args().First(); firstArg != "" {
+			content = []byte(firstArg)
+		} else {
+			return fmt.Errorf("no content. pipe or pass content as argument.")
 		}
 
 		evt := nostr.Event{
@@ -148,7 +163,7 @@ example:
 		relayUrls := sys.FetchWriteRelays(ctx, pk)
 		relayUrls = nostr.AppendUnique(relayUrls, targetRelays...)
 		relayUrls = nostr.AppendUnique(relayUrls, replyRelays...)
-		relayUrls = nostr.AppendUnique(relayUrls, c.Args().Slice()...)
+		relayUrls = nostr.AppendUnique(relayUrls, c.StringSlice("relay")...)
 
 		relays := connectToAllRelays(ctx, c, relayUrls)
 
