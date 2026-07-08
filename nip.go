@@ -65,7 +65,6 @@ examples:
 				}
 
 				url := "https://github.com/nostr-protocol/nips/blob/master/" + foundLink
-				fmt.Println("Opening " + url)
 
 				var cmd *exec.Cmd
 				switch runtime.GOOS {
@@ -147,7 +146,7 @@ examples:
 			return fmt.Errorf("failed to render markdown: %w", err)
 		}
 
-		fmt.Print(rendered)
+		stdout(rendered)
 		return nil
 	},
 }
