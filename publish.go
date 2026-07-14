@@ -280,30 +280,22 @@ func buildNIP22Tags(evt *nostr.Event, target *nostr.Event, relayHints []string) 
 	}
 
 	// parent tags (lowercase) - always reference the target event
-	if rootScopeName == "I" {
-		iTag := nostr.Tag{"i", rootScopeValue}
-		if rootScopeRelay != "" {
-			iTag = append(iTag, rootScopeRelay)
+	if target.Kind.IsAddressable() || target.Kind.IsReplaceable() {
+		aValue := fmt.Sprintf("%d:%s:%s", target.Kind, target.PubKey.Hex(), dtag())
+		aTag := nostr.Tag{"a", aValue}
+		if relayHint != "" {
+			aTag = append(aTag, relayHint)
 		}
-		evt.Tags = append(evt.Tags, iTag)
-	} else {
-		if target.Kind.IsAddressable() || target.Kind.IsReplaceable() {
-			aValue := fmt.Sprintf("%d:%s:%s", target.Kind, target.PubKey.Hex(), dtag())
-			aTag := nostr.Tag{"a", aValue}
-			if relayHint != "" {
-				aTag = append(aTag, relayHint)
-			}
-			evt.Tags = append(evt.Tags, aTag)
-		}
-		eTag := nostr.Tag{"e", target.ID.Hex()}
-		if target.PubKey != (nostr.PubKey{}) {
-			// same here: keep the pubkey in the 4th position
-			eTag = append(eTag, relayHint, target.PubKey.Hex())
-		} else if relayHint != "" {
-			eTag = append(eTag, relayHint)
-		}
-		evt.Tags = append(evt.Tags, eTag)
+		evt.Tags = append(evt.Tags, aTag)
 	}
+	eTag := nostr.Tag{"e", target.ID.Hex()}
+	if target.PubKey != (nostr.PubKey{}) {
+		// same here: keep the pubkey in the 4th position
+		eTag = append(eTag, relayHint, target.PubKey.Hex())
+	} else if relayHint != "" {
+		eTag = append(eTag, relayHint)
+	}
+	evt.Tags = append(evt.Tags, eTag)
 
 	evt.Tags = append(evt.Tags, nostr.Tag{"k", fmt.Sprint(target.Kind)})
 
