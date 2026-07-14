@@ -74,7 +74,7 @@ var fetch = &cli.Command{
 					}
 					relays = append(relays, v.Relays...)
 				case "note":
-					filter.IDs = append(filter.IDs, value.([32]byte))
+					filter.IDs = append(filter.IDs, value.(nostr.EventPointer).ID)
 				case "naddr":
 					v := value.(nostr.EntityPointer)
 					filter.Kinds = []nostr.Kind{v.Kind}
