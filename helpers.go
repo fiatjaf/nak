@@ -627,6 +627,9 @@ func getSchema() (schema.Schema, error) {
 
 func stringToKind(value string) (nostr.Kind, error) {
 	if n, err := strconv.Atoi(value); err == nil && n >= 0 {
+		if n > 65535 {
+			return 0, fmt.Errorf("kind number %d is out of range (0-65535)", n)
+		}
 		return nostr.Kind(n), nil
 	}
 
