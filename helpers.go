@@ -507,8 +507,8 @@ func parseEventID(value string) (nostr.ID, error) {
 	if prefix, decoded, err := nip19.Decode(value); err == nil {
 		switch prefix {
 		case "note":
-			if id, ok := decoded.(nostr.ID); ok {
-				return id, nil
+			if event, ok := decoded.(nostr.EventPointer); ok {
+				return event.ID, nil
 			}
 		case "nevent":
 			if event, ok := decoded.(nostr.EventPointer); ok {
