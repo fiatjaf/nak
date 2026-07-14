@@ -19,7 +19,8 @@ it outputs nothing if the verification is successful.`,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for stdinEvent := range getJsonsOrBlank() {
 			evt := nostr.Event{}
-			if stdinEvent == "" {
+			if stdinEvent == "{}" && !isPiped() {
+				// blank sentinel from getJsonsOrBlank(), use the argument instead
 				stdinEvent = c.Args().First()
 				if stdinEvent == "" {
 					continue
