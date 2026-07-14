@@ -63,7 +63,13 @@ var count = &cli.Command{
 					hll = hyperloglog.New(offset)
 				}
 				for _, relayUrl := range relayUrls {
-					relay, _ := sys.Pool.EnsureRelay(relayUrl)
+					relay, err := sys.Pool.EnsureRelay(relayUrl)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
+						fmt.Fprintf(os.Stderr, "error: %s\n", err)
+						continue
+					}
+
 					count, hllRegisters, err := relay.Count(ctx, filter, nostr.SubscriptionOptions{
 						Label: "nak-count",
 					})
