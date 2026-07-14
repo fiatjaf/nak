@@ -185,7 +185,7 @@ example:
 	),
 	ArgsUsage: "[relay...]",
 	Action: func(ctx context.Context, c *cli.Command) error {
-		relayUrls := c.Args().Slice()
+		argRelayUrls := c.Args().Slice()
 
 		kr, sec, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
@@ -383,6 +383,9 @@ example:
 			}
 
 			var relays []*nostr.Relay
+			// start from the given relays on every event so --outbox additions
+			// for one event don't leak into the next
+			relayUrls := slices.Clone(argRelayUrls)
 			if len(relayUrls) > 0 || c.Bool("outbox") {
 				if c.Bool("outbox") {
 					if evt.PubKey != nostr.ZeroPK {
