@@ -179,7 +179,7 @@ var blossomCmd = &cli.Command{
 							hasError = true
 							continue
 						}
-						stdout(data)
+						os.Stdout.Write(data)
 					}
 				}
 
