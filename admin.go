@@ -132,6 +132,7 @@ var admin = &cli.Command{
 							continue
 						}
 						b, err := io.ReadAll(resp.Body)
+						resp.Body.Close()
 						if err != nil {
 							log("failed to read response: %s\n", err)
 							continue
@@ -142,7 +143,7 @@ var admin = &cli.Command{
 							if len(bodyPrintable) > 300 {
 								bodyPrintable = bodyPrintable[0:297] + "..."
 							}
-							log(bodyPrintable)
+							log("%s", bodyPrintable)
 							continue
 						}
 						var response nip86.Response
@@ -152,10 +153,9 @@ var admin = &cli.Command{
 							if len(bodyPrintable) > 300 {
 								bodyPrintable = bodyPrintable[0:297] + "..."
 							}
-							log(bodyPrintable)
+							log("%s", bodyPrintable)
 							continue
 						}
-						resp.Body.Close()
 
 						// print the result
 						log("\n")
