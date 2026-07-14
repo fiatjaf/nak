@@ -556,16 +556,16 @@ func printPodcastInfo(p podcastInfo) {
 
 	authors := make([]string, 0, 2)
 	for _, tag := range p.Metadata.Tags {
-		if len(tag) >= 3 && tag[0] == "p" {
-			role := ""
-			if len(tag) >= 3 {
-				role = tag[2]
-			}
+		if len(tag) >= 2 && tag[0] == "p" {
 			pk, err := nostr.PubKeyFromHex(tag[1])
 			if err != nil {
 				continue
 			}
-			authors = append(authors, nip19.EncodeNpub(pk)+" "+role)
+			author := nip19.EncodeNpub(pk)
+			if len(tag) >= 3 && tag[2] != "" {
+				author += " " + tag[2]
+			}
+			authors = append(authors, author)
 		}
 	}
 	if len(authors) > 0 {
