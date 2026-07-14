@@ -590,8 +590,8 @@ aside from those, there is also:
 							commitHash = ch
 						} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
 							commitHash = ch
-						} else if sr, ok := info.Symrefs[ref]; ok && ch != "" {
-							commitHash, _ = info.Refs[sr]
+						} else if sr, ok := info.Symrefs[ref]; ok {
+							commitHash = info.Refs[sr]
 						}
 					}
 
