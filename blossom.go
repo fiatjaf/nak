@@ -238,8 +238,9 @@ if any of the files are not found the command will fail, otherwise it will succe
 
 				hasError := false
 				for _, hash := range c.Args().Slice() {
-					if len(hash) > 32 {
-						hash = hash[0:32]
+					// a sha256 is 64 hex characters, anything after that is an extension
+					if len(hash) > 64 {
+						hash = hash[0:64]
 					}
 
 					err := client.Check(ctx, hash)
