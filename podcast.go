@@ -582,11 +582,11 @@ func printPodcastEpisodeList(ctx context.Context, p podcastInfo, limit int) erro
 	}
 
 	if len(episodes) == 0 {
-		stdout(color.YellowString("no episodes found for %s"), p.Title)
+		stdout(color.YellowString("no episodes found for %s", p.Title))
 		return nil
 	}
 
-	stdout(color.CyanString("episodes for %s:"), p.Title)
+	stdout(color.CyanString("episodes for %s:", p.Title))
 	for _, ep := range episodes {
 		title := podcastTagValue(ep, "title")
 		if title == "" {
