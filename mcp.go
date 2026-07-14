@@ -155,6 +155,9 @@ var mcpServer = &cli.Command{
 		), func(ctx context.Context, r mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 			name := required[string](r, "name")
 			limit, _ := optional[float64](r, "limit")
+			if limit == 0 {
+				limit = 10
+			}
 
 			res := strings.Builder{}
 			res.Grow(500)
