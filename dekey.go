@@ -236,12 +236,14 @@ var dekey = &cli.Command{
 					if err != nil {
 						continue
 					}
-					eSec, err = nostr.SecretKeyFromHex(eSecHex)
+					candidate, err := nostr.SecretKeyFromHex(eSecHex)
 					if err != nil {
 						continue
 					}
-					// check if it matches mainPub
-					if eSec.Public() == ePub {
+					// check if it matches mainPub -- only keep it if it does, otherwise a
+					// stale key received from another device would end up being redistributed
+					if candidate.Public() == ePub {
+						eSec = candidate
 						log(color.GreenString("successfully received decoupled encryption key from another device\n"))
 						// store it
 						os.MkdirAll(filepath.Dir(eKeyPath), 0700)
