@@ -853,7 +853,7 @@ aside from those, there is also:
 				}
 
 				// get the commit from state for the remote branch
-				if state.Event.ID == nostr.ZeroID {
+				if state == nil || state.Event.ID == nostr.ZeroID {
 					return fmt.Errorf("no repository state found")
 				}
 
