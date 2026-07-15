@@ -310,6 +310,12 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 
 				continue
 			}
+
+			return fmt.Errorf("invalid key %s: expected 32 or 33 bytes hex", keyhex)
+		}
+
+		if len(keyGroups) < 2 {
+			return fmt.Errorf("at least two pubkeys are required")
 		}
 
 		result.Combinations = make([]Combination, 0, 16)
