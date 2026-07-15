@@ -164,7 +164,7 @@ var dekey = &cli.Command{
 					return fmt.Errorf("invalid main key: %w", err)
 				}
 				if eSec.Public() != ePub {
-					return fmt.Errorf("stored decoupled encryption key is corrupted: %w", err)
+					return fmt.Errorf("stored decoupled encryption key at %s doesn't match the announced key %s", eKeyPath, ePub.Hex())
 				}
 			} else {
 				log("- decoupled encryption key not found locally, attempting to fetch the key from other devices\n")
