@@ -263,11 +263,12 @@ func buildNIP22Tags(evt *nostr.Event, target *nostr.Event, relayHints []string) 
 
 	// root scope tag
 	rootScopeTag := nostr.Tag{rootScopeName, rootScopeValue}
-	if rootScopeRelay != "" {
-		rootScopeTag = append(rootScopeTag, rootScopeRelay)
-	}
 	if rootScopeName == "E" && rootPubkey != "" {
-		rootScopeTag = append(rootScopeTag, rootPubkey)
+		// the pubkey goes in the 4th position, so the relay hint must be
+		// present (even if empty) to keep it there
+		rootScopeTag = append(rootScopeTag, rootScopeRelay, rootPubkey)
+	} else if rootScopeRelay != "" {
+		rootScopeTag = append(rootScopeTag, rootScopeRelay)
 	}
 	evt.Tags = append(evt.Tags, rootScopeTag)
 
@@ -295,11 +296,11 @@ func buildNIP22Tags(evt *nostr.Event, target *nostr.Event, relayHints []string) 
 			evt.Tags = append(evt.Tags, aTag)
 		}
 		eTag := nostr.Tag{"e", target.ID.Hex()}
-		if relayHint != "" {
-			eTag = append(eTag, relayHint)
-		}
 		if target.PubKey != (nostr.PubKey{}) {
-			eTag = append(eTag, target.PubKey.Hex())
+			// same here: keep the pubkey in the 4th position
+			eTag = append(eTag, relayHint, target.PubKey.Hex())
+		} else if relayHint != "" {
+			eTag = append(eTag, relayHint)
 		}
 		evt.Tags = append(evt.Tags, eTag)
 	}
