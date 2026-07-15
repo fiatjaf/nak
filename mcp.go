@@ -242,7 +242,7 @@ var mcpServer = &cli.Command{
 			for ie := range events {
 				result.WriteString("author public key: ")
 				result.WriteString(ie.PubKey.Hex())
-				result.WriteString("content: '")
+				result.WriteString("\ncontent: '")
 				result.WriteString(ie.Content)
 				result.WriteString("'")
 				result.WriteString("\n---\n")
