@@ -124,7 +124,25 @@ func getBoundKey(b negentropy.Bound) boundKey {
 type RelayThirdPartyRemote struct {
 	relay    *nostr.Relay
 	messages chan string
+	mu       sync.Mutex
 	err      error
+}
+
+// fail records the error and closes the messages channel so a Receive()
+// that is already blocked on it wakes up instead of hanging forever.
+func (rtpr *RelayThirdPartyRemote) fail(err error) {
+	rtpr.mu.Lock()
+	if rtpr.err == nil {
+		rtpr.err = err
+		close(rtpr.messages)
+	}
+	rtpr.mu.Unlock()
+}
+
+func (rtpr *RelayThirdPartyRemote) getErr() error {
+	rtpr.mu.Lock()
+	defer rtpr.mu.Unlock()
+	return rtpr.err
 }
 
 func NewRelayThirdPartyRemote(ctx context.Context, url string) (*RelayThirdPartyRemote, error) {
@@ -141,13 +159,18 @@ func NewRelayThirdPartyRemote(ctx context.Context, url string) (*RelayThirdParty
 			}
 			switch env := envelope.(type) {
 			case *nip77.OpenEnvelope, *nip77.CloseEnvelope:
-				rtpr.err = fmt.Errorf("unexpected %s received from relay", env.Label())
+				rtpr.fail(fmt.Errorf("unexpected %s received from relay", env.Label()))
 				return
 			case *nip77.ErrorEnvelope:
-				rtpr.err = fmt.Errorf("relay returned a %s: %s", env.Label(), env.Reason)
+				rtpr.fail(fmt.Errorf("relay returned a %s: %s", env.Label(), env.Reason))
 				return
 			case *nip77.MessageEnvelope:
-				rtpr.messages <- env.Message
+				rtpr.mu.Lock()
+				failed := rtpr.err != nil
+				rtpr.mu.Unlock()
+				if !failed {
+					rtpr.messages <- env.Message
+				}
 			}
 		},
 	})
@@ -185,11 +208,12 @@ func (rtpr *RelayThirdPartyRemote) SendClose() error {
 var thirdPartyRemoteEndOfMessages = errors.New("the-end")
 
 func (rtpr *RelayThirdPartyRemote) Receive() (string, error) {
-	if rtpr.err != nil {
-		return "", rtpr.err
-	}
 	if msg, ok := <-rtpr.messages; ok {
 		return msg, nil
+	}
+	// channel closed by fail()
+	if err := rtpr.getErr(); err != nil {
+		return "", err
 	}
 	return "", thirdPartyRemoteEndOfMessages
 }
