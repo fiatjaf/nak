@@ -332,7 +332,7 @@ func getDecoupledEncryptionSecretKey(ctx context.Context, configPath string, pub
 				return [32]byte{}, true, fmt.Errorf("invalid main key: %w", err)
 			}
 			if eSec.Public() != ePub {
-				return [32]byte{}, true, fmt.Errorf("stored decoupled encryption key is corrupted: %w", err)
+				return [32]byte{}, true, fmt.Errorf("stored decoupled encryption key at %s doesn't match the announced key %s", eKeyPath, ePub.Hex())
 			}
 			return eSec, true, nil
 		}
