@@ -206,7 +206,7 @@ example:
 		handleEvent := func(stdinEvent string) error {
 			evt.Content = ""
 			evt.CreatedAt = 0
-			clear(evt.Tags)
+			evt.Tags = evt.Tags[:0]
 			evt.ID = nostr.ZeroID
 			evt.PubKey = nostr.ZeroPK
 			evt.Sig = [64]byte{}
