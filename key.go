@@ -214,7 +214,7 @@ Returns error if key is invalid, otherwise exits successfully.`,
 					ctx = lineProcessingError(ctx, "invalid npub: %s", err)
 					continue
 				}
-				tmp := data.([32]byte)
+				tmp := data.(nostr.PubKey)
 				pkBytes = tmp[:]
 			} else {
 				pkBytes, err = hex.DecodeString(pk)
