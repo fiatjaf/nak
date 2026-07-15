@@ -86,6 +86,9 @@ example:
 			if evt.Sig == [64]byte{} {
 				evt.Sig = baseEvent.Sig
 			}
+			if evt.Kind == 0 {
+				evt.Kind = baseEvent.Kind
+			}
 			if evt.Content == "" {
 				evt.Content = baseEvent.Content
 			}
