@@ -173,7 +173,8 @@ var decryptKey = &cli.Command{
 				}
 			} else {
 				password = c.Args().Get(0)
-				for ncryptsec := range getStdinLinesOrArgumentsFromSlice([]string{ncryptsec}) {
+				// the ncryptsec codes come from stdin
+				for ncryptsec := range getStdinLinesOrArgumentsFromSlice(nil) {
 					sk, err := nip49.Decrypt(ncryptsec, password)
 					if err != nil {
 						ctx = lineProcessingError(ctx, "failed to decrypt: %s", err)
@@ -181,6 +182,7 @@ var decryptKey = &cli.Command{
 					}
 					stdout(sk.Hex())
 				}
+				exitIfLineProcessingError(ctx)
 				return nil
 			}
 		default:
