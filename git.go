@@ -246,11 +246,12 @@ aside from those, there is also:
 				}
 
 				// override with flags and existing config
-				config.Identifier = getValue(existingConfig.Identifier, c.String("identifier"), config.Identifier)
+				// (identifier and ownerStr already hold the flag value, the interactive answer or the default)
+				config.Identifier = identifier
 				config.Name = getValue(existingConfig.Name, c.String("name"), config.Name)
 				config.Description = getValue(existingConfig.Description, c.String("description"), config.Description)
 				config.Web = getSliceValue(existingConfig.Web, c.StringSlice("web"), config.Web)
-				config.Owner = getValue(existingConfig.Owner, c.String("owner"), config.Owner)
+				config.Owner = ownerStr
 				config.GraspServers = getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), config.GraspServers)
 				config.EarliestUniqueCommit = getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), config.EarliestUniqueCommit)
 				maintainers := getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
