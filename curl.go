@@ -20,6 +20,9 @@ var curl = &cli.Command{
 	Usage:                     "calls curl but with a nip98 header",
 	Description:               "accepts all flags and arguments exactly as they would be passed to curl.",
 	DisableSliceFlagSeparator: true,
+	// this command is always run standalone (see realCurl()), never under the root
+	// command, so it needs its own copy of the key flags
+	Flags: defaultKeyFlags,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		kr, _, err := gatherKeyerFromArguments(ctx, c)
 		if err != nil {
@@ -129,5 +132,6 @@ func realCurl() error {
 		}
 	}
 
-	return curl.Run(context.Background(), keyFlags)
+	// Run treats the first element as the program name, so prepend one
+	return curl.Run(context.Background(), append([]string{"nak curl"}, keyFlags...))
 }
