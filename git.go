@@ -635,9 +635,10 @@ aside from those, there is also:
 
 					if outputPath == "-" {
 						if _, err = os.Stdout.Write(obj.Data); err != nil {
-							log("\nprinted object %s to stdout\n", color.CyanString(obj.Hash))
 							return err
 						}
+						log("\nprinted object %s to stdout\n", color.CyanString(obj.Hash))
+						return nil
 					}
 
 					if err := os.WriteFile(outputPath, obj.Data, 0644); err != nil {
