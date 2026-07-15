@@ -219,21 +219,28 @@ func connectToAllRelays(
 
 		wg := sync.WaitGroup{}
 		wg.Add(len(relayUrls))
+		mu := sync.Mutex{} // guards lines and relays, written from the goroutines below
 		for i, url := range relayUrls {
 			lines[i] = make([][]byte, 1, 2)
 			logthis := func(s string, args ...any) {
+				mu.Lock()
 				lines[i] = append(lines[i], []byte(fmt.Sprintf(s, args...)))
 				render()
+				mu.Unlock()
 			}
 			colorizepreamble := func(c func(string, ...any) string) {
+				mu.Lock()
 				lines[i][0] = []byte(fmt.Sprintf("%s... ", c(url)))
+				mu.Unlock()
 			}
 			colorizepreamble(color.CyanString)
 
 			go func() {
 				relay := connectToSingleRelay(ctx, c, url, colorizepreamble, logthis)
 				if relay != nil {
+					mu.Lock()
 					relays = append(relays, relay)
+					mu.Unlock()
 				}
 				wg.Done()
 			}()
