@@ -499,8 +499,13 @@ var wallet = &cli.Command{
 							} else {
 								return fmt.Errorf("missing --private-key")
 							}
-						} else if sk := c.String("private-key"); sk != "" && !c.Bool("force") {
-							return fmt.Errorf("refusing to replace existing private key, use the --force flag")
+						} else if sk := c.String("private-key"); sk != "" {
+							if !c.Bool("force") {
+								return fmt.Errorf("refusing to replace existing private key, use the --force flag")
+							}
+							if err := w.SetPrivateKey(ctx, sk); err != nil {
+								return err
+							}
 						}
 
 						kr, _, _ := gatherKeyerFromArguments(ctx, c)
@@ -517,12 +522,17 @@ var wallet = &cli.Command{
 							info.ParseEvent(ie.Event)
 						}
 
-						if mints := c.StringSlice("mints"); len(mints) == 0 && len(info.Mints) == 0 {
+						if mints := c.StringSlice("mint"); len(mints) > 0 {
+							info.Mints = mints
+						} else if len(info.Mints) == 0 {
 							info.Mints = w.Mints
 						}
 						if len(info.Mints) == 0 {
 							return fmt.Errorf("missing --mint")
 						}
+
+						// the pubkey tag is mandatory, without it no one can send us nutzaps
+						info.PublicKey = nostr.PubKey(w.PublicKey.SerializeCompressed()[1:])
 
 						evt := nostr.Event{}
 						if err := info.ToEvent(ctx, kr, &evt); err != nil {
