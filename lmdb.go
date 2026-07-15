@@ -22,9 +22,10 @@ func setupLocalDatabases(c *cli.Command, sys *sdk.System) {
 
 	hintsPath := filepath.Join(configPath, "outbox/hints")
 	os.MkdirAll(hintsPath, 0755)
-	_, err := lmdbh.NewLMDBHints(hintsPath)
-	if err != nil {
+	if hdb, err := lmdbh.NewLMDBHints(hintsPath); err != nil {
 		log("failed to create lmdb hints db at '%s': %s\n", hintsPath, err)
+	} else {
+		sys.Hints = hdb
 	}
 
 	eventsPath := filepath.Join(configPath, "events")
