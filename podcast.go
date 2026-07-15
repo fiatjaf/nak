@@ -157,8 +157,7 @@ func resolvePodcastEpisode(ctx context.Context, target string, relayHints []stri
 			pointer := value.(nostr.EventPointer)
 			return fetchSpecificPodcastEpisode(ctx, pointer, relayHints)
 		case "note":
-			pointer := nostr.EventPointer{ID: value.(nostr.ID)}
-			return fetchSpecificPodcastEpisode(ctx, pointer, relayHints)
+			return fetchSpecificPodcastEpisode(ctx, value.(nostr.EventPointer), relayHints)
 		}
 	}
 
