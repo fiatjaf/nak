@@ -2871,5 +2871,10 @@ func rebuildGraspURLFromRemote(remoteName string) string {
 }
 
 func graspServerHost(s string) string {
-	return strings.SplitN(nostr.NormalizeURL(s), "/", 3)[2]
+	// NormalizeURL returns "" for empty or unparseable inputs
+	parts := strings.SplitN(nostr.NormalizeURL(s), "/", 3)
+	if len(parts) < 3 {
+		return ""
+	}
+	return parts[2]
 }
