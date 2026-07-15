@@ -51,7 +51,8 @@ nak event -k 1 -p not_a_pubkey | nak validate
 		}
 
 		for stdinEvent := range getJsonsOrBlank() {
-			if stdinEvent == "" {
+			if stdinEvent == "{}" && !isPiped() {
+				// blank sentinel from getJsonsOrBlank(), use the arguments instead
 				for _, arg := range c.Args().Slice() {
 					if err := handleEvent(arg); err != nil {
 						ctx = lineProcessingError(ctx, "%s", err)
