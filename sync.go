@@ -204,6 +204,9 @@ func NewThirdPartyNegentropy(peerA, peerB *RelayThirdPartyRemote, filter nostr.F
 }
 
 func (n *ThirdPartyNegentropy) Run(ctx context.Context) error {
+	// always close Deltas so the consumer goroutine doesn't hang when we return an error
+	defer close(n.Deltas)
+
 	peerAIds := make(map[nostr.ID]struct{})
 	peerBIds := make(map[nostr.ID]struct{})
 	peerASkippedBounds := make(map[boundKey]struct{})
@@ -341,7 +344,6 @@ func (n *ThirdPartyNegentropy) Run(ctx context.Context) error {
 
 	n.PeerA.SendClose()
 	n.PeerB.SendClose()
-	close(n.Deltas)
 
 	return nil
 }
