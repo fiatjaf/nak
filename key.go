@@ -57,7 +57,21 @@ var public = &cli.Command{
 		},
 	},
 	Action: func(ctx context.Context, c *cli.Command) error {
-		for sk := range getSecretKeysFromStdinLinesOrSlice(ctx, c, c.Args().Slice()) {
+		args := c.Args().Slice()
+		if len(args) == 0 && !isPiped() {
+			kr, _, err := gatherKeyerFromArguments(ctx, c)
+			if err != nil {
+				return err
+			}
+			pk, err := kr.GetPublicKey(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to get public key: %w", err)
+			}
+			stdout(pk.Hex())
+			return nil
+		}
+
+		for sk := range getSecretKeysFromStdinLinesOrSlice(ctx, c, args) {
 			_, pk := btcec.PrivKeyFromBytes(sk[:])
 
 			if c.Bool("with-parity") {
