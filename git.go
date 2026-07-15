@@ -1520,11 +1520,12 @@ please fix
 					log("failed to fetch repository announcement from relays: %s\n", err)
 				}
 
+				stateHEAD := ""
 				if state == nil {
 					stdout(color.YellowString("\n repository state not published."))
+				} else {
+					stateHEAD = state.Branches[state.HEAD]
 				}
-
-				stateHEAD, _ := state.Branches[state.HEAD]
 
 				stdout("\n" + color.CyanString("grasp status:"))
 				rows := make([][3]string, len(localConfig.GraspServers))
@@ -1553,7 +1554,13 @@ please fix
 							if commit == stateHEAD {
 								row[2] = color.GreenString("repository synced with state")
 							} else {
-								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", stateHEAD[0:5], commit[0:5])
+								short := func(s string) string {
+									if len(s) > 5 {
+										return s[0:5]
+									}
+									return s
+								}
+								row[2] = color.YellowString("mismatched HEAD state=%s, pushed=%s", short(stateHEAD), short(commit))
 							}
 						}
 					}
