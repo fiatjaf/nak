@@ -333,21 +333,15 @@ func performReq(
 						}
 
 						matchUrl := func(def nostr.DirectedFilter) bool { return def.Relay == url }
-						idx := slices.IndexFunc(defs, matchUrl)
-						if idx == -1 {
+						mu.Lock()
+						if slices.IndexFunc(defs, matchUrl) == -1 {
 							// new relay, add it
-							mu.Lock()
-							idx = slices.IndexFunc(defs, matchUrl)
-							if idx == -1 {
-								defs = append(defs, nostr.DirectedFilter{
-									Filter: filter,
-									Relay:  url,
-								})
-								mu.Unlock()
-								continue
-							}
-							mu.Unlock()
+							defs = append(defs, nostr.DirectedFilter{
+								Filter: filter,
+								Relay:  url,
+							})
 						}
+						mu.Unlock()
 					}
 
 					return nil
@@ -373,30 +367,20 @@ func performReq(
 						}
 
 						matchUrl := func(def nostr.DirectedFilter) bool { return def.Relay == url }
-						idx := slices.IndexFunc(defs, matchUrl)
-						if idx == -1 {
+						mu.Lock()
+						if idx := slices.IndexFunc(defs, matchUrl); idx == -1 {
 							// new relay, add it
-							mu.Lock()
-							// check again after locking to prevent races
-							idx = slices.IndexFunc(defs, matchUrl)
-							if idx == -1 {
-								// then add it
-								filter := filter.Clone()
-								filter.Authors = []nostr.PubKey{pubkey}
-								defs = append(defs, nostr.DirectedFilter{
-									Filter: filter,
-									Relay:  url,
-								})
-								mu.Unlock()
-								continue // done with this relay url
-							}
-
-							// otherwise we'll just use the idx
-							mu.Unlock()
+							filter := filter.Clone()
+							filter.Authors = []nostr.PubKey{pubkey}
+							defs = append(defs, nostr.DirectedFilter{
+								Filter: filter,
+								Relay:  url,
+							})
+						} else {
+							// existing relay, add this pubkey
+							defs[idx].Authors = append(defs[idx].Authors, pubkey)
 						}
-
-						// existing relay, add this pubkey
-						defs[idx].Authors = append(defs[idx].Authors, pubkey)
+						mu.Unlock()
 					}
 
 					return nil
