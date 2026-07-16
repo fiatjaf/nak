@@ -1668,76 +1668,138 @@ please merge
 							return err
 						}
 
-						commit, cloneURLs, sourceEventID := pullRequestTipAndClones(ctx, repo, prEvt)
-						if commit == "" {
-							return fmt.Errorf("pull request %s has no tip commit", prEvt.ID.Hex()[:6])
-						}
-						if len(cloneURLs) == 0 {
-							return fmt.Errorf("pull request %s has no clone urls to fetch from", prEvt.ID.Hex()[:6])
+						refName, commit, err := gitFetchPullRequestIntoRef(ctx, repo, prEvt)
+						if err != nil {
+							return err
 						}
 
-						refName := fmt.Sprintf("refs/nostr/pr/%s", prEvt.ID.Hex())
-						serverRef := "refs/nostr/" + sourceEventID.Hex()
-
-						reportSuccess := func() {
-							log("created ref %s at %s\n", color.GreenString(refName), color.CyanString(commit))
-							log("inspect it with %s or check it out with %s\n",
-								color.CyanString("git log "+refName),
-								color.CyanString(fmt.Sprintf("git checkout -b pr-%s %s", prEvt.ID.Hex()[:6], refName)),
-							)
+						log("created ref %s at %s\n", color.GreenString(refName), color.CyanString(commit))
+						log("inspect it with %s or check it out with %s\n",
+							color.CyanString("git log "+refName),
+							color.CyanString(fmt.Sprintf("git checkout -b pr-%s %s", prEvt.ID.Hex()[:6], refName)),
+						)
+						return nil
+					},
+				},
+				{
+					Name:      "merge",
+					Usage:     "merge a pull request into the current branch and publish a merged status event",
+					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "without-key",
+							Usage: "merge without requiring a signer and skip status publication",
+						},
+					},
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing pull request id prefix")
 						}
 
-						var lastErr error
-						for _, url := range cloneURLs {
-							if !strings.HasPrefix(url, "http") {
-								continue
-							}
-
-							// first try fetching the server ref that send/update pushed the tip to,
-							// which works even on servers that don't serve arbitrary commit hashes
-							log("fetching %s from %s...\n", color.CyanString(serverRef), color.BlueString(url))
-							fetchRefCmd := exec.Command("git", "fetch", url, fmt.Sprintf("%s:%s", serverRef, refName))
-							fetchRefCmd.Stderr = os.Stderr
-							if err := fetchRefCmd.Run(); err == nil {
-								reportSuccess()
-								return nil
-							} else {
-								lastErr = err
-							}
-
-							// fall back to fetching the bare commit hash (requires the server to
-							// allow fetching arbitrary commits)
-							if !gitHashRe.MatchString(commit) {
-								continue
-							}
-
-							log("fetching commit %s from %s...\n", color.CyanString(shortCommitID(commit, 8)), color.BlueString(url))
-							fetchCmd := exec.Command("git", "fetch", url, commit)
-							fetchCmd.Stderr = os.Stderr
-							if err := fetchCmd.Run(); err != nil {
-								lastErr = err
-								continue
-							}
-
-							// make sure the commit really arrived before creating the ref
-							if err := exec.Command("git", "cat-file", "-e", commit).Run(); err != nil {
-								lastErr = fmt.Errorf("commit %s not present after fetch from %s", shortCommitID(commit, 8), url)
-								continue
-							}
-
-							updateCmd := exec.Command("git", "update-ref", refName, commit)
-							if err := updateCmd.Run(); err != nil {
-								return fmt.Errorf("fetched commit but failed to create ref %s: %w", refName, err)
-							}
-
-							reportSuccess()
-							return nil
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
 						}
 
-						if lastErr != nil {
-							return fmt.Errorf("failed to fetch pull request commit from any clone url: %w", lastErr)
+						var kr nostr.Keyer
+						signerPubkey := nostr.ZeroPK
+						if !c.Bool("without-key") {
+							kr, _, err = gatherKeyerFromArguments(ctx, c)
+							if err != nil {
+								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
+							}
+
+							signerPubkey, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "merge pull requests")
+							if err != nil {
+								return err
+							}
 						}
-						return fmt.Errorf("no usable (http) clone url found for pull request %s", prEvt.ID.Hex()[:6])
+
+						prs, err := fetchGitRepoRelatedEvents(ctx, repo, nostr.KindGitPullRequest)
+						if err != nil {
+							return err
+						}
+
+						prEvt, err := findEventByPrefix(prs, prefix)
+						if err != nil {
+							return err
+						}
+
+						// fetch the pull request's tip into refs/nostr/pr/<id> (same as 'pr pull')
+						refName, _, err := gitFetchPullRequestIntoRef(ctx, repo, prEvt)
+						if err != nil {
+							return err
+						}
+
+						previousHead := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							previousHead = strings.TrimSpace(string(output))
+						}
+
+						// merge the fetched ref into the current branch
+						mergeMsg := fmt.Sprintf("Merge pull request %s", prEvt.ID.Hex()[:8])
+						mergeCmd := exec.Command("git", "merge", "--no-ff", "-m", mergeMsg, refName)
+						mergeCmd.Stdout = os.Stdout
+						mergeCmd.Stderr = os.Stderr
+						if err := mergeCmd.Run(); err != nil {
+							return fmt.Errorf("failed to merge pull request: %w (if needed, run 'git merge --abort')", err)
+						}
+
+						log("merged pull request %s\n", color.GreenString(prEvt.ID.Hex()[:6]))
+
+						mergeCommit := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							mergeCommit = strings.TrimSpace(string(output))
+						}
+
+						appliedCommits := []string{}
+						if previousHead != "" {
+							if output, err := exec.Command("git", "rev-list", "--reverse", previousHead+"..HEAD").Output(); err == nil {
+								for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+									commit := strings.TrimSpace(line)
+									if commit != "" {
+										appliedCommits = append(appliedCommits, commit)
+									}
+								}
+							}
+						}
+
+						if kr != nil {
+							statusEvt := nostr.Event{
+								CreatedAt: nostr.Now(),
+								Kind:      1631,
+								Tags: nostr.Tags{
+									nostr.Tag{"e", prEvt.ID.Hex()},
+									nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+									nostr.Tag{"p", prEvt.PubKey.Hex()},
+								},
+							}
+
+							if signerPubkey != repo.Event.PubKey {
+								statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"p", repo.Event.PubKey.Hex()})
+							}
+
+							if mergeCommit != "" {
+								statusEvt.Tags = append(statusEvt.Tags, nostr.Tag{"merge-commit", mergeCommit})
+							}
+
+							if len(appliedCommits) > 0 {
+								tag := nostr.Tag{"applied-as-commits"}
+								tag = append(tag, appliedCommits...)
+								statusEvt.Tags = append(statusEvt.Tags, tag)
+							}
+
+							if err := kr.SignEvent(ctx, &statusEvt); err != nil {
+								return fmt.Errorf("pull request merged, but failed to sign merged status event: %w", err)
+							}
+
+							if err := publishGitEventToRepoRelays(ctx, statusEvt, repo.Relays); err != nil {
+								return fmt.Errorf("pull request merged, but failed to publish merged status event: %w", err)
+							}
+						}
+
+						return nil
 					},
 				},
 			},
@@ -2502,6 +2564,72 @@ func pullRequestTipAndClones(ctx context.Context, repo nip34.Repository, pr nost
 	}
 
 	return commit, cloneURLs, sourceEventID
+}
+
+// gitFetchPullRequestIntoRef fetches the current tip of the given pull request
+// (following kind 1619 updates) into refs/nostr/pr/<pr-event-id> and returns the
+// ref name and the tip commit. It tries the server ref refs/nostr/<source-event-id>
+// first and falls back to fetching the bare commit hash.
+func gitFetchPullRequestIntoRef(ctx context.Context, repo nip34.Repository, prEvt nostr.RelayEvent) (refName string, commit string, err error) {
+	commit, cloneURLs, sourceEventID := pullRequestTipAndClones(ctx, repo, prEvt)
+	if commit == "" {
+		return "", "", fmt.Errorf("pull request %s has no tip commit", prEvt.ID.Hex()[:6])
+	}
+	if len(cloneURLs) == 0 {
+		return "", "", fmt.Errorf("pull request %s has no clone urls to fetch from", prEvt.ID.Hex()[:6])
+	}
+
+	refName = fmt.Sprintf("refs/nostr/pr/%s", prEvt.ID.Hex())
+	serverRef := "refs/nostr/" + sourceEventID.Hex()
+
+	var lastErr error
+	for _, url := range cloneURLs {
+		if !strings.HasPrefix(url, "http") {
+			continue
+		}
+
+		// first try fetching the server ref that send/update pushed the tip to,
+		// which works even on servers that don't serve arbitrary commit hashes
+		log("fetching %s from %s...\n", color.CyanString(serverRef), color.BlueString(url))
+		fetchRefCmd := exec.Command("git", "fetch", url, fmt.Sprintf("%s:%s", serverRef, refName))
+		fetchRefCmd.Stderr = os.Stderr
+		if err := fetchRefCmd.Run(); err == nil {
+			return refName, commit, nil
+		} else {
+			lastErr = err
+		}
+
+		// fall back to fetching the bare commit hash (requires the server to
+		// allow fetching arbitrary commits)
+		if !gitHashRe.MatchString(commit) {
+			continue
+		}
+
+		log("fetching commit %s from %s...\n", color.CyanString(shortCommitID(commit, 8)), color.BlueString(url))
+		fetchCmd := exec.Command("git", "fetch", url, commit)
+		fetchCmd.Stderr = os.Stderr
+		if err := fetchCmd.Run(); err != nil {
+			lastErr = err
+			continue
+		}
+
+		// make sure the commit really arrived before creating the ref
+		if err := exec.Command("git", "cat-file", "-e", commit).Run(); err != nil {
+			lastErr = fmt.Errorf("commit %s not present after fetch from %s", shortCommitID(commit, 8), url)
+			continue
+		}
+
+		if err := exec.Command("git", "update-ref", refName, commit).Run(); err != nil {
+			return "", "", fmt.Errorf("fetched commit but failed to create ref %s: %w", refName, err)
+		}
+
+		return refName, commit, nil
+	}
+
+	if lastErr != nil {
+		return "", "", fmt.Errorf("failed to fetch pull request commit from any clone url: %w", lastErr)
+	}
+	return "", "", fmt.Errorf("no usable (http) clone url found for pull request %s", prEvt.ID.Hex()[:6])
 }
 
 func showPullRequestWithComments(
