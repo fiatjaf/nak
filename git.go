@@ -76,10 +76,6 @@ aside from those, there is also:
 					Name:  "relays",
 					Usage: "relay URLs to publish to (can be used multiple times)",
 				},
-				&cli.StringSliceFlag{
-					Name:  "maintainers",
-					Usage: "maintainer public keys as npub, nip05 or hex (can be used multiple times)",
-				},
 				&cli.StringFlag{
 					Name:  "earliest-unique-commit",
 					Usage: "earliest unique commit of the repository",
@@ -217,10 +213,8 @@ aside from those, there is also:
 						Owner:                ownerStr,
 						Name:                 identifier,
 						Description:          "",
-						Web:                  []string{},
 						GraspServers:         []string{"gitnostr.com", "relay.ngit.dev"},
 						EarliestUniqueCommit: earliestCommit,
-						Maintainers:          []string{},
 					}
 				}
 
@@ -250,17 +244,9 @@ aside from those, there is also:
 				config.Identifier = identifier
 				config.Name = getValue(existingConfig.Name, c.String("name"), config.Name)
 				config.Description = getValue(existingConfig.Description, c.String("description"), config.Description)
-				config.Web = getSliceValue(existingConfig.Web, c.StringSlice("web"), config.Web)
 				config.Owner = ownerStr
 				config.GraspServers = getSliceValue(existingConfig.GraspServers, c.StringSlice("grasp-servers"), config.GraspServers)
 				config.EarliestUniqueCommit = getValue(existingConfig.EarliestUniqueCommit, c.String("earliest-unique-commit"), config.EarliestUniqueCommit)
-				maintainers := getSliceValue(existingConfig.Maintainers, c.StringSlice("maintainers"), config.Maintainers)
-				config.Maintainers = make([]string, 0, len(maintainers))
-				for _, m := range maintainers {
-					if pubkey, err := parsePubKey(m); err == nil {
-						config.Maintainers = append(config.Maintainers, pubkey.Hex())
-					}
-				}
 
 				if c.Bool("interactive") {
 					// prompt for name
@@ -291,24 +277,6 @@ aside from those, there is also:
 					}
 					config.GraspServers = graspServers
 
-					// prompt for web URLs
-					webURLs, err := promptForStringList("web URLs", config.Web, []string{
-						fmt.Sprintf("https://viewsource.win/%s/%s",
-							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
-							config.Identifier,
-						),
-						fmt.Sprintf("https://gitworkshop.dev/%s/%s",
-							nip19.EncodeNpub(nostr.MustPubKeyFromHex(config.Owner)),
-							config.Identifier,
-						),
-					}, func(s string) string {
-						return "http" + nostr.NormalizeURL(s)[2:]
-					}, nil)
-					if err != nil {
-						return err
-					}
-					config.Web = webURLs
-
 					// prompt for earliest unique commit
 					if err := survey.AskOne(&survey.Input{
 						Message: "earliest unique commit",
@@ -316,22 +284,6 @@ aside from those, there is also:
 					}, &config.EarliestUniqueCommit); err != nil {
 						return err
 					}
-
-					// prompt for maintainers
-					maintainers, err := promptForStringList("maintainers", config.Maintainers, []string{}, nil, func(s string) bool {
-						pk, err := parsePubKey(s)
-						if err != nil {
-							return false
-						}
-						if pk.Hex() == config.Owner {
-							return false
-						}
-						return true
-					})
-					if err != nil {
-						return err
-					}
-					config.Maintainers = maintainers
 
 					log("\n")
 				}
@@ -688,7 +640,7 @@ aside from those, there is also:
 					return fmt.Errorf("failed to sync: %w", err)
 				}
 
-				currentPk, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "push")
+				currentPk, err = ensureGitRepositoryOwner(ctx, kr, repo, "push")
 				if err != nil {
 					return err
 				}
@@ -1229,7 +1181,7 @@ aside from those, there is also:
 								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
 							}
 
-							signerPubkey, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "apply patches")
+							signerPubkey, err = ensureGitRepositoryOwner(ctx, kr, repo, "apply patches")
 							if err != nil {
 								return err
 							}
@@ -1418,9 +1370,9 @@ aside from those, there is also:
 			},
 			Commands: []*cli.Command{
 				{
-					Name:      "send",
-					Usage:     "create and send a pull request event (kind 1618)",
-					ArgsUsage: "[branch]",
+					Name:        "send",
+					Usage:       "create and send a pull request event (kind 1618)",
+					ArgsUsage:   "[branch]",
 					Description: "pushes the tip of the given branch (or the current branch) to refs/nostr/<event-id> on the repository's grasp servers, then publishes a kind 1618 pull request event pointing to it.",
 					Action: func(ctx context.Context, c *cli.Command) error {
 						kr, _, err := gatherKeyerFromArguments(ctx, c)
@@ -1525,9 +1477,9 @@ please merge
 					},
 				},
 				{
-					Name:      "update",
-					Usage:     "update the tip of an existing pull request (kind 1619)",
-					ArgsUsage: "<id-prefix> [branch]",
+					Name:        "update",
+					Usage:       "update the tip of an existing pull request (kind 1619)",
+					ArgsUsage:   "<id-prefix> [branch]",
 					Description: "pushes the new tip to refs/nostr/<event-id> on the repository's grasp servers, then publishes a kind 1619 pull request update event.",
 					Action: func(ctx context.Context, c *cli.Command) error {
 						prefix := strings.TrimSpace(c.Args().First())
@@ -1710,7 +1662,7 @@ please merge
 								return fmt.Errorf("failed to gather keyer (or use --without-key): %w", err)
 							}
 
-							signerPubkey, err = ensureGitRepositoryMaintainer(ctx, kr, repo, "merge pull requests")
+							signerPubkey, err = ensureGitRepositoryOwner(ctx, kr, repo, "merge pull requests")
 							if err != nil {
 								return err
 							}
@@ -1996,10 +1948,6 @@ please fix
 				stdout("  name:", color.CyanString(repo.Name))
 				stdout("  owner:", color.CyanString(nip19.EncodeNpub(repo.Event.PubKey)))
 				stdout("  description:", color.CyanString(repo.Description))
-				stdout("  web urls:")
-				for _, url := range repo.Web {
-					stdout("   ", url)
-				}
 				stdout("  earliest unique commit:", color.CyanString(repo.EarliestUniqueCommitID))
 
 				// fetch repository announcement and state from relays
@@ -2223,10 +2171,6 @@ func fetchIssueStatus(
 	issues []nostr.RelayEvent,
 ) (map[nostr.ID]nostr.Event, error) {
 	latest := make(map[nostr.ID]nostr.Event)
-	maintainers := repo.Maintainers
-	if !slices.Contains(maintainers, repo.PubKey) {
-		maintainers = append(maintainers, repo.PubKey)
-	}
 	eTags := make([]string, len(issues))
 	for i, iss := range issues {
 		eTags[i] = iss.ID.Hex()
@@ -2235,7 +2179,7 @@ func fetchIssueStatus(
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds:   []nostr.Kind{1630, 1631, 1632, 1633},
 		Tags:    nostr.TagMap{"e": eTags},
-		Authors: maintainers,
+		Authors: []nostr.PubKey{repo.PubKey},
 		Limit:   500,
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
 		targetHex := ""
@@ -2401,7 +2345,7 @@ func gitDiscussionClose(
 		return err
 	}
 
-	signerPubkey, err := ensureGitRepositoryMaintainer(ctx, kr, repo, "close discussions")
+	signerPubkey, err := ensureGitRepositoryOwner(ctx, kr, repo, "close discussions")
 	if err != nil {
 		return err
 	}
@@ -2448,13 +2392,13 @@ func gitDiscussionClose(
 	return nil
 }
 
-func ensureGitRepositoryMaintainer(ctx context.Context, kr nostr.Keyer, repo nip34.Repository, action string) (nostr.PubKey, error) {
+func ensureGitRepositoryOwner(ctx context.Context, kr nostr.Keyer, repo nip34.Repository, action string) (nostr.PubKey, error) {
 	pubkey, err := kr.GetPublicKey(ctx)
 	if err != nil {
 		return nostr.ZeroPK, fmt.Errorf("failed to get signer public key: %w", err)
 	}
 
-	if pubkey != repo.Event.PubKey && !slices.Contains(repo.Maintainers, pubkey) {
+	if pubkey != repo.Event.PubKey {
 		return nostr.ZeroPK, fmt.Errorf("current user '%s' is not allowed to %s", nip19.EncodeNpub(pubkey), action)
 	}
 
@@ -2941,12 +2885,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 					log("remote announcement is newer than local, updating local configuration...\n")
 					localConfig.Name = repo.Name
 					localConfig.Description = repo.Description
-					localConfig.Web = repo.Web
 					localConfig.EarliestUniqueCommit = repo.EarliestUniqueCommitID
-					localConfig.Maintainers = make([]string, 0, len(repo.Maintainers))
-					for _, m := range repo.Maintainers {
-						localConfig.Maintainers = append(localConfig.Maintainers, nip19.EncodeNpub(m))
-					}
 					if err := writeNip34ConfigFile("", localConfig); err != nil {
 						log("! failed to update local config: %v\n", err)
 					}
@@ -3473,11 +3412,9 @@ type Nip34Config struct {
 	Identifier           string   `json:"identifier"`
 	Name                 string   `json:"name"`
 	Description          string   `json:"description"`
-	Web                  []string `json:"web"`
 	Owner                string   `json:"owner"`
 	GraspServers         []string `json:"grasp-servers"`
 	EarliestUniqueCommit string   `json:"earliest-unique-commit"`
-	Maintainers          []string `json:"maintainers"`
 }
 
 func RepositoryToConfig(repo nip34.Repository) Nip34Config {
@@ -3485,17 +3422,12 @@ func RepositoryToConfig(repo nip34.Repository) Nip34Config {
 		Identifier:           repo.ID,
 		Name:                 repo.Name,
 		Description:          repo.Description,
-		Web:                  repo.Web,
 		Owner:                nip19.EncodeNpub(repo.Event.PubKey),
 		GraspServers:         make([]string, 0, len(repo.Relays)),
 		EarliestUniqueCommit: repo.EarliestUniqueCommitID,
-		Maintainers:          make([]string, 0, len(repo.Maintainers)),
 	}
 	for _, r := range repo.Relays {
 		config.GraspServers = append(config.GraspServers, graspServerHost(r))
-	}
-	for _, m := range repo.Maintainers {
-		config.Maintainers = append(config.Maintainers, nip19.EncodeNpub(m))
 	}
 	return config
 }
@@ -3505,14 +3437,6 @@ func (localConfig Nip34Config) Validate() error {
 	if err != nil {
 		return fmt.Errorf("owner pubkey '%s' is not valid: %w", localConfig.Owner, err)
 	}
-
-	for _, maintainer := range localConfig.Maintainers {
-		_, err := parsePubKey(maintainer)
-		if err != nil {
-			return fmt.Errorf("maintainer pubkey '%s' is not valid: %w", maintainer, err)
-		}
-	}
-
 	return nil
 }
 
@@ -3526,9 +3450,7 @@ func (localConfig Nip34Config) ToRepository() nip34.Repository {
 		ID:                     localConfig.Identifier,
 		Name:                   localConfig.Name,
 		Description:            localConfig.Description,
-		Web:                    localConfig.Web,
 		EarliestUniqueCommitID: localConfig.EarliestUniqueCommit,
-		Maintainers:            []nostr.PubKey{},
 		Event: nostr.Event{
 			PubKey: owner,
 		},
@@ -3539,13 +3461,6 @@ func (localConfig Nip34Config) ToRepository() nip34.Repository {
 			graspServerURL[2:], nip19.EncodeNpub(localRepo.PubKey), localConfig.Identifier)
 		localRepo.Clone = append(localRepo.Clone, url)
 		localRepo.Relays = append(localRepo.Relays, graspServerURL)
-	}
-	for _, maintainer := range localConfig.Maintainers {
-		pk, err := parsePubKey(maintainer)
-		if err != nil {
-			panic(err)
-		}
-		localRepo.Maintainers = append(localRepo.Maintainers, pk)
 	}
 
 	return localRepo
