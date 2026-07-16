@@ -1266,6 +1266,71 @@ aside from those, there is also:
 						return nil
 					},
 				},
+				{
+					Name:      "pull",
+					Usage:     "fetch a patch, apply it, and create refs/nostr/patch/<id> without touching the current branch",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing patch id prefix")
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						patches, err := fetchGitRepoRelatedEvents(ctx, repo, 1617)
+						if err != nil {
+							return err
+						}
+
+						evt, err := findEventByPrefix(patches, prefix)
+						if err != nil {
+							return err
+						}
+
+						previousHead := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							previousHead = strings.TrimSpace(string(output))
+						}
+
+						cmd := exec.Command("git", "am", "--3way")
+						cmd.Stdin = strings.NewReader(evt.Content)
+						cmd.Stdout = os.Stdout
+						cmd.Stderr = os.Stderr
+						if err := cmd.Run(); err != nil {
+							return fmt.Errorf("failed to apply patch with git am: %w (if needed, run 'git am --abort')", err)
+						}
+
+						newHead := ""
+						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
+							newHead = strings.TrimSpace(string(output))
+						}
+						if newHead == "" || newHead == previousHead {
+							return fmt.Errorf("patch did not create any new commits")
+						}
+
+						refName := fmt.Sprintf("refs/nostr/patch/%s", evt.ID.Hex())
+						if err := exec.Command("git", "update-ref", refName, newHead).Run(); err != nil {
+							return fmt.Errorf("patch applied but failed to create ref %s: %w", refName, err)
+						}
+
+						if previousHead != "" {
+							if err := exec.Command("git", "reset", "--hard", previousHead).Run(); err != nil {
+								return fmt.Errorf("patch applied and ref created, but failed to reset HEAD: %w", err)
+							}
+						}
+
+						log("created ref %s at %s\n", color.GreenString(refName), color.CyanString(newHead))
+						log("inspect it with %s or check it out with %s\n",
+							color.CyanString("git log "+refName),
+							color.CyanString(fmt.Sprintf("git checkout -b patch-%s %s", evt.ID.Hex()[:6], refName)),
+						)
+						return nil
+					},
+				},
 			},
 		},
 		{
