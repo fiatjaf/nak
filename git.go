@@ -1317,6 +1317,432 @@ aside from those, there is also:
 			},
 		},
 		{
+			Name:        "pr",
+			Usage:       "pull-request-related operations",
+			Description: "when called directly, lists open pull requests; with a pull request id prefix, displays that pull request with threaded discussions.",
+			ArgsUsage:   "[id-prefix]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "merged",
+					Usage: "list only merged pull requests",
+				},
+				&cli.BoolFlag{
+					Name:  "closed",
+					Usage: "list only closed pull requests",
+				},
+				&cli.BoolFlag{
+					Name:  "all",
+					Usage: "list all pull requests, including merged and closed",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				repo, err := readGitRepositoryFromConfig()
+				if err != nil {
+					return err
+				}
+
+				events, err := fetchGitRepoRelatedEvents(ctx, repo, nostr.KindGitPullRequest)
+				if err != nil {
+					return err
+				}
+
+				prefix := strings.TrimSpace(c.Args().First())
+				if prefix == "" {
+					// list
+					statuses, err := fetchIssueStatus(ctx, repo, events)
+					if err != nil {
+						return err
+					}
+
+					if len(events) == 0 {
+						log("no pull requests found\n")
+						return nil
+					}
+
+					showMerged := c.Bool("merged")
+					showClosed := c.Bool("closed")
+					showAll := c.Bool("all")
+
+					// preload metadata from everybody
+					wg := sync.WaitGroup{}
+					for _, evt := range events {
+						wg.Go(func() {
+							sys.FetchProfileMetadata(ctx, evt.PubKey)
+						})
+					}
+					wg.Wait()
+
+					// now render
+					for _, evt := range events {
+						id := evt.ID.Hex()
+
+						status := statusLabelForEvent(evt.ID, statuses, false)
+						if !showAll {
+							if showMerged || showClosed {
+								isMerged := status == "applied/merged"
+								isClosed := status == "closed"
+								if !(showMerged && isMerged || showClosed && isClosed) {
+									continue
+								}
+							} else if status == "applied/merged" || status == "closed" {
+								continue
+							}
+						}
+
+						date := evt.CreatedAt.Time().Format(time.DateOnly)
+						subject := prSubjectPreview(evt, 72)
+						statusDisplayText := status
+						if status == "applied/merged" {
+							statusDisplayText = "merged"
+						}
+						statusDisplay := colorizeGitStatus(statusDisplayText)
+
+						stdout(color.CyanString(id[:6]), statusDisplay, color.HiBlackString(date), color.HiBlueString(authorPreview(ctx, evt.PubKey)), color.HiWhiteString(subject))
+					}
+
+					return nil
+				} else {
+					// view single
+					evt, err := findEventByPrefix(events, prefix)
+					if err != nil {
+						return err
+					}
+
+					statuses, err := fetchIssueStatus(ctx, repo, []nostr.RelayEvent{evt})
+					if err != nil {
+						return err
+					}
+
+					return showPullRequestWithComments(ctx, repo, evt, statusLabelForEvent(evt.ID, statuses, false))
+				}
+			},
+			Commands: []*cli.Command{
+				{
+					Name:      "send",
+					Usage:     "create and send a pull request event (kind 1618)",
+					ArgsUsage: "[branch]",
+					Description: "pushes the tip of the given branch (or the current branch) to refs/nostr/<event-id> on the repository's grasp servers, then publishes a kind 1618 pull request event pointing to it.",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						_, selfName, selfNpub, err := keyerIdentity(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to get current identity: %w", err)
+						}
+
+						// sync to set up remotes and fetch the latest metadata/state
+						repo, state, err := gitSync(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to sync: %w", err)
+						}
+
+						if len(repo.Clone) == 0 {
+							return fmt.Errorf("repository has no clone urls to host the pull request branch")
+						}
+
+						// figure out which branch to send
+						localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+						if err != nil {
+							return err
+						}
+
+						res, err := exec.Command("git", "rev-parse", localBranch).Output()
+						if err != nil {
+							return fmt.Errorf("failed to get commit for branch %s: %w", localBranch, err)
+						}
+						tip := strings.TrimSpace(string(res))
+
+						// best-effort merge-base against the repository's HEAD branch
+						mergeBase := ""
+						if state != nil && state.HEAD != "" {
+							if targetCommit, ok := state.Branches[state.HEAD]; ok {
+								mergeBase = gitMergeBase(tip, targetCommit)
+							}
+						}
+
+						content, err := editWithDefaultEditor(
+							"nak-git-pr/NOTES_EDITMSG",
+							strings.TrimSpace(fmt.Sprintf(`# creating pull request as '%s' ('%s')
+# on repository '%s'
+# branch '%s' at commit %s
+# the first line will be used as the pull request subject
+my great feature
+
+# the remaining lines are the pull request description (markdown)
+please merge
+
+# lines starting with '#' are ignored
+`, selfName, selfNpub, repo.ID, remoteBranch, shortCommitID(tip, 8))),
+							true,
+						)
+						if err != nil {
+							return err
+						}
+
+						subject, body, err := parsePRCreateContent(content)
+						if err != nil {
+							return err
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      nostr.KindGitPullRequest,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+								nostr.Tag{"subject", subject},
+								nostr.Tag{"c", tip},
+								nostr.Tag{"branch-name", remoteBranch},
+							},
+							Content: body,
+						}
+						if repo.EarliestUniqueCommitID != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"r", repo.EarliestUniqueCommitID})
+						}
+						evt.Tags = append(evt.Tags, append(nostr.Tag{"clone"}, repo.Clone...))
+						if mergeBase != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"merge-base", mergeBase})
+						}
+
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign pull request event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this pull request"); err != nil {
+							return err
+						}
+
+						// push the tip to refs/nostr/<pr-event-id> on the grasp remotes before publishing
+						refName := "refs/nostr/" + evt.ID.Hex()
+						if gitPushCommitToGraspRefs(repo, tip, refName, false) == 0 {
+							return fmt.Errorf("failed to push pull request branch to any grasp remote; not publishing")
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:      "update",
+					Usage:     "update the tip of an existing pull request (kind 1619)",
+					ArgsUsage: "<id-prefix> [branch]",
+					Description: "pushes the new tip to refs/nostr/<event-id> on the repository's grasp servers, then publishes a kind 1619 pull request update event.",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing pull request id prefix")
+						}
+
+						kr, _, err := gatherKeyerFromArguments(ctx, c)
+						if err != nil {
+							return fmt.Errorf("failed to gather keyer: %w", err)
+						}
+
+						repo, state, err := gitSync(ctx, kr)
+						if err != nil {
+							return fmt.Errorf("failed to sync: %w", err)
+						}
+
+						if len(repo.Clone) == 0 {
+							return fmt.Errorf("repository has no clone urls to host the pull request branch")
+						}
+
+						prs, err := fetchGitRepoRelatedEvents(ctx, repo, nostr.KindGitPullRequest)
+						if err != nil {
+							return err
+						}
+
+						prEvt, err := findEventByPrefix(prs, prefix)
+						if err != nil {
+							return err
+						}
+
+						signerPk, err := kr.GetPublicKey(ctx)
+						if err != nil {
+							return fmt.Errorf("failed to get signer public key: %w", err)
+						}
+						if signerPk != prEvt.PubKey {
+							return fmt.Errorf("only the pull request author (%s) can update it", nip19.EncodeNpub(prEvt.PubKey))
+						}
+
+						localBranch, _, err := figureOutBranches(c, c.Args().Get(1), true)
+						if err != nil {
+							return err
+						}
+
+						res, err := exec.Command("git", "rev-parse", localBranch).Output()
+						if err != nil {
+							return fmt.Errorf("failed to get commit for branch %s: %w", localBranch, err)
+						}
+						tip := strings.TrimSpace(string(res))
+
+						mergeBase := ""
+						if state != nil && state.HEAD != "" {
+							if targetCommit, ok := state.Branches[state.HEAD]; ok {
+								mergeBase = gitMergeBase(tip, targetCommit)
+							}
+						}
+
+						evt := nostr.Event{
+							CreatedAt: nostr.Now(),
+							Kind:      nostr.KindGitPullRequestUpdate,
+							Tags: nostr.Tags{
+								nostr.Tag{"a", fmt.Sprintf("30617:%s:%s", repo.Event.PubKey.Hex(), repo.ID)},
+								nostr.Tag{"p", repo.Event.PubKey.Hex()},
+								nostr.Tag{"E", prEvt.ID.Hex(), prEvt.Relay.URL},
+								nostr.Tag{"P", prEvt.PubKey.Hex()},
+								nostr.Tag{"K", strconv.Itoa(int(nostr.KindGitPullRequest))},
+								nostr.Tag{"c", tip},
+							},
+						}
+						if repo.EarliestUniqueCommitID != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"r", repo.EarliestUniqueCommitID})
+						}
+						evt.Tags = append(evt.Tags, append(nostr.Tag{"clone"}, repo.Clone...))
+						if mergeBase != "" {
+							evt.Tags = append(evt.Tags, nostr.Tag{"merge-base", mergeBase})
+						}
+
+						if err := kr.SignEvent(ctx, &evt); err != nil {
+							return fmt.Errorf("failed to sign pull request update event: %w", err)
+						}
+
+						if err := confirmGitEventToBeSent(evt, repo.Relays, "send this pull request update"); err != nil {
+							return err
+						}
+
+						refName := "refs/nostr/" + evt.ID.Hex()
+						if gitPushCommitToGraspRefs(repo, tip, refName, false) == 0 {
+							return fmt.Errorf("failed to push updated pull request branch to any grasp remote; not publishing")
+						}
+
+						return publishGitEventToRepoRelays(ctx, evt, repo.Relays)
+					},
+				},
+				{
+					Name:      "reply",
+					Usage:     "reply to a pull request with a NIP-22 comment event",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionReply(ctx, c, nostr.KindGitPullRequest, "pull request", prSubjectPreview)
+					},
+				},
+				{
+					Name:      "close",
+					Usage:     "close a pull request by publishing a status event",
+					ArgsUsage: "<id-prefix>",
+					Flags: []cli.Flag{
+						&cli.BoolFlag{
+							Name:  "merged",
+							Usage: "mark the pull request as merged instead of closed",
+						},
+					},
+					Action: func(ctx context.Context, c *cli.Command) error {
+						return gitDiscussionClose(ctx, c, nostr.KindGitPullRequest, "pull request", c.Bool("merged"))
+					},
+				},
+				{
+					Name:      "pull",
+					Usage:     "fetch a pull request's tip into refs/nostr/pr/<id>",
+					ArgsUsage: "<id-prefix>",
+					Action: func(ctx context.Context, c *cli.Command) error {
+						prefix := strings.TrimSpace(c.Args().First())
+						if prefix == "" {
+							return fmt.Errorf("missing pull request id prefix")
+						}
+
+						repo, err := readGitRepositoryFromConfig()
+						if err != nil {
+							return err
+						}
+
+						prs, err := fetchGitRepoRelatedEvents(ctx, repo, nostr.KindGitPullRequest)
+						if err != nil {
+							return err
+						}
+
+						prEvt, err := findEventByPrefix(prs, prefix)
+						if err != nil {
+							return err
+						}
+
+						commit, cloneURLs, sourceEventID := pullRequestTipAndClones(ctx, repo, prEvt)
+						if commit == "" {
+							return fmt.Errorf("pull request %s has no tip commit", prEvt.ID.Hex()[:6])
+						}
+						if len(cloneURLs) == 0 {
+							return fmt.Errorf("pull request %s has no clone urls to fetch from", prEvt.ID.Hex()[:6])
+						}
+
+						refName := fmt.Sprintf("refs/nostr/pr/%s", prEvt.ID.Hex())
+						serverRef := "refs/nostr/" + sourceEventID.Hex()
+
+						reportSuccess := func() {
+							log("created ref %s at %s\n", color.GreenString(refName), color.CyanString(commit))
+							log("inspect it with %s or check it out with %s\n",
+								color.CyanString("git log "+refName),
+								color.CyanString(fmt.Sprintf("git checkout -b pr-%s %s", prEvt.ID.Hex()[:6], refName)),
+							)
+						}
+
+						var lastErr error
+						for _, url := range cloneURLs {
+							if !strings.HasPrefix(url, "http") {
+								continue
+							}
+
+							// first try fetching the server ref that send/update pushed the tip to,
+							// which works even on servers that don't serve arbitrary commit hashes
+							log("fetching %s from %s...\n", color.CyanString(serverRef), color.BlueString(url))
+							fetchRefCmd := exec.Command("git", "fetch", url, fmt.Sprintf("%s:%s", serverRef, refName))
+							fetchRefCmd.Stderr = os.Stderr
+							if err := fetchRefCmd.Run(); err == nil {
+								reportSuccess()
+								return nil
+							} else {
+								lastErr = err
+							}
+
+							// fall back to fetching the bare commit hash (requires the server to
+							// allow fetching arbitrary commits)
+							if !gitHashRe.MatchString(commit) {
+								continue
+							}
+
+							log("fetching commit %s from %s...\n", color.CyanString(shortCommitID(commit, 8)), color.BlueString(url))
+							fetchCmd := exec.Command("git", "fetch", url, commit)
+							fetchCmd.Stderr = os.Stderr
+							if err := fetchCmd.Run(); err != nil {
+								lastErr = err
+								continue
+							}
+
+							// make sure the commit really arrived before creating the ref
+							if err := exec.Command("git", "cat-file", "-e", commit).Run(); err != nil {
+								lastErr = fmt.Errorf("commit %s not present after fetch from %s", shortCommitID(commit, 8), url)
+								continue
+							}
+
+							updateCmd := exec.Command("git", "update-ref", refName, commit)
+							if err := updateCmd.Run(); err != nil {
+								return fmt.Errorf("fetched commit but failed to create ref %s: %w", refName, err)
+							}
+
+							reportSuccess()
+							return nil
+						}
+
+						if lastErr != nil {
+							return fmt.Errorf("failed to fetch pull request commit from any clone url: %w", lastErr)
+						}
+						return fmt.Errorf("no usable (http) clone url found for pull request %s", prEvt.ID.Hex()[:6])
+					},
+				},
+			},
+		},
+		{
 			Name:        "issue",
 			Usage:       "issue-related operations",
 			Description: "when called directly, lists open issues; with an issue id prefix, displays that issue with threaded discussions.",
@@ -2028,6 +2454,134 @@ func issueSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
 	return ""
 }
 
+// prSubjectPreview returns a short subject line for a pull request, using the
+// "subject" tag when present and falling back to the first content line.
+func prSubjectPreview(evt nostr.RelayEvent, maxChars int) string {
+	return issueSubjectPreview(evt, maxChars)
+}
+
+// pullRequestTipAndClones returns the current tip commit, clone urls and the id
+// of the event that carries that tip (the original pull request, or the latest
+// kind 1619 update published by the pull request author). The source event id is
+// where the tip was pushed as refs/nostr/<source-event-id> on the grasp servers.
+func pullRequestTipAndClones(ctx context.Context, repo nip34.Repository, pr nostr.RelayEvent) (commit string, cloneURLs []string, sourceEventID nostr.ID) {
+	collectClones := func(tags nostr.Tags) []string {
+		var urls []string
+		for _, tag := range tags {
+			if len(tag) >= 2 && tag[0] == "clone" {
+				urls = append(urls, tag[1:]...)
+			}
+		}
+		return urls
+	}
+
+	if tag := pr.Tags.Find("c"); len(tag) >= 2 {
+		commit = tag[1]
+	}
+	cloneURLs = collectClones(pr.Tags)
+	sourceEventID = pr.ID
+
+	latest := pr.CreatedAt
+	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+		Kinds:   []nostr.Kind{nostr.KindGitPullRequestUpdate},
+		Authors: []nostr.PubKey{pr.PubKey},
+		Tags:    nostr.TagMap{"E": []string{pr.ID.Hex()}},
+		Limit:   100,
+	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
+		if ie.Event.CreatedAt <= latest {
+			continue
+		}
+		if tag := ie.Event.Tags.Find("c"); len(tag) >= 2 {
+			latest = ie.Event.CreatedAt
+			commit = tag[1]
+			sourceEventID = ie.Event.ID
+			if updated := collectClones(ie.Event.Tags); len(updated) > 0 {
+				cloneURLs = updated
+			}
+		}
+	}
+
+	return commit, cloneURLs, sourceEventID
+}
+
+func showPullRequestWithComments(
+	ctx context.Context,
+	repo nip34.Repository,
+	evt nostr.RelayEvent,
+	status string,
+) error {
+	comments, err := fetchThreadComments(ctx, repo.Relays, evt.ID, nil)
+	if err != nil {
+		return err
+	}
+
+	printThreadMetadata(ctx, os.Stdout, evt, status, true)
+
+	commit, cloneURLs, _ := pullRequestTipAndClones(ctx, repo, evt)
+	if commit != "" {
+		stdout(color.CyanString("tip commit:"), color.HiWhiteString(commit))
+	}
+	if tag := evt.Tags.Find("branch-name"); len(tag) >= 2 && tag[1] != "" {
+		stdout(color.CyanString("branch:"), color.HiWhiteString(tag[1]))
+	}
+	if tag := evt.Tags.Find("merge-base"); len(tag) >= 2 && tag[1] != "" {
+		stdout(color.CyanString("merge-base:"), color.HiWhiteString(tag[1]))
+	}
+	if len(cloneURLs) > 0 {
+		stdout(color.CyanString("clone:"), color.HiWhiteString(strings.Join(cloneURLs, " ")))
+	}
+
+	stdout("")
+	stdout(evt.Content)
+
+	if len(comments) > 0 {
+		stdout("")
+		stdout(color.CyanString("comments:"))
+		printThreadedComments(ctx, os.Stdout, comments, evt.ID, true)
+	}
+
+	return nil
+}
+
+// gitMergeBase returns the best common ancestor of two commits, or an empty
+// string if it cannot be determined (this is always best-effort).
+func gitMergeBase(a, b string) string {
+	if a == "" || b == "" {
+		return ""
+	}
+	out, err := exec.Command("git", "merge-base", a, b).Output()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// gitPushCommitToGraspRefs pushes the given commit to refName on every grasp
+// remote of the repository, returning the number of successful pushes.
+func gitPushCommitToGraspRefs(repo nip34.Repository, commit string, refName string, force bool) int {
+	successes := 0
+	for _, relay := range repo.Relays {
+		remoteName := gitRemoteName(nostr.NormalizeURL(relay))
+
+		log("pushing %s to %s on %s...\n", color.CyanString(shortCommitID(commit, 8)), color.CyanString(refName), color.CyanString(remoteName))
+		pushArgs := []string{"push"}
+		if force {
+			pushArgs = append(pushArgs, "--force")
+		}
+		pushArgs = append(pushArgs, remoteName, fmt.Sprintf("%s:%s", commit, refName))
+		pushCmd := exec.Command("git", pushArgs...)
+		pushCmd.Stderr = os.Stderr
+		pushCmd.Stdout = os.Stdout
+		if err := pushCmd.Run(); err != nil {
+			log("! failed to push to %s: %v\n", color.YellowString(remoteName), err)
+		} else {
+			log("> pushed to %s\n", color.GreenString(remoteName))
+			successes++
+		}
+	}
+	return successes
+}
+
 func parseIssueCreateContent(content string) (subject string, body string, err error) {
 	lines := strings.Split(content, "\n")
 	var bodyb strings.Builder
@@ -2052,6 +2606,14 @@ func parseIssueCreateContent(content string) (subject string, body string, err e
 	}
 
 	body = strings.TrimSpace(bodyb.String())
+	return subject, body, nil
+}
+
+func parsePRCreateContent(content string) (subject string, body string, err error) {
+	subject, body, err = parseIssueCreateContent(content)
+	if err != nil {
+		return "", "", fmt.Errorf("pull request subject cannot be empty")
+	}
 	return subject, body, nil
 }
 
@@ -2114,7 +2676,7 @@ func colorizeGitStatus(status string) string {
 	switch status {
 	case "open":
 		return color.YellowString(status)
-	case "resolved", "applied/merged":
+	case "resolved", "applied/merged", "merged":
 		return color.GreenString(status)
 	case "closed":
 		return color.RedString(status)
