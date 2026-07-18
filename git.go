@@ -317,7 +317,7 @@ aside from those, there is also:
 			Usage: "sync repository with relays",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				kr, _, _ := gatherKeyerFromArguments(ctx, c)
-				_, _, err := gitSync(ctx, kr)
+				_, _, err := gitSync(ctx, kr, false)
 				return err
 			},
 		},
@@ -621,6 +621,10 @@ aside from those, there is also:
 					Name:  "tags",
 					Usage: "push all refs under refs/tags",
 				},
+				&cli.BoolFlag{
+					Name:  "no-announcement",
+					Usage: "skip publishing updated repository announcement event",
+				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				// setup signer
@@ -635,7 +639,7 @@ aside from those, there is also:
 				log("publishing as %s\n", color.CyanString(currentNpub))
 
 				// sync to ensure everything is up to date
-				repo, state, err := gitSync(ctx, kr)
+				repo, state, err := gitSync(ctx, kr, c.Bool("no-announcement"))
 				if err != nil {
 					return fmt.Errorf("failed to sync: %w", err)
 				}
@@ -795,7 +799,7 @@ aside from those, there is also:
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				// sync to fetch latest state and metadata
-				_, state, err := gitSync(ctx, nil)
+				_, state, err := gitSync(ctx, nil, false)
 				if err != nil {
 					return fmt.Errorf("failed to sync: %w", err)
 				}
@@ -930,7 +934,7 @@ aside from those, there is also:
 			Name:  "fetch",
 			Usage: "fetch git data",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				_, _, err := gitSync(ctx, nil)
+				_, _, err := gitSync(ctx, nil, false)
 				return err
 			},
 		},
@@ -1451,7 +1455,7 @@ aside from those, there is also:
 						}
 
 						// sync to set up remotes and fetch the latest metadata/state
-						repo, state, err := gitSync(ctx, kr)
+						repo, state, err := gitSync(ctx, kr, false)
 						if err != nil {
 							return fmt.Errorf("failed to sync: %w", err)
 						}
@@ -1557,7 +1561,7 @@ please merge
 							return fmt.Errorf("failed to gather keyer: %w", err)
 						}
 
-						repo, state, err := gitSync(ctx, kr)
+						repo, state, err := gitSync(ctx, kr, false)
 						if err != nil {
 							return fmt.Errorf("failed to sync: %w", err)
 						}
@@ -2824,7 +2828,7 @@ func colorizeGitStatus(status string) string {
 	}
 }
 
-func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.RepositoryState, error) {
+func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (nip34.Repository, *nip34.RepositoryState, error) {
 	// read current nip34.json
 	localConfig, err := readNip34ConfigFile("")
 	if err != nil {
@@ -2839,58 +2843,124 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 
 	// fetch repository announcement and state from relays
 	repo, upToDateAnnouncementEvent, upToDateRelays, state, err := fetchRepositoryAndState(ctx, owner, localConfig.Identifier, localConfig.GraspServers)
-	notUpToDate := func(graspServer string) bool {
-		return !slices.Contains(upToDateRelays, nostr.NormalizeURL(graspServer))
-	}
-	if upToDateRelays == nil || slices.ContainsFunc(localConfig.GraspServers, notUpToDate) {
-		var relays []string
-		if upToDateRelays == nil {
-			// condition 1
-			relays = append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
-			log("couldn't fetch repository metadata (%s), will publish now\n", err)
-		} else {
-			// condition 2
-			relays = make([]string, 0, len(localConfig.GraspServers)-1)
-			for _, gs := range localConfig.GraspServers {
-				if notUpToDate(gs) {
-					relays = append(relays, graspServerHost(gs))
-				}
-			}
-			log("some grasp servers (%v) are not up-to-date, will publish to them\n", relays)
+	if !skipAnnouncement {
+		notUpToDate := func(graspServer string) bool {
+			return !slices.Contains(upToDateRelays, nostr.NormalizeURL(graspServer))
 		}
-		var event nostr.Event
-		if upToDateAnnouncementEvent != nil {
-			// publish the latest event to the other relays
-			event = *upToDateAnnouncementEvent
-			repo = nip34.ParseRepository(event)
-		} else {
-			// create a local repository object from config and publish it
-			localRepo := localConfig.ToRepository()
-			if signer != nil {
-				signerPk, err := signer.GetPublicKey(ctx)
-				if err != nil {
-					return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
-				}
-				if signerPk != owner {
-					return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
-				} else {
-					event = localRepo.ToEvent()
-					if err := signer.SignEvent(ctx, &event); err != nil {
-						return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+		if upToDateRelays == nil || slices.ContainsFunc(localConfig.GraspServers, notUpToDate) {
+			var relays []string
+			if upToDateRelays == nil {
+				// condition 1
+				relays = append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
+				log("couldn't fetch repository metadata (%s), will publish now\n", err)
+			} else {
+				// condition 2
+				relays = make([]string, 0, len(localConfig.GraspServers)-1)
+				for _, gs := range localConfig.GraspServers {
+					if notUpToDate(gs) {
+						relays = append(relays, graspServerHost(gs))
 					}
 				}
+				log("some grasp servers (%v) are not up-to-date, will publish to them\n", relays)
+			}
+			var event nostr.Event
+			if upToDateAnnouncementEvent != nil {
+				// publish the latest event to the other relays
+				event = *upToDateAnnouncementEvent
+				repo = nip34.ParseRepository(event)
 			} else {
-				return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
+				// create a local repository object from config and publish it
+				localRepo := localConfig.ToRepository()
+				if signer != nil {
+					signerPk, err := signer.GetPublicKey(ctx)
+					if err != nil {
+						return repo, nil, fmt.Errorf("failed to get signer pubkey: %w", err)
+					}
+					if signerPk != owner {
+						return repo, nil, fmt.Errorf("provided signer pubkey does not match owner, can't publish repository")
+					} else {
+						event = localRepo.ToEvent()
+						if err := signer.SignEvent(ctx, &event); err != nil {
+							return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+						}
+					}
+				} else {
+					return repo, nil, fmt.Errorf("no signer provided to publish repository (run 'nak git sync' with the '--sec' flag)")
+				}
+
+				repo = localRepo
 			}
 
-			repo = localRepo
-		}
+			for res := range sys.Pool.PublishMany(ctx, relays, event) {
+				if res.Error != nil {
+					log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+				} else {
+					log("> published to %s\n", color.GreenString(res.RelayURL))
+				}
+			}
+		} else {
+			if err != nil {
+				if _, ok := err.(StateErr); ok {
+					// some error with the state, just do nothing and proceed
+				} else {
+					// actually fail with this error we don't know about
+					return repo, nil, err
+				}
+			}
 
-		for res := range sys.Pool.PublishMany(ctx, relays, event) {
-			if res.Error != nil {
-				log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-			} else {
-				log("> published to %s\n", color.GreenString(res.RelayURL))
+			// check if local config differs from remote announcement
+			// construct local repo from config for comparison
+			localRepo := localConfig.ToRepository()
+
+			// check if we need to update local config or publish new announcement
+			if !repo.Equals(localRepo) {
+				// check modification times
+				configPath := filepath.Join(findGitRoot(""), "nip34.json")
+				if fi, err := os.Stat(configPath); err == nil {
+					configModTime := fi.ModTime()
+					announcementTime := repo.Event.CreatedAt.Time()
+
+					if configModTime.After(announcementTime) {
+						// local config is newer, publish new announcement if signer is available and matches owner
+						if signer != nil {
+							signerPk, err := signer.GetPublicKey(ctx)
+							if err != nil {
+								return repo, state, fmt.Errorf("failed to get signer pubkey: %w", err)
+							}
+							if signerPk != owner {
+								log("local configuration is newer, but signer pubkey does not match owner, skipping announcement publish\n")
+							} else {
+								log("local configuration is newer, publishing updated repository announcement...\n")
+								announcementEvent := localRepo.ToEvent()
+								announcementEvent.CreatedAt = nostr.Timestamp(configModTime.Unix())
+								if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
+									return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
+								}
+
+								relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
+								for res := range sys.Pool.PublishMany(ctx, relays, announcementEvent) {
+									if res.Error != nil {
+										log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
+									} else {
+										log("> published to %s\n", color.GreenString(res.RelayURL))
+									}
+								}
+								repo = nip34.ParseRepository(announcementEvent)
+							}
+						} else {
+							log("local configuration is newer than remote, but no signer provided to publish update\n")
+						}
+					} else {
+						// remote is newer, update local config
+						log("remote announcement is newer than local, updating local configuration...\n")
+						localConfig.Name = repo.Name
+						localConfig.Description = repo.Description
+						localConfig.EarliestUniqueCommit = repo.EarliestUniqueCommitID
+						if err := writeNip34ConfigFile("", localConfig); err != nil {
+							log("! failed to update local config: %v\n", err)
+						}
+					}
+				}
 			}
 		}
 	} else {
@@ -2900,61 +2970,6 @@ func gitSync(ctx context.Context, signer nostr.Keyer) (nip34.Repository, *nip34.
 			} else {
 				// actually fail with this error we don't know about
 				return repo, nil, err
-			}
-		}
-
-		// check if local config differs from remote announcement
-		// construct local repo from config for comparison
-		localRepo := localConfig.ToRepository()
-
-		// check if we need to update local config or publish new announcement
-		if !repo.Equals(localRepo) {
-			// check modification times
-			configPath := filepath.Join(findGitRoot(""), "nip34.json")
-			if fi, err := os.Stat(configPath); err == nil {
-				configModTime := fi.ModTime()
-				announcementTime := repo.Event.CreatedAt.Time()
-
-				if configModTime.After(announcementTime) {
-					// local config is newer, publish new announcement if signer is available and matches owner
-					if signer != nil {
-						signerPk, err := signer.GetPublicKey(ctx)
-						if err != nil {
-							return repo, state, fmt.Errorf("failed to get signer pubkey: %w", err)
-						}
-						if signerPk != owner {
-							log("local configuration is newer, but signer pubkey does not match owner, skipping announcement publish\n")
-						} else {
-							log("local configuration is newer, publishing updated repository announcement...\n")
-							announcementEvent := localRepo.ToEvent()
-							announcementEvent.CreatedAt = nostr.Timestamp(configModTime.Unix())
-							if err := signer.SignEvent(ctx, &announcementEvent); err != nil {
-								return repo, state, fmt.Errorf("failed to sign announcement: %w", err)
-							}
-
-							relays := append(sys.FetchOutboxRelays(ctx, owner, 3), localConfig.GraspServers...)
-							for res := range sys.Pool.PublishMany(ctx, relays, announcementEvent) {
-								if res.Error != nil {
-									log("! error publishing to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
-								} else {
-									log("> published to %s\n", color.GreenString(res.RelayURL))
-								}
-							}
-							repo = nip34.ParseRepository(announcementEvent)
-						}
-					} else {
-						log("local configuration is newer than remote, but no signer provided to publish update\n")
-					}
-				} else {
-					// remote is newer, update local config
-					log("remote announcement is newer than local, updating local configuration...\n")
-					localConfig.Name = repo.Name
-					localConfig.Description = repo.Description
-					localConfig.EarliestUniqueCommit = repo.EarliestUniqueCommitID
-					if err := writeNip34ConfigFile("", localConfig); err != nil {
-						log("! failed to update local config: %v\n", err)
-					}
-				}
 			}
 		}
 	}
