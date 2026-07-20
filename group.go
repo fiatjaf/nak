@@ -29,7 +29,6 @@ var group = &cli.Command{
 	ArgsUsage:                 "<subcommand> <relay>'<identifier> [flags]",
 	Flags:                     combineFlags([][]cli.Flag{}),
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
-
 		return ctx, nil
 	},
 	Commands: []*cli.Command{
@@ -696,6 +695,18 @@ write your forum post
 					Name:  "all-kinds",
 					Usage: "specify this to delete the supported_kinds property, meaning everything will be supported",
 				},
+				&cli.StringFlag{
+					Name:  "parent",
+					Usage: "set parent group identifier",
+				},
+				&cli.StringFlag{
+					Name:  "children",
+					Usage: "set child group identifiers (semicolon-separated)",
+				},
+				&cli.BoolFlag{
+					Name:  "orphan",
+					Usage: "remove parent tag, making this group an orphan",
+				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				relay, identifier, err := parseGroupIdentifier(c)
@@ -760,6 +771,18 @@ write your forum post
 				} else if c.Bool("all-kinds") {
 					group.SupportedKinds = nil
 				}
+				if parent := c.String("parent"); parent != "" {
+					group.Parent = parent
+				}
+				if children := c.String("children"); children != "" {
+					group.Children = strings.Split(children, ";")
+					for i := range group.Children {
+						group.Children[i] = strings.TrimSpace(group.Children[i])
+					}
+				}
+				if c.Bool("orphan") {
+					group.Parent = ""
+				}
 
 				return publishModerationEvent(ctx, c, 9002, func(evt *nostr.Event, args []string) error {
 					evt.Tags = append(evt.Tags, nostr.Tag{"name", group.Name})
@@ -789,6 +812,12 @@ write your forum post
 							tag = append(tag, strconv.Itoa(int(kind)))
 						}
 						evt.Tags = append(evt.Tags, tag)
+					}
+					if group.Parent != "" {
+						evt.Tags = append(evt.Tags, nostr.Tag{"parent", group.Parent})
+					}
+					for _, child := range group.Children {
+						evt.Tags = append(evt.Tags, nostr.Tag{"child", child})
 					}
 					return nil
 				})
