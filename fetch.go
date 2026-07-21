@@ -101,7 +101,7 @@ var fetch = &cli.Command{
 					sys.Hints.Save(authorHint, nostr.NormalizeURL(url), hints.LastInHint, nostr.Now())
 				}
 
-				for _, url := range sys.FetchOutboxRelays(ctx, authorHint, 3) {
+				for _, url := range sys.FetchOutboxRelays(ctx, authorHint, 6) {
 					relays = append(relays, url)
 				}
 			}
