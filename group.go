@@ -246,7 +246,7 @@ var group = &cli.Command{
 				nm := nostr.NormalizeURL(relay)
 				r, ok := sys.Pool.Relays.Load(nm)
 				if !ok || r == nil || !r.IsConnected() {
-					ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 					var err error
 					r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
 					cancel()
@@ -327,7 +327,7 @@ var group = &cli.Command{
 						nm := nostr.NormalizeURL(relay)
 						r, ok := sys.Pool.Relays.Load(nm)
 						if !ok || r == nil || !r.IsConnected() {
-							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 							var err error
 							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
 							cancel()
@@ -493,7 +493,7 @@ write your forum post
 						nm := nostr.NormalizeURL(relay)
 						r, ok := sys.Pool.Relays.Load(nm)
 						if !ok || r == nil || !r.IsConnected() {
-							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 							var err error
 							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
 							cancel()
@@ -608,7 +608,7 @@ write your forum post
 						nm := nostr.NormalizeURL(relay)
 						r, ok := sys.Pool.Relays.Load(nm)
 						if !ok || r == nil || !r.IsConnected() {
-							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 							var err error
 							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
 							cancel()
@@ -941,7 +941,7 @@ func publishModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind
 	nm := nostr.NormalizeURL(relay)
 	r, ok := sys.Pool.Relays.Load(nm)
 	if !ok || r == nil || !r.IsConnected() {
-		ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 		var err error
 		r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
 		cancel()

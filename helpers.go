@@ -48,6 +48,8 @@ var (
 	stdout     = func(args ...any) { fmt.Fprintln(color.Output, args...) }
 )
 
+var connectTimeout = 2 * time.Second
+
 func isPiped() bool {
 	stat, err := os.Stdin.Stat()
 	if err != nil {
@@ -272,7 +274,7 @@ func connectToSingleRelay(
 
 	relay, ok := sys.Pool.Relays.Load(nm)
 	if !ok || relay == nil || !relay.IsConnected() {
-		connectCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		connectCtx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 		defer cancel()
 
 		var err error

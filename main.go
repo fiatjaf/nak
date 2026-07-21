@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip42"
@@ -42,6 +43,7 @@ var defaultKeyFlags = []cli.Flag{
 		Name:     "prompt-sec",
 		Usage:    "prompt the user to paste a hex or nsec with which to sign the event",
 		Category: CATEGORY_SIGNER,
+		Hidden:   true,
 	},
 	&SecretKeyFlag{
 		Name:        "connect-as",
@@ -50,6 +52,7 @@ var defaultKeyFlags = []cli.Flag{
 		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),
 		Value:       defaultKey(),
 		DefaultText: "the default key (see `nak key default`)",
+		Hidden:      true,
 	},
 }
 
@@ -128,6 +131,7 @@ var app = &cli.Command{
 					}
 					return nil
 				},
+				Hidden: true,
 			},
 			&cli.BoolFlag{
 				Name:    "verbose",
@@ -141,6 +145,17 @@ var app = &cli.Command{
 					}
 					return nil
 				},
+				Hidden: true,
+			},
+			&cli.DurationFlag{
+				Name:  "connect-timeout",
+				Usage: "timeout for connecting to relays",
+				Value: connectTimeout,
+				Action: func(ctx context.Context, c *cli.Command, d time.Duration) error {
+					connectTimeout = d
+					return nil
+				},
+				Hidden: true,
 			},
 		},
 		defaultKeyFlags,

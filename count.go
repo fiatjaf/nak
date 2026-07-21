@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"os"
 	"strings"
-	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip45"
@@ -67,7 +66,7 @@ var count = &cli.Command{
 					nm := nostr.NormalizeURL(relayUrl)
 					relay, ok := sys.Pool.Relays.Load(nm)
 					if !ok || relay == nil || !relay.IsConnected() {
-						ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						ct, cancel := context.WithTimeout(context.Background(), connectTimeout)
 						var err error
 						relay, err = nostr.RelayConnect(ct, relayUrl, sys.Pool.RelayOptions)
 						cancel()
