@@ -543,9 +543,19 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 				defer cancel()
 
 				if !relay.IsConnected() {
-					if new_, err := sys.Pool.EnsureRelay(relay.URL); err == nil {
-						relays[i] = new_
-						relay = new_
+					nm := nostr.NormalizeURL(relay.URL)
+					if r, ok := sys.Pool.Relays.Load(nm); ok && r != nil && r.IsConnected() {
+						relays[i] = r
+						relay = r
+					} else {
+						ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						new_, err := nostr.RelayConnect(ct, relay.URL, sys.Pool.RelayOptions)
+						cancel()
+						if err == nil {
+							sys.Pool.Relays.Store(nm, new_)
+							relays[i] = new_
+							relay = new_
+						}
 					}
 				}
 

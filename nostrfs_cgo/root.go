@@ -996,10 +996,13 @@ func (r *NostrRoot) publishNote(path string) {
 	}
 
 	for _, url := range relays {
-		relay, err := r.sys.Pool.EnsureRelay(url)
+		connectCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		relay, err := nostr.RelayConnect(connectCtx, url, r.sys.Pool.RelayOptions)
+		cancel()
 		if err != nil {
 			continue
 		}
+		r.sys.Pool.Relays.Store(nostr.NormalizeURL(url), relay)
 		relay.Publish(ctx, *evt)
 	}
 

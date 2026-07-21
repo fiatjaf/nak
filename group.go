@@ -243,9 +243,17 @@ var group = &cli.Command{
 					return err
 				}
 
-				r, err := sys.Pool.EnsureRelay(relay)
-				if err != nil {
-					return err
+				nm := nostr.NormalizeURL(relay)
+				r, ok := sys.Pool.Relays.Load(nm)
+				if !ok || r == nil || !r.IsConnected() {
+					ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+					var err error
+					r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
+					cancel()
+					if err != nil {
+						return err
+					}
+					sys.Pool.Relays.Store(nm, r)
 				}
 
 				sub, err := r.Subscribe(ctx, nostr.Filter{
@@ -316,11 +324,19 @@ var group = &cli.Command{
 							return fmt.Errorf("failed to sign message: %w", err)
 						}
 
-						if r, err := sys.Pool.EnsureRelay(relay); err != nil {
-							return err
-						} else {
-							return r.Publish(ctx, msg)
+						nm := nostr.NormalizeURL(relay)
+						r, ok := sys.Pool.Relays.Load(nm)
+						if !ok || r == nil || !r.IsConnected() {
+							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							var err error
+							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
+							cancel()
+							if err != nil {
+								return err
+							}
+							sys.Pool.Relays.Store(nm, r)
 						}
+						return r.Publish(ctx, msg)
 					},
 				},
 			},
@@ -474,9 +490,17 @@ write your forum post
 							return fmt.Errorf("failed to sign forum topic event: %w", err)
 						}
 
-						r, err := sys.Pool.EnsureRelay(relay)
-						if err != nil {
-							return err
+						nm := nostr.NormalizeURL(relay)
+						r, ok := sys.Pool.Relays.Load(nm)
+						if !ok || r == nil || !r.IsConnected() {
+							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							var err error
+							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
+							cancel()
+							if err != nil {
+								return err
+							}
+							sys.Pool.Relays.Store(nm, r)
 						}
 
 						return r.Publish(ctx, evt)
@@ -581,9 +605,17 @@ write your forum post
 							return fmt.Errorf("failed to sign forum comment event: %w", err)
 						}
 
-						r, err := sys.Pool.EnsureRelay(relay)
-						if err != nil {
-							return err
+						nm := nostr.NormalizeURL(relay)
+						r, ok := sys.Pool.Relays.Load(nm)
+						if !ok || r == nil || !r.IsConnected() {
+							ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+							var err error
+							r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
+							cancel()
+							if err != nil {
+								return err
+							}
+							sys.Pool.Relays.Store(nm, r)
 						}
 
 						return r.Publish(ctx, evt)
@@ -906,9 +938,17 @@ func publishModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind
 
 	stdout(evt.String())
 
-	r, err := sys.Pool.EnsureRelay(relay)
-	if err != nil {
-		return err
+	nm := nostr.NormalizeURL(relay)
+	r, ok := sys.Pool.Relays.Load(nm)
+	if !ok || r == nil || !r.IsConnected() {
+		ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		var err error
+		r, err = nostr.RelayConnect(ct, relay, sys.Pool.RelayOptions)
+		cancel()
+		if err != nil {
+			return err
+		}
+		sys.Pool.Relays.Store(nm, r)
 	}
 
 	return r.Publish(ctx, evt)

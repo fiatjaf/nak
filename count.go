@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip45"
@@ -63,11 +64,19 @@ var count = &cli.Command{
 					hll = hyperloglog.New(offset)
 				}
 				for _, relayUrl := range relayUrls {
-					relay, err := sys.Pool.EnsureRelay(relayUrl)
-					if err != nil {
-						fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
-						fmt.Fprintf(os.Stderr, "error: %s\n", err)
-						continue
+					nm := nostr.NormalizeURL(relayUrl)
+					relay, ok := sys.Pool.Relays.Load(nm)
+					if !ok || relay == nil || !relay.IsConnected() {
+						ct, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+						var err error
+						relay, err = nostr.RelayConnect(ct, relayUrl, sys.Pool.RelayOptions)
+						cancel()
+						if err != nil {
+							fmt.Fprintf(os.Stderr, "%s%s: ", strings.Repeat(" ", biggerUrlSize-len(relayUrl)), relayUrl)
+							fmt.Fprintf(os.Stderr, "error: %s\n", err)
+							continue
+						}
+						sys.Pool.Relays.Store(nm, relay)
 					}
 
 					count, hllRegisters, err := relay.Count(ctx, filter, nostr.SubscriptionOptions{

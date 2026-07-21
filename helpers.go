@@ -268,63 +268,75 @@ func connectToSingleRelay(
 	colorizepreamble func(c func(string, ...any) string),
 	logthis func(s string, args ...any),
 ) *nostr.Relay {
-	if relay, err := sys.Pool.EnsureRelay(url); err == nil {
-		if c.Bool("force-pre-auth") {
-			if colorizepreamble != nil {
-				colorizepreamble(color.YellowString)
-			}
-			logthis("waiting for auth challenge... ")
-			time.Sleep(time.Millisecond * 200)
+	nm := nostr.NormalizeURL(url)
 
-			for range 5 {
-				if err := relay.Auth(ctx, func(ctx context.Context, authEvent *nostr.Event) error {
-					challengeTag := authEvent.Tags.Find("challenge")
-					if challengeTag == nil || len(challengeTag) < 2 || challengeTag[1] == "" {
-						return fmt.Errorf("auth not received yet *****") // what a giant hack
-					}
-					return authSigner(ctx, c, logthis, authEvent)
-				}); err == nil {
-					// auth succeeded
-					goto preauthSuccess
-				} else {
-					// auth failed
-					if strings.HasSuffix(err.Error(), "auth not received yet *****") {
-						// it failed because we didn't receive the challenge yet, so keep waiting
-						time.Sleep(time.Second)
-						continue
-					} else {
-						// it failed for some other reason, so skip this relay
-						if colorizepreamble != nil {
-							colorizepreamble(colors.errorf)
-						}
-						logthis(err.Error())
-						return nil
-					}
-				}
-			}
+	relay, ok := sys.Pool.Relays.Load(nm)
+	if !ok || relay == nil || !relay.IsConnected() {
+		connectCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+
+		var err error
+		if relay, err = nostr.RelayConnect(connectCtx, url, sys.Pool.RelayOptions); err != nil {
 			if colorizepreamble != nil {
 				colorizepreamble(colors.errorf)
 			}
-			logthis("failed to get an AUTH challenge in enough time.")
+			logthis(clampError(err, len(url)+12))
 			return nil
 		}
 
-	preauthSuccess:
+		sys.Pool.Relays.Store(nm, relay)
+		go func(r *nostr.Relay, relayURL string) {
+			<-r.Context().Done()
+			if current, ok := sys.Pool.Relays.Load(relayURL); ok && current == r {
+				sys.Pool.Relays.Delete(relayURL)
+			}
+		}(relay, nm)
+	}
+
+	if c.Bool("force-pre-auth") {
 		if colorizepreamble != nil {
-			colorizepreamble(colors.successf)
+			colorizepreamble(color.YellowString)
 		}
-		logthis("ok.")
-		return relay
-	} else {
+		logthis("waiting for auth challenge... ")
+		time.Sleep(time.Millisecond * 200)
+
+		for range 5 {
+			if err := relay.Auth(ctx, func(ctx context.Context, authEvent *nostr.Event) error {
+				challengeTag := authEvent.Tags.Find("challenge")
+				if challengeTag == nil || len(challengeTag) < 2 || challengeTag[1] == "" {
+					return fmt.Errorf("auth not received yet *****") // what a giant hack
+				}
+				return authSigner(ctx, c, logthis, authEvent)
+			}); err == nil {
+				// auth succeeded
+				goto preauthSuccess
+			} else {
+				// auth failed
+				if strings.HasSuffix(err.Error(), "auth not received yet *****") {
+					time.Sleep(time.Second)
+					continue
+				} else {
+					if colorizepreamble != nil {
+						colorizepreamble(colors.errorf)
+					}
+					logthis(err.Error())
+					return nil
+				}
+			}
+		}
 		if colorizepreamble != nil {
 			colorizepreamble(colors.errorf)
 		}
-
-		// if we're here that means we've failed to connect, this may be a huge message
-		// but we're likely to only be interested in the lowest level error (although we can leave space)
-		logthis(clampError(err, len(url)+12))
+		logthis("failed to get an AUTH challenge in enough time.")
 		return nil
 	}
+
+preauthSuccess:
+	if colorizepreamble != nil {
+		colorizepreamble(colors.successf)
+	}
+	logthis("ok.")
+	return relay
 }
 
 func clearLines(lineCount int) {
