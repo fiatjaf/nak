@@ -192,6 +192,10 @@ var bunker = &cli.Command{
 
 		// decrypt key here if necessary
 		var sec nostr.SecretKey
+		// this key is used for the whole bunker session (potentially
+		// long-running), so we can only wipe it once the command actually
+		// returns (e.g. on shutdown)
+		defer zero(sec[:])
 		if config.Secret.Plain != nil {
 			sec = *config.Secret.Plain
 		} else {

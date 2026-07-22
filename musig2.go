@@ -49,6 +49,8 @@ func performMusig(
 	secNonce string,
 	partialSigs []string,
 ) (signed bool, err error) {
+	defer zero(sec[:])
+
 	// preprocess data received
 	seck, pubk := btcec.PrivKeyFromBytes(sec[:])
 

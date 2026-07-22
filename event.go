@@ -191,6 +191,7 @@ example:
 		if err != nil {
 			return err
 		}
+		defer zero(sec[:])
 
 		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {

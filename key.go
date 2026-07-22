@@ -39,6 +39,7 @@ var generate = &cli.Command{
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
 		sec := nostr.Generate()
+		defer zero(sec[:])
 		stdout(sec.Hex())
 		return nil
 	},
@@ -79,6 +80,8 @@ var public = &cli.Command{
 			} else {
 				stdout(hex.EncodeToString(pk.SerializeCompressed()[1:]))
 			}
+
+			zero(sk[:])
 		}
 		return nil
 	},
@@ -144,6 +147,7 @@ var encryptKey = &cli.Command{
 		}
 		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, keys) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
+			zero(sec[:])
 			if err != nil {
 				ctx = lineProcessingError(ctx, "failed to encrypt: %s", err)
 				continue
@@ -174,6 +178,7 @@ var decryptKey = &cli.Command{
 			if err != nil {
 				return fmt.Errorf("failed to decrypt: %s", err)
 			}
+			defer zero(sk[:])
 			stdout(sk.Hex())
 			return nil
 		case 1:
@@ -182,6 +187,7 @@ var decryptKey = &cli.Command{
 				if sk, err := promptDecrypt(ncryptsec); err != nil {
 					return err
 				} else {
+					defer zero(sk[:])
 					stdout(sk.Hex())
 					return nil
 				}
@@ -195,6 +201,7 @@ var decryptKey = &cli.Command{
 						continue
 					}
 					stdout(sk.Hex())
+					zero(sk[:])
 				}
 				exitIfLineProcessingError(ctx)
 				return nil
@@ -412,6 +419,9 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, key
 			}
 
 			ch <- sk
+			// the receiver got its own copy above (channel sends copy by
+			// value), so it's safe to wipe ours now
+			zero(sk[:])
 		}
 		close(ch)
 	}()

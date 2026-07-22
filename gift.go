@@ -65,6 +65,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				if !c.Bool("use-our-identity-key") {
 					configPath := c.String("config-path")
 					eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, sender)
+					defer zero(eSec[:])
 					if has {
 						if err != nil {
 							return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --encrypt-with-our-identity-key to bypass", err)
@@ -143,6 +144,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 						Tags:      nostr.Tags{{"p", recipient.Hex()}},
 					}
 					wrap.Sign(ephemeral)
+					zero(ephemeral[:])
 
 					// print the gift-wrap
 					wrapJSON, err := easyjson.Marshal(wrap)
@@ -176,6 +178,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				// use decoupled key if it exists
 				configPath := c.String("config-path")
 				eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, receiver)
+				defer zero(eSec[:])
 				if has {
 					if err != nil {
 						return fmt.Errorf("receiver's decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
@@ -331,6 +334,7 @@ func getDecoupledEncryptionSecretKey(ctx context.Context, configPath string, pub
 			if err != nil {
 				return [32]byte{}, true, fmt.Errorf("invalid main key: %w", err)
 			}
+			defer zero(eSec[:])
 			if eSec.Public() != ePub {
 				return [32]byte{}, true, fmt.Errorf("stored decoupled encryption key at %s doesn't match the announced key %s", eKeyPath, ePub.Hex())
 			}

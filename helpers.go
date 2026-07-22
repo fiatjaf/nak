@@ -501,13 +501,16 @@ func parsePubKey(value string) (nostr.PubKey, error) {
 
 func parseSecretKey(input string) (nostr.SecretKey, error) {
 	if prefix, ski, err := nip19.Decode(input); err == nil && prefix == "nsec" {
-		return ski.(nostr.SecretKey), nil
+		sk := ski.(nostr.SecretKey)
+		defer zero(sk[:])
+		return sk, nil
 	}
 
 	sk, err := nostr.SecretKeyFromHex(input)
 	if err != nil {
 		return nostr.SecretKey{}, fmt.Errorf("invalid secret key: %w", err)
 	}
+	defer zero(sk[:])
 
 	return sk, nil
 }

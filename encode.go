@@ -162,6 +162,7 @@ var encode = &cli.Command{
 					}
 
 					stdout(nip19.EncodeNsec(sk))
+					zero(sk[:])
 				}
 
 				exitIfLineProcessingError(ctx)

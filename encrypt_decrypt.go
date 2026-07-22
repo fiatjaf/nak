@@ -34,6 +34,7 @@ var encrypt = &cli.Command{
 			if err != nil {
 				return err
 			}
+			defer zero(sec[:])
 
 			if bunker != nil {
 				ciphertext, err := bunker.NIP04Encrypt(ctx, target, plaintext)
@@ -95,6 +96,7 @@ var decrypt = &cli.Command{
 			if err != nil {
 				return err
 			}
+			defer zero(sec[:])
 
 			if bunker != nil {
 				plaintext, err := bunker.NIP04Decrypt(ctx, source, ciphertext)

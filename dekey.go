@@ -66,6 +66,7 @@ var dekey = &cli.Command{
 		// check if we already have a local-device secret key
 		deviceKeyPath := filepath.Join(configPath, "dekey", "device-key")
 		var deviceSec nostr.SecretKey
+		defer zero(deviceSec[:])
 		if data, err := os.ReadFile(deviceKeyPath); err == nil {
 			log(color.GreenString("found existing device key\n"))
 			deviceSec, err = nostr.SecretKeyFromHex(string(data))
@@ -99,6 +100,7 @@ var dekey = &cli.Command{
 			Authors: []nostr.PubKey{userPub},
 		}, nostr.SubscriptionOptions{Label: "nak-nip4e"})
 		var eSec nostr.SecretKey
+		defer zero(eSec[:])
 		var ePub nostr.PubKey
 
 		var generateNewEncryptionKey bool

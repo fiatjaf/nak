@@ -39,6 +39,8 @@ func gatherKeyerFromArguments(ctx context.Context, c *cli.Command) (nostr.Keyer,
 		return nil, nostr.SecretKey{}, err
 	}
 
+	defer zero(key[:])
+
 	var kr nostr.Keyer
 	if bunker == nil {
 		kr = keyer.NewPlainKeySigner(key)
@@ -57,6 +59,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		bunkerURL := sec
 
 		clientKey := getSecretKey(c, "connect-as")
+		defer zero(clientKey[:])
 		logverbose("[nip46]: connecting to %s with client key %s\n", bunkerURL, clientKey.Hex())
 
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, sys.Pool, func(s string) {
@@ -82,10 +85,12 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		if err != nil {
 			return nostr.SecretKey{}, nil, fmt.Errorf("failed to decrypt: %w", err)
 		}
+		defer zero(sk[:])
 		return sk, nil, nil
 	}
 
 	sk, err := parseSecretKey(sec)
+	defer zero(sk[:])
 	return sk, nil, err
 }
 
@@ -132,6 +137,7 @@ func promptDecrypt(ncryptsec string) (nostr.SecretKey, error) {
 		if err != nil {
 			continue
 		}
+		defer zero(sec[:])
 		return sec, nil
 	}
 	return nostr.SecretKey{}, fmt.Errorf("couldn't decrypt private key")

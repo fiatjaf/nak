@@ -45,6 +45,7 @@ var decode = &cli.Command{
 				switch v := data.(type) {
 				case nostr.SecretKey:
 					stdout(v.Hex())
+					zero(v[:])
 					continue
 				case nostr.PubKey:
 					stdout(v.Hex())
