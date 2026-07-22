@@ -588,6 +588,10 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 		if len(successRelays) > 0 && c.Bool("nevent") {
 			log(nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey) + "\n")
 		}
+
+		if len(successRelays) == 0 {
+			return fmt.Errorf("failed to publish to any of the %d relay(s) given", len(relays))
+		}
 	}
 
 	return nil
