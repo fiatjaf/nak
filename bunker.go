@@ -154,10 +154,10 @@ var bunker = &cli.Command{
 			}
 
 			if config.Secret.Plain == nil && config.Secret.Encrypted == nil {
-				// we don't have any secret key stored, so just use whatever was given via flags
+				// we don't have any secret key stored, so just use whatever was given via flags (or defaults)
 				config.Secret = baseSecret
-			} else if baseSecret.Plain == nil && baseSecret.Encrypted == nil {
-				// we didn't provide any keys, so we just use the stored
+			} else if !c.IsSet("sec") && !c.IsSet("prompt-sec") {
+				// we didn't provide any keys explicitly, so we just use the stored
 			} else {
 				// we have a secret key stored
 				// if we also provided a key we check if they match and fail otherwise
