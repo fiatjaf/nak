@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -3363,8 +3364,14 @@ func parseRepositoryAddress(
 				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
 			}
 
-			relayHost := parts[3]
-			identifier = parts[4]
+			relayHost, err := url.PathUnescape(parts[3])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid relay in URL: %w", err)
+			}
+			identifier, err = url.PathUnescape(parts[4])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid identifier in URL: %w", err)
+			}
 
 			if strings.HasPrefix(relayHost, "wss:") || strings.HasPrefix(relayHost, "ws:") {
 				relayHints = []string{relayHost}
@@ -3380,7 +3387,10 @@ func parseRepositoryAddress(
 				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
 			}
 
-			identifier = parts[3]
+			identifier, err = url.PathUnescape(parts[3])
+			if err != nil {
+				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid identifier in URL: %w", err)
+			}
 			return owner, identifier, nil, nil
 		} else {
 			return nostr.PubKey{}, "", nil, fmt.Errorf(
