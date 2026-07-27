@@ -1,4 +1,4 @@
-module github.com/fiatjaf/nak
+module github.com/shocknet/clink-go
 
 go 1.25
 
@@ -29,11 +29,13 @@ require (
 
 require (
 	fiatjaf.com/lib v0.3.7
+	github.com/btcsuite/btcd/btcutil v1.1.5
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-tty/v2 v2.0.0
+	golang.org/x/crypto v0.39.0
 )
 
 require (
@@ -46,7 +48,6 @@ require (
 	github.com/aymerick/douceur v0.2.0 // indirect
 	github.com/bluekeyes/go-gitdiff v0.7.1 // indirect
 	github.com/btcsuite/btcd v0.24.2 // indirect
-	github.com/btcsuite/btcd/btcutil v1.1.5 // indirect
 	github.com/btcsuite/btcd/chaincfg/chainhash v1.1.0 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
 	github.com/charmbracelet/colorprofile v0.2.3-0.20250311203215-f60798e515dc // indirect
@@ -55,8 +56,7 @@ require (
 	github.com/charmbracelet/x/cellbuf v0.0.13 // indirect
 	github.com/charmbracelet/x/exp/slice v0.0.0-20250327172914-2fdc97757edf // indirect
 	github.com/charmbracelet/x/term v0.2.1 // indirect
-	github.com/chzyer/logex v1.1.10 // indirect
-	github.com/chzyer/test v0.0.0-20180213035817-a1ea475d72b1 // indirect
+	github.com/chzyer/test v1.0.0 // indirect
 	github.com/clipperhouse/stringish v0.1.1 // indirect
 	github.com/clipperhouse/uax29/v2 v2.3.0 // indirect
 	github.com/coder/websocket v1.8.14 // indirect
@@ -106,7 +106,6 @@ require (
 	github.com/xo/terminfo v0.0.0-20220910002029-abceb7e1c41e // indirect
 	github.com/yuin/goldmark v1.7.8 // indirect
 	github.com/yuin/goldmark-emoji v1.0.5 // indirect
-	golang.org/x/crypto v0.39.0 // indirect
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.26.0 // indirect

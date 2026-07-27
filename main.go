@@ -37,7 +37,7 @@ var defaultKeyFlags = []cli.Flag{
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_SECRET_KEY"),
 		Value:       defaultKey().Hex(),
-		DefaultText: "a default key specific to your machine, see it with `nak key default`",
+		DefaultText: "a default key specific to your machine, see it with `clinkctl key default`",
 	},
 	&cli.BoolFlag{
 		Name:     "prompt-sec",
@@ -51,7 +51,7 @@ var defaultKeyFlags = []cli.Flag{
 		Category:    CATEGORY_SIGNER,
 		Sources:     cli.EnvVars("NOSTR_CLIENT_KEY"),
 		Value:       defaultKey(),
-		DefaultText: "the default key (see `nak key default`)",
+		DefaultText: "the default key (see `clinkctl key default`)",
 		Hidden:      true,
 	},
 }
@@ -62,12 +62,17 @@ var (
 )
 
 var app = &cli.Command{
-	Name:                      "nak",
+	Name:                      "clinkctl",
 	Suggest:                   true,
 	UseShortOptionHandling:    true,
-	Usage:                     "the nostr army knife command-line tool",
+	Usage:                     "CLINK + Lightning.Pub CLI (and Nostr army knife)",
 	DisableSliceFlagSeparator: true,
 	Commands: []*cli.Command{
+		clinkInfo,
+		clinkOffer,
+		clinkInvoice,
+		clinkPay,
+		clinkDecode,
 		eventCmd,
 		req,
 		filterCmd,

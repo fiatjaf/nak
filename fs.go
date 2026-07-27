@@ -13,7 +13,7 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"github.com/fatih/color"
-	"github.com/fiatjaf/nak/nostrfs"
+	"github.com/shocknet/clink-go/nostrfs"
 	"github.com/hanwen/go-fuse/v2/fs"
 	"github.com/hanwen/go-fuse/v2/fuse"
 	"github.com/urfave/cli/v3"
