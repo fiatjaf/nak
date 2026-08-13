@@ -22,8 +22,7 @@ import (
 
 var group = &cli.Command{
 	Name:                      "group",
-	Aliases:                   []string{"nip29"},
-	Usage:                     "group-related operations: info, chat, forum, members, admins, roles",
+	Usage:                     "nip29 group-related operations: info, chat, forum, members, admins, roles",
 	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <relay>'<identifier>" where host.tld is the relay and identifier is the group identifier.`,
 	DisableSliceFlagSeparator: true,
 	ArgsUsage:                 "<subcommand> <relay>'<identifier> [flags]",

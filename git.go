@@ -27,7 +27,7 @@ import (
 
 var git = &cli.Command{
 	Name:  "git",
-	Usage: "git-related operations",
+	Usage: "nip34 and grasp-related operations",
 	Description: `this implements versions of common git commands, like 'clone', 'fetch', 'pull' and 'push', but differently from the normal git commands these never take a remote name, the remote is assumed to what is defined by nip34 events and specified in the (automatically hidden) nip34.json file.
 
 aside from those, there is also:
