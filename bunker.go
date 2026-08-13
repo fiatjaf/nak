@@ -6,11 +6,13 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 	"maps"
 	"net"
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"slices"
 	"strings"
 	"sync"
@@ -18,13 +20,94 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip42"
 	"fiatjaf.com/nostr/nip46"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/fatih/color"
 	"github.com/mdp/qrterminal/v3"
 	"github.com/urfave/cli/v3"
+	"golang.org/x/term"
 )
 
 const PERSISTENCE = "PERSISTENCE"
+
+type bunkerTerminal struct {
+	mu         sync.Mutex
+	out        io.Writer
+	log        func(string, ...any)
+	width      int
+	footer     string
+	footerRows int
+}
+
+func newBunkerTerminal(out io.Writer, log func(string, ...any), width int) *bunkerTerminal {
+	return &bunkerTerminal{out: out, log: log, width: width}
+}
+
+func (t *bunkerTerminal) Log(msg string, args ...any) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	if t.width == 0 || t.footer == "" {
+		t.log(msg, args...)
+		return
+	}
+
+	t.clearFooter()
+	text := fmt.Sprintf(msg, args...)
+	t.log("%s", text)
+	if !strings.HasSuffix(text, "\n") {
+		fmt.Fprintln(t.out)
+	}
+	t.drawFooter()
+}
+
+func (t *bunkerTerminal) SetFooter(footer string) {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+
+	footer = strings.TrimRight(footer, "\n") + "\n"
+	if t.width == 0 {
+		t.footer = footer
+		t.log("%s", footer)
+		return
+	}
+
+	t.clearFooter()
+	t.footer = footer
+	t.footerRows = bunkerFooterRows(footer, t.width)
+	t.drawFooter()
+}
+
+func (t *bunkerTerminal) clearFooter() {
+	for range t.footerRows {
+		fmt.Fprint(t.out, "\033[1A\033[2K\r")
+	}
+}
+
+func (t *bunkerTerminal) drawFooter() {
+	fmt.Fprint(t.out, t.footer)
+}
+
+func bunkerFooterRows(footer string, width int) int {
+	rows := 0
+	for line := range strings.SplitSeq(strings.TrimSuffix(footer, "\n"), "\n") {
+		lineWidth := ansi.StringWidth(line)
+		rows += max(1, (lineWidth+width-1)/width)
+	}
+	return rows
+}
+
+func bunkerTerminalWidth() int {
+	if runtime.GOOS == "windows" || !term.IsTerminal(int(os.Stderr.Fd())) {
+		return 0
+	}
+	width, _, err := term.GetSize(int(os.Stderr.Fd()))
+	if err != nil {
+		return 0
+	}
+	return width
+}
 
 var bunker = &cli.Command{
 	Name:                      "bunker",
@@ -206,6 +289,24 @@ var bunker = &cli.Command{
 			persist()
 		}
 
+		footerWidth := 0
+		if c.Count("quiet") == 0 {
+			footerWidth = bunkerTerminalWidth()
+		}
+		terminal := newBunkerTerminal(color.Error, log, footerWidth)
+		sys.Pool.RelayOptions.NoticeHandler = func(relay *nostr.Relay, notice string) {
+			terminal.Log("NOTICE from %s: '%s'\n", relay.URL, notice)
+		}
+		sys.Pool.AuthRequiredHandler = func(ctx context.Context, authEvent *nostr.Event) error {
+			return authSigner(ctx, c, func(s string, args ...any) {
+				if strings.HasPrefix(s, "authenticating as") {
+					cleanURL, _ := strings.CutPrefix(nip42.GetRelayURLFromAuthEvent(*authEvent), "wss://")
+					s = "authenticating to " + color.CyanString(cleanURL) + " as" + s[len("authenticating as"):]
+				}
+				terminal.Log(s+"\n", args...)
+			}, authEvent)
+		}
+
 		// try to connect to the relays here
 		qs := url.Values{}
 		allRelays := make([]string, len(config.Relays), len(config.Relays)+5)
@@ -236,19 +337,15 @@ var bunker = &cli.Command{
 		// it will be stored
 		newSecret := randString(12)
 
-		// guards config.Clients, newSecret and cancelPreviousBunkerInfoPrint, which are
-		// accessed from the socket goroutine, the per-request handler goroutines and here
+		// guards config.Clients and newSecret, which are accessed from the socket
+		// goroutine, the per-request handler goroutines and here
 		var mu sync.Mutex
 
 		// static information
 		pubkey := sec.Public()
 		npub := nip19.EncodeNpub(pubkey)
 
-		// this function will be called every now and then
-		printBunkerInfo := func() {
-			mu.Lock()
-			defer mu.Unlock()
-
+		bunkerInfo := func() (string, string) {
 			iqs := make(url.Values)
 			maps.Copy(iqs, qs)
 			iqs.Set("secret", newSecret)
@@ -309,7 +406,7 @@ var bunker = &cli.Command{
 					strings.Join(relayURLsPossiblyWithoutSchema, " "),
 				)
 
-				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n\n",
+				return fmt.Sprintf("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  to restart: %s\n  bunker: %s\n",
 					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
@@ -317,27 +414,32 @@ var bunker = &cli.Command{
 					authorizedSecretsStr,
 					color.CyanString(restartCommand),
 					colors.bold(bunkerURI),
-				)
+				), bunkerURI
 			} else {
 				// otherwise just print the data
-				log("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  bunker: %s\n\n",
+				return fmt.Sprintf("listening at %v:\n  pubkey: %s \n  npub: %s%s%s\n  bunker: %s\n",
 					colors.bold(config.Relays),
 					colors.bold(pubkey.Hex()),
 					colors.bold(npub),
 					authorizedKeysStr,
 					authorizedSecretsStr,
 					colors.bold(bunkerURI),
-				)
-			}
-
-			// print QR code if requested
-			if c.Bool("qrcode") {
-				log("QR Code for bunker URI:\n")
-				qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
-				log("\n\n")
+				), bunkerURI
 			}
 		}
-		printBunkerInfo()
+
+		setBunkerInfo := func() {
+			info, _ := bunkerInfo()
+			terminal.SetFooter(info)
+		}
+
+		info, bunkerURI := bunkerInfo()
+		if c.Bool("qrcode") {
+			log("QR Code for bunker URI:\n")
+			qrterminal.Generate(bunkerURI, qrterminal.L, os.Stdout)
+			log("\n\n")
+		}
+		terminal.SetFooter(info)
 
 		// subscribe to relays
 		events := sys.Pool.SubscribeMany(ctx, allRelays, nostr.Filter{
@@ -350,26 +452,21 @@ var bunker = &cli.Command{
 		signer := nip46.NewStaticKeySigner(sec)
 		signer.DefaultRelays = config.Relays
 
-		// just a gimmick
-		var cancelPreviousBunkerInfoPrint context.CancelFunc
-		_, cancel := context.WithCancel(ctx)
-		cancelPreviousBunkerInfoPrint = cancel
-
 		signer.AuthorizeRequest = func(harmless bool, from nostr.PubKey, secret string) bool {
 			mu.Lock()
-			defer mu.Unlock()
 
 			if slices.ContainsFunc(config.Clients, func(b BunkerConfigClient) bool { return b.PubKey == from }) {
+				mu.Unlock()
 				return true
 			}
 			if slices.Contains(authorizedSecrets, secret) {
 				// add client to authorized list for subsequent requests
-				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool { return c.PubKey == from }) {
-					config.Clients = append(config.Clients, BunkerConfigClient{PubKey: from})
-					if persist != nil {
-						persist()
-					}
+				config.Clients = append(config.Clients, BunkerConfigClient{PubKey: from})
+				if persist != nil {
+					persist()
 				}
+				setBunkerInfo()
+				mu.Unlock()
 				return true
 			}
 
@@ -378,27 +475,21 @@ var bunker = &cli.Command{
 				config.Clients = append(config.Clients, BunkerConfigClient{PubKey: from})
 				// discard this and generate a new secret
 				newSecret = randString(12)
-				// print bunker info again after this
-				go func() {
-					time.Sleep(3 * time.Second)
-					printBunkerInfo()
-				}()
 
 				if persist != nil {
 					persist()
 				}
 
+				setBunkerInfo()
+				mu.Unlock()
 				return true
 			}
 
+			mu.Unlock()
 			return false
 		}
 
 		handleBunkerRequest := func(ie nostr.RelayEvent) {
-			mu.Lock()
-			cancelPreviousBunkerInfoPrint() // this prevents us from printing a million bunker info blocks
-			mu.Unlock()
-
 			// handle the NIP-46 request event
 			from := ie.Event.PubKey
 			req, resp, eventResponse, err := signer.HandleRequest(ctx, ie.Event)
@@ -407,14 +498,14 @@ var bunker = &cli.Command{
 					return
 				}
 
-				log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
+				terminal.Log("< failed to handle request from %s: %s\n", from.Hex(), err.Error())
 				return
 			}
 
 			jreq, _ := json.MarshalIndent(req, "", "  ")
-			log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
+			terminal.Log("- got request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(from.Hex()), string(jreq))
 			jresp, _ := json.MarshalIndent(resp, "", "  ")
-			log("~ responding with %s\n", string(jresp))
+			terminal.Log("~ responding with %s\n", string(jresp))
 
 			// use custom relays if they are defined for this client
 			// (normally if the initial connection came from a nostrconnect:// URL)
@@ -430,43 +521,27 @@ var bunker = &cli.Command{
 
 			for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
 				if res.Error == nil {
-					log("* sent response through %s\n", res.Relay.URL)
+					terminal.Log("* sent response through %s\n", res.Relay.URL)
 				} else {
-					log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
+					terminal.Log("* failed to send response through %s: %s\n", res.RelayURL, res.Error)
 				}
 			}
-
-			// just after handling one request we trigger this
-			go func() {
-				ctx, cancel := context.WithCancel(ctx)
-				defer cancel()
-				mu.Lock()
-				cancelPreviousBunkerInfoPrint = cancel
-				mu.Unlock()
-				// the idea is that we will print the bunker URL again so it is easier to copy-paste by users
-				// but we will only do if the bunker is inactive for more than 5 minutes
-				select {
-				case <-ctx.Done():
-				case <-time.After(time.Minute * 5):
-					log("\n")
-					printBunkerInfo()
-				}
-			}()
 		}
 
 		// unix socket nostrconnect:// handling
 		go func() {
-			for uri := range onSocketConnect(ctx, c) {
+			for uri := range onSocketConnect(ctx, c, terminal.Log) {
 				clientPublicKey, err := nostr.PubKeyFromHex(uri.Host)
 				if err != nil {
 					continue
 				}
-				log("- got nostrconnect:// request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(clientPublicKey.Hex()), uri.String())
+				terminal.Log("- got nostrconnect:// request from '%s': %s\n", color.New(color.Bold, color.FgBlue).Sprint(clientPublicKey.Hex()), uri.String())
 
 				relays := uri.Query()["relay"]
 
 				// pre-authorize this client since the user has explicitly added it
 				mu.Lock()
+				clientAdded := false
 				if !slices.ContainsFunc(config.Clients, func(c BunkerConfigClient) bool {
 					return c.PubKey == clientPublicKey
 				}) {
@@ -477,16 +552,20 @@ var bunker = &cli.Command{
 						Icon:         uri.Query().Get("icon"),
 						CustomRelays: relays,
 					})
+					clientAdded = true
 				}
 
 				if persist != nil {
 					persist()
 				}
+				if clientAdded {
+					setBunkerInfo()
+				}
 				mu.Unlock()
 
 				resp, eventResponse, err := signer.HandleNostrConnectURI(ctx, uri)
 				if err != nil {
-					log("* failed to handle: %s\n", err)
+					terminal.Log("* failed to handle: %s\n", err)
 					continue
 				}
 
@@ -505,12 +584,12 @@ var bunker = &cli.Command{
 
 				time.Sleep(time.Millisecond * 25)
 				jresp, _ := json.MarshalIndent(resp, "", "  ")
-				log("~ responding with %s\n", string(jresp))
+				terminal.Log("~ responding with %s\n", string(jresp))
 				for res := range sys.Pool.PublishMany(ctx, relays, eventResponse) {
 					if res.Error == nil {
-						log("* sent through %s\n", res.Relay.URL)
+						terminal.Log("* sent through %s\n", res.Relay.URL)
 					} else {
-						log("* failed to send through %s: %s\n", res.RelayURL, res.Error)
+						terminal.Log("* failed to send through %s: %s\n", res.RelayURL, res.Error)
 					}
 				}
 			}
@@ -641,7 +720,7 @@ func getSocketPath(c *cli.Command) string {
 	return filepath.Join(c.String("config-path"), "bunkerconn", profile)
 }
 
-func onSocketConnect(ctx context.Context, c *cli.Command) chan *url.URL {
+func onSocketConnect(ctx context.Context, c *cli.Command, log func(string, ...any)) chan *url.URL {
 	res := make(chan *url.URL)
 	socketPath := getSocketPath(c)
 
