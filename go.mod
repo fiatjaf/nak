@@ -3,12 +3,12 @@ module github.com/fiatjaf/nak
 go 1.25
 
 require (
-	fiatjaf.com/nostr v0.0.0-20260716191248-c205ed45b97e
+	fiatjaf.com/nostr v0.0.0-20260814194801-ef0208a87a19
 	github.com/AlecAivazis/survey/v2 v2.3.7
 	github.com/bep/debounce v1.2.1
 	github.com/btcsuite/btcd/btcec/v2 v2.3.6
-	github.com/charmbracelet/x/ansi v0.8.0
 	github.com/charmbracelet/glamour v0.10.0
+	github.com/charmbracelet/x/ansi v0.8.0
 	github.com/chzyer/readline v0.0.0-20180603132655-2972be24d48e
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.0
 	github.com/fatih/color v1.16.0
