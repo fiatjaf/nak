@@ -28,7 +28,7 @@ func call(t *testing.T, cmd string) string {
 }
 
 func TestEventBasic(t *testing.T) {
-	output := call(t, "nak event --ts 1699485669")
+	output := call(t, "nak event --ts 1699485669 --sec 01")
 
 	var evt nostr.Event
 	err := stdjson.Unmarshal([]byte(output), &evt)
@@ -228,6 +228,12 @@ func TestNaturalTimestamps(t *testing.T) {
 	require.Equal(t, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", evt.PubKey.Hex())
 	require.Equal(t, nostr.Timestamp(1526711839), evt.CreatedAt)
 	require.Equal(t, "nn", evt.Content)
+}
+
+func TestGroupAdmins(t *testing.T) {
+	output := call(t, "nak group admins chat.wisp.talk'aw0n6tcl71qa")
+
+	require.Contains(t, output, "e2ccf7cf20403f3f2a4a55b328f0de3be38558a7d5f33632fdaaefc726c1c8eb")
 }
 
 func TestEventJQ(t *testing.T) {
