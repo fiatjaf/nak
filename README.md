@@ -516,10 +516,10 @@ gitnostr.com... ok.
 
 ### interact with a NIP-29 group
 ```shell
-~> nak group info "<relay>'<id>"
-~> nak group admin "<relay>'<id>"
-~> nak group chat "<relay>'<id>"
-~> nak group chat send "<relay>'<id>" "<message>"
+~> nak group info wisp.chat/rootstock
+~> nak group admins wisp.chat/rootstock
+~> nak group chat wisp.chat/rootstock
+~> nak group chat send wisp.chat/rootstock "hello"
 ```
 
 ### figure out what is a given kind
