@@ -3,17 +3,19 @@ package main
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nipad"
 	"fiatjaf.com/nostr/sdk/hints"
 	"github.com/urfave/cli/v3"
 )
 
 var fetch = &cli.Command{
 	Name:  "fetch",
-	Usage: "fetches events related to the given nip19 or nip05 code from the included relay hints or the author's outbox relays.",
+	Usage: "fetches events related to the given nip19 or nip05 code, or nostr web address, from the included relay hints or the author's outbox relays.",
 	Description: `example usage:
         nak fetch nevent1qqsxrwm0hd3s3fddh4jc2574z3xzufq6qwuyz2rvv3n087zvym3dpaqprpmhxue69uhhqatzd35kxtnjv4kxz7tfdenju6t0xpnej4
         echo npub1h8spmtw9m2huyv6v2j2qd5zv956z2zdugl6mgx02f2upffwpm3nqv0j4ps | nak fetch --relay wss://relay.nostr.band`,
@@ -33,7 +35,7 @@ var fetch = &cli.Command{
 			Usage: "print --jq string results without JSON quoting, like `jq -r`",
 		},
 	),
-	ArgsUsage: "[nip05_or_nip19_code]",
+	ArgsUsage: "[nip05_or_nip19_code_or_web_address]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		jq, err := jqPrepare(c.String("jq"), c.Bool("jq-raw"))
 		if err != nil {
@@ -45,7 +47,25 @@ var fetch = &cli.Command{
 			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")
 
-			if nip05.IsValidIdentifier(code) {
+			if strings.HasPrefix(code, "http://") || strings.HasPrefix(code, "https://") ||
+				isWebAddress(code) {
+				if !strings.HasPrefix(code, "http://") && !strings.HasPrefix(code, "https://") {
+					code = guessWebScheme(code) + code
+				}
+
+				webPath, err := nipad.Resolve(ctx, code)
+				if err != nil {
+					ctx = lineProcessingError(ctx, "failed to resolve nostr web address %s: %s", code, err)
+					continue
+				}
+				filter = webPath.Filter
+				if len(webPath.Filter.Authors) > 0 {
+					authorHint = webPath.Filter.Authors[0]
+				}
+				for _, url := range webPath.Relays {
+					relays = append(relays, nostr.NormalizeURL(url))
+				}
+			} else if nip05.IsValidIdentifier(code) {
 				pp, err := nip05.QueryIdentifier(ctx, code)
 				if err != nil {
 					ctx = lineProcessingError(ctx, "failed to fetch nip05: %s", err)
@@ -148,4 +168,16 @@ var fetch = &cli.Command{
 		exitIfLineProcessingError(ctx)
 		return nil
 	},
+}
+
+func isWebAddress(code string) bool {
+	return strings.Contains(code, "/") || strings.Contains(code, ":")
+}
+
+func guessWebScheme(code string) string {
+	host, _, _ := strings.Cut(code, "/")
+	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+		return "http://"
+	}
+	return "https://"
 }
