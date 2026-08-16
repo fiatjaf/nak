@@ -15,6 +15,7 @@ import (
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip11"
+	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip29"
 	"fiatjaf.com/nostr/nipad"
 	"github.com/fatih/color"
@@ -24,9 +25,9 @@ import (
 var group = &cli.Command{
 	Name:                      "group",
 	Usage:                     "nip29 group-related operations: info, chat, forum, members, admins, roles",
-	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <web address>" where <web address> is a NIP-AD web address like "wisp.chat/rootstock" (the domain hosts the group relay, the path is the group identifier).`,
+	Description:               `manage and interact with Nostr communities (NIP-29). Use "nak group <subcommand> <address>" where <address> is a NIP-AD web address like "wisp.chat/rootstock" (the domain hosts the group relay, the path is the group identifier) or a naddr1 code (kind 39000, with relay hints and the relay pubkey).`,
 	DisableSliceFlagSeparator: true,
-	ArgsUsage:                 "<subcommand> <web address> [flags]",
+	ArgsUsage:                 "<subcommand> <address> [flags]",
 	Flags:                     combineFlags([][]cli.Flag{}),
 	Before: func(ctx context.Context, c *cli.Command) (context.Context, error) {
 		return ctx, nil
@@ -36,14 +37,14 @@ var group = &cli.Command{
 			Name:        "info",
 			Usage:       "show group information",
 			Description: "displays basic group metadata.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, author, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
 
-				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				group, err := fetchGroupMetadata(ctx, relay, identifier, author)
 				if err != nil {
 					return err
 				}
@@ -96,9 +97,9 @@ var group = &cli.Command{
 			Name:        "members",
 			Usage:       "list and manage group members",
 			Description: "view group membership information.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -150,9 +151,9 @@ var group = &cli.Command{
 			Name:        "admins",
 			Usage:       "manage group administrators",
 			Description: "view and manage group admin permissions.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -204,9 +205,9 @@ var group = &cli.Command{
 			Name:        "roles",
 			Usage:       "manage group roles and permissions",
 			Description: "configure custom roles and permissions within the group.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -235,9 +236,9 @@ var group = &cli.Command{
 			Name:        "chat",
 			Usage:       "send and read group chat messages",
 			Description: "interact with group chat functionality.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -299,9 +300,9 @@ var group = &cli.Command{
 				{
 					Name:      "send",
 					Usage:     "sends a message to the chat",
-					ArgsUsage: "<web address> <message>",
+					ArgsUsage: "<address> <message>",
 					Action: func(ctx context.Context, c *cli.Command) error {
-						relay, identifier, err := parseGroupIdentifier(ctx, c)
+						relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 						if err != nil {
 							return err
 						}
@@ -344,14 +345,14 @@ var group = &cli.Command{
 			Name:        "talk",
 			Usage:       "get livekit connection details",
 			Description: "requests a livekit jwt for this group and prints the livekit server url.",
-			ArgsUsage:   "<web address>",
+			ArgsUsage:   "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, author, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
 
-				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				group, err := fetchGroupMetadata(ctx, relay, identifier, author)
 				if err != nil {
 					return err
 				}
@@ -376,9 +377,9 @@ var group = &cli.Command{
 			Name:        "forum",
 			Usage:       "forum topic operations",
 			Description: "when called directly, lists forum topics; with an id prefix, displays that topic with threaded comments.",
-			ArgsUsage:   "<web address> [id-prefix]",
+			ArgsUsage:   "<address> [id-prefix]",
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -429,12 +430,12 @@ var group = &cli.Command{
 					Name:  "create",
 					Usage: "edit and send a forum topic event (kind 11)",
 					Action: func(ctx context.Context, c *cli.Command) error {
-						relay, identifier, err := parseGroupIdentifier(ctx, c)
+						relay, identifier, author, err := parseGroupIdentifier(ctx, c)
 						if err != nil {
 							return err
 						}
 
-						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier)
+						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier, author)
 						if err != nil {
 							return err
 						}
@@ -508,9 +509,9 @@ write your forum post
 				{
 					Name:      "comment",
 					Usage:     "comment on a forum topic with a NIP-22 comment event",
-					ArgsUsage: "<web address> <id-prefix>",
+					ArgsUsage: "<address> <id-prefix>",
 					Action: func(ctx context.Context, c *cli.Command) error {
-						relay, identifier, err := parseGroupIdentifier(ctx, c)
+						relay, identifier, author, err := parseGroupIdentifier(ctx, c)
 						if err != nil {
 							return err
 						}
@@ -540,7 +541,7 @@ write your forum post
 							return err
 						}
 
-						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier)
+						groupMeta, err := fetchGroupMetadata(ctx, relay, identifier, author)
 						if err != nil {
 							return err
 						}
@@ -625,7 +626,7 @@ write your forum post
 		{
 			Name:      "put-user",
 			Usage:     "add a user to the group with optional roles",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Flags: []cli.Flag{
 				&PubKeyFlag{
 					Name:     "pubkey",
@@ -648,7 +649,7 @@ write your forum post
 		{
 			Name:      "remove-user",
 			Usage:     "remove a user from the group",
-			ArgsUsage: "<web address> <pubkey>",
+			ArgsUsage: "<address> <pubkey>",
 			Flags: []cli.Flag{
 				&PubKeyFlag{
 					Name:     "pubkey",
@@ -666,7 +667,7 @@ write your forum post
 		{
 			Name:      "create-group",
 			Usage:     "creates a new group",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				return publishModerationEvent(ctx, c, 9007, func(evt *nostr.Event, args []string) error {
 					return nil
@@ -676,7 +677,7 @@ write your forum post
 		{
 			Name:      "edit-metadata",
 			Usage:     "edits the group metadata",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name: "name",
@@ -740,7 +741,7 @@ write your forum post
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
-				relay, identifier, err := parseGroupIdentifier(ctx, c)
+				relay, identifier, author, err := parseGroupIdentifier(ctx, c)
 				if err != nil {
 					return err
 				}
@@ -751,7 +752,7 @@ write your forum post
 					}
 				}
 
-				group, err := fetchGroupMetadata(ctx, relay, identifier)
+				group, err := fetchGroupMetadata(ctx, relay, identifier, author)
 				if err != nil {
 					return err
 				}
@@ -857,7 +858,7 @@ write your forum post
 		{
 			Name:      "delete-event",
 			Usage:     "delete an event from the group",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Flags: []cli.Flag{
 				&IDFlag{
 					Name:     "event",
@@ -875,7 +876,7 @@ write your forum post
 		{
 			Name:      "delete-group",
 			Usage:     "deletes the group",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Action: func(ctx context.Context, c *cli.Command) error {
 				return publishModerationEvent(ctx, c, 9008, func(evt *nostr.Event, args []string) error {
 					return nil
@@ -885,7 +886,7 @@ write your forum post
 		{
 			Name:      "create-invite",
 			Usage:     "creates an invite code",
-			ArgsUsage: "<web address>",
+			ArgsUsage: "<address>",
 			Flags: []cli.Flag{
 				&cli.StringFlag{
 					Name:     "code",
@@ -908,7 +909,7 @@ func publishModerationEvent(ctx context.Context, c *cli.Command, kind nostr.Kind
 		return fmt.Errorf("requires group identifier")
 	}
 
-	relay, identifier, err := parseGroupIdentifier(ctx, c)
+	relay, identifier, _, err := parseGroupIdentifier(ctx, c)
 	if err != nil {
 		return err
 	}
@@ -960,7 +961,7 @@ func cond(b bool, ifYes string, ifNo string) string {
 	return ifNo
 }
 
-func parseGroupIdentifier(ctx context.Context, c *cli.Command) (relay string, identifier string, err error) {
+func parseGroupIdentifier(ctx context.Context, c *cli.Command) (relay string, identifier string, author nostr.PubKey, err error) {
 	groupArg := strings.TrimSpace(c.Args().First())
 
 	// deprecated, to remove in 2028: keep supporting the old "<relay>'<identifier>" syntax.
@@ -968,34 +969,69 @@ func parseGroupIdentifier(ctx context.Context, c *cli.Command) (relay string, id
 	if strings.Contains(groupArg, "'") {
 		parts := strings.SplitN(groupArg, "'", 2)
 		if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-			return "", "", fmt.Errorf("invalid group identifier format, expected <web address>")
+			return "", "", nostr.ZeroPK, fmt.Errorf("invalid group identifier format, expected <address>")
 		}
 
-		return strings.TrimSuffix(parts[0], "/"), parts[1], nil
+		relay = strings.TrimSuffix(parts[0], "/")
+		identifier = parts[1]
+	} else if strings.HasPrefix(groupArg, "naddr1") {
+		prefix, data, err := nip19.Decode(groupArg)
+		if err != nil || prefix != "naddr" {
+			return "", "", nostr.ZeroPK, fmt.Errorf("invalid naddr code '%s'", groupArg)
+		}
+
+		ptr := data.(nostr.EntityPointer)
+		if ptr.Kind != nostr.KindSimpleGroupMetadata {
+			return "", "", nostr.ZeroPK, fmt.Errorf("naddr must reference kind %d (group), got kind %d", nostr.KindSimpleGroupMetadata, ptr.Kind)
+		}
+		if ptr.Identifier == "" {
+			return "", "", nostr.ZeroPK, fmt.Errorf("naddr has no group identifier")
+		}
+		if len(ptr.Relays) == 0 {
+			return "", "", nostr.ZeroPK, fmt.Errorf("naddr has no relay hints")
+		}
+
+		relay = nostr.NormalizeURL(ptr.Relays[0])
+		identifier = ptr.Identifier
+		author = ptr.PublicKey
+	} else if isWebAddress(groupArg) {
+		webPath, err := nipad.Resolve(ctx, groupArg)
+		if err != nil {
+			return "", "", nostr.ZeroPK, fmt.Errorf("failed to resolve group address '%s': %w", groupArg, err)
+		}
+
+		if len(webPath.Relays) == 0 {
+			return "", "", nostr.ZeroPK, fmt.Errorf("no relays listed for group address '%s'", groupArg)
+		}
+
+		identifiers, ok := webPath.Filter.Tags["d"]
+		if !ok || len(identifiers) == 0 || identifiers[0] == "" {
+			return "", "", nostr.ZeroPK, fmt.Errorf("no group identifier found for address '%s'", groupArg)
+		}
+
+		relay = nostr.NormalizeURL(webPath.Relays[0])
+		identifier = identifiers[0]
+		if len(webPath.Filter.Authors) > 0 {
+			author = webPath.Filter.Authors[0]
+		}
+	} else {
+		return "", "", nostr.ZeroPK, fmt.Errorf("invalid group address '%s'", groupArg)
 	}
 
-	if !isWebAddress(groupArg) {
-		return "", "", fmt.Errorf("invalid group web address '%s'", groupArg)
+	// check the pubkey embedded in the address against the relay's advertised self pubkey
+	if author != nostr.ZeroPK {
+		if info, err := nip11.Fetch(ctx, relay); err == nil && info.Self != nil {
+			if *info.Self != author {
+				return "", "", nostr.ZeroPK, fmt.Errorf(
+					"pubkey in address (%s) doesn't match relay's advertised pubkey (%s)", author, *info.Self)
+			}
+		}
 	}
 
-	webPath, err := nipad.Resolve(ctx, groupArg)
-	if err != nil {
-		return "", "", fmt.Errorf("failed to resolve group web address '%s': %w", groupArg, err)
-	}
-
-	if len(webPath.Relays) == 0 {
-		return "", "", fmt.Errorf("no relays listed for group web address '%s'", groupArg)
-	}
-
-	identifiers, ok := webPath.Filter.Tags["d"]
-	if !ok || len(identifiers) == 0 || identifiers[0] == "" {
-		return "", "", fmt.Errorf("no group identifier found for web address '%s'", groupArg)
-	}
-
-	return nostr.NormalizeURL(webPath.Relays[0]), identifiers[0], nil
+	return relay, identifier, author, nil
 }
 
-func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (nip29.Group, error) {
+func fetchGroupMetadata(ctx context.Context, relay string, identifier string, author nostr.PubKey) (nip29.Group, error) {
 	group := nip29.Group{}
 
 	filter := nostr.Filter{
@@ -1010,6 +1046,10 @@ func fetchGroupMetadata(ctx context.Context, relay string, identifier string) (n
 		} else if info.PubKey != nil {
 			filter.Authors = append(filter.Authors, *info.PubKey)
 		}
+	}
+
+	if len(filter.Authors) == 0 && author != nostr.ZeroPK {
+		filter.Authors = append(filter.Authors, author)
 	}
 
 	for ie := range sys.Pool.FetchMany(ctx, []string{relay}, filter, nostr.SubscriptionOptions{Label: "nak-nip29"}) {
