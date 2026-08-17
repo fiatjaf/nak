@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"regexp"
 	"slices"
 	"strconv"
 	"strings"
@@ -16,7 +17,9 @@ import (
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip11"
 	"fiatjaf.com/nostr/nip19"
+	"fiatjaf.com/nostr/nip27"
 	"fiatjaf.com/nostr/nip29"
+	"fiatjaf.com/nostr/nip73"
 	"fiatjaf.com/nostr/nipad"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -276,7 +279,7 @@ var group = &cli.Command{
 					select {
 					case evt := <-sub.Events:
 						meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
-						line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + evt.Content
+						line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + colorizeNoteContent(ctx, evt.Content)
 						if eosed {
 							stdout(line)
 						} else if base > 0 {
@@ -959,6 +962,35 @@ func cond(b bool, ifYes string, ifNo string) string {
 		return ifYes
 	}
 	return ifNo
+}
+
+var hashtagRe = regexp.MustCompile(`#+\w+`)
+
+func colorizeNoteContent(ctx context.Context, content string) string {
+	var sb strings.Builder
+
+	for block := range nip27.Parse(content) {
+		if block.Pointer == nil {
+			sb.WriteString(hashtagRe.ReplaceAllStringFunc(block.Text, func(s string) string {
+				return color.WhiteString(s)
+			}))
+			continue
+		}
+
+		switch ptr := block.Pointer.(type) {
+		case nostr.ProfilePointer:
+			meta := sys.FetchProfileMetadata(ctx, ptr.PublicKey)
+			sb.WriteString(color.GreenString(meta.ShortName()))
+		case nip73.ExternalPointer:
+			sb.WriteString(color.YellowString(block.Text))
+		default:
+			// nevent, naddr and other nostr references
+			text, _ := strings.CutPrefix(block.Text, "nostr:")
+			sb.WriteString(color.MagentaString(text))
+		}
+	}
+
+	return sb.String()
 }
 
 func parseGroupIdentifier(ctx context.Context, c *cli.Command) (relay string, identifier string, author nostr.PubKey, err error) {
