@@ -610,6 +610,219 @@ aside from those, there is also:
 			},
 		},
 		{
+			Name:        "ls",
+			Usage:       "list files in a remote NIP-34 repository",
+			Description: "the <repository> parameter may be a git http(s) url or a repository address as accepted by 'nak git clone'. when given a subpath, lists the contents of that directory.",
+			ArgsUsage:   "<repository> [path]",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "ref",
+					Aliases: []string{"r"},
+					Usage:   "git ref/tag/branch/commit to read from",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() == 0 {
+					return fmt.Errorf("missing repository address")
+				}
+
+				gitURLs, state, err := resolveGitNaturalURLs(ctx, args.Get(0))
+				if err != nil {
+					return err
+				}
+				if len(gitURLs) == 0 {
+					return fmt.Errorf("no HTTP git URLs found for repository")
+				}
+
+				path := strings.TrimSpace(args.Get(1))
+				ref := strings.TrimSpace(c.String("ref"))
+
+				var lastErr error
+				for _, url := range gitURLs {
+					if lastErr != nil {
+						log("%s\n", color.HiRedString(lastErr.Error()))
+					}
+					lastErr = nil
+
+					commit, err := resolveGitNaturalRef(url, ref, state)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					tree, err := gitnaturalapi.GetDirectoryTreeAt(url, commit, nil)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					if path != "" {
+						tree, err = gitTreeAtPath(tree, path)
+						if err != nil {
+							return err
+						}
+					}
+
+					for _, dir := range tree.Directories {
+						stdout(color.HiBlueString(dir.Name + "/"))
+					}
+					for _, file := range tree.Files {
+						stdout(color.HiWhiteString(file.Name))
+					}
+					return nil
+				}
+
+				if lastErr != nil {
+					log("%s\n", color.HiRedString(lastErr.Error()))
+				}
+				return fmt.Errorf("failed to list '%s' from '%s'", path, args.Get(0))
+			},
+		},
+		{
+			Name:        "cat",
+			Usage:       "print the contents of a file in a remote NIP-34 repository",
+			Description: "the <repository> parameter may be a git http(s) url or a repository address as accepted by 'nak git clone'.",
+			ArgsUsage:   "<repository> <path>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "ref",
+					Aliases: []string{"r"},
+					Usage:   "git ref/tag/branch/commit to read from",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() < 2 {
+					return fmt.Errorf("missing repository and path")
+				}
+
+				gitURLs, state, err := resolveGitNaturalURLs(ctx, args.Get(0))
+				if err != nil {
+					return err
+				}
+				if len(gitURLs) == 0 {
+					return fmt.Errorf("no HTTP git URLs found for repository")
+				}
+
+				path := strings.TrimSpace(args.Get(1))
+				ref := strings.TrimSpace(c.String("ref"))
+
+				var lastErr error
+				for _, url := range gitURLs {
+					if lastErr != nil {
+						log("%s\n", color.HiRedString(lastErr.Error()))
+					}
+					lastErr = nil
+
+					commit, err := resolveGitNaturalRef(url, ref, state)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					entry, err := gitnaturalapi.GetObjectByPath(url, commit, path)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+					if entry == nil {
+						return fmt.Errorf("path '%s' not found", path)
+					}
+					if entry.IsDir {
+						return fmt.Errorf("path '%s' is a directory", path)
+					}
+
+					obj, err := gitnaturalapi.GetObject(url, entry.Hash)
+					if err != nil {
+						lastErr = fmt.Errorf("download error: %s", err)
+						continue
+					}
+					if obj == nil {
+						return fmt.Errorf("object for '%s' not found", path)
+					}
+					if obj.Type != gitnaturalapi.ObjectTypeBlob {
+						return fmt.Errorf("object at '%s' is not a file", path)
+					}
+
+					if _, err := os.Stdout.Write(obj.Data); err != nil {
+						return err
+					}
+					return nil
+				}
+
+				if lastErr != nil {
+					log("%s\n", color.HiRedString(lastErr.Error()))
+				}
+				return fmt.Errorf("failed to read '%s' from '%s'", path, args.Get(0))
+			},
+		},
+		{
+			Name:        "history",
+			Usage:       "print the commit history of a remote NIP-34 repository",
+			Description: "the <repository> parameter may be a git http(s) url or a repository address as accepted by 'nak git clone'.",
+			ArgsUsage:   "<repository>",
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "ref",
+					Aliases: []string{"r"},
+					Usage:   "git ref/tag/branch/commit to read from",
+				},
+			},
+			Action: func(ctx context.Context, c *cli.Command) error {
+				args := c.Args()
+				if args.Len() == 0 {
+					return fmt.Errorf("missing repository address")
+				}
+
+				gitURLs, state, err := resolveGitNaturalURLs(ctx, args.Get(0))
+				if err != nil {
+					return err
+				}
+				if len(gitURLs) == 0 {
+					return fmt.Errorf("no HTTP git URLs found for repository")
+				}
+
+				ref := strings.TrimSpace(c.String("ref"))
+
+				var lastErr error
+				for _, url := range gitURLs {
+					if lastErr != nil {
+						log("%s\n", color.HiRedString(lastErr.Error()))
+					}
+					lastErr = nil
+
+					commit, err := resolveGitNaturalRef(url, ref, state)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					commits, err := gitnaturalapi.FetchCommitsOnly(url, commit, nil)
+					if err != nil {
+						lastErr = err
+						continue
+					}
+
+					for _, c := range commits {
+						date := time.Unix(c.Author.Timestamp, 0).Format(time.DateOnly)
+						stdout(
+							color.CyanString(shortCommitID(c.Hash, 8)),
+							color.HiBlueString(c.Author.Name),
+							color.HiBlackString(date),
+							color.HiWhiteString(firstLine(c.Message)),
+						)
+					}
+					return nil
+				}
+
+				if lastErr != nil {
+					log("%s\n", color.HiRedString(lastErr.Error()))
+				}
+				return fmt.Errorf("failed to fetch history from '%s'", args.Get(0))
+			},
+		},
+		{
 			Name:  "push",
 			Usage: "push git changes",
 			Flags: []cli.Flag{
@@ -3574,4 +3787,133 @@ func graspServerHost(s string) string {
 		return ""
 	}
 	return parts[2]
+}
+
+// resolveGitNaturalURLs turns a repository argument into a list of git http(s)
+// urls suitable for the gitnaturalapi functions. the argument may be a plain
+// git http(s) url or a repository address as accepted by 'nak git clone'.
+func resolveGitNaturalURLs(ctx context.Context, repoArg string) (gitURLs []string, state *nip34.RepositoryState, err error) {
+	if strings.HasPrefix(repoArg, "http://") || strings.HasPrefix(repoArg, "https://") {
+		return []string{strings.TrimRight(repoArg, "/")}, nil, nil
+	}
+
+	owner, identifier, relayHints, err := parseRepositoryAddress(ctx, repoArg)
+	if err != nil {
+		return nil, nil, fmt.Errorf("failed to parse repository address '%s': %w", repoArg, err)
+	}
+
+	repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
+	if err != nil {
+		var stateErr *StateErr
+		if !errors.As(err, &stateErr) {
+			return nil, nil, err
+		}
+	}
+
+	for _, url := range repo.Clone {
+		if strings.HasPrefix(url, "http") {
+			gitURLs = append(gitURLs, url)
+		}
+	}
+
+	return gitURLs, state, nil
+}
+
+// resolveGitNaturalRef resolves a user-supplied ref (or the repository's HEAD,
+// possibly from its published state) into a commit hash for a given git url.
+func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) (string, error) {
+	var info *gitnaturalapi.InfoRefsUploadPackResponse
+
+	if ref == "" && state != nil && state.HEAD != "" {
+		ref = state.HEAD
+	}
+
+	if ref != "" && !gitHashRe.MatchString(ref) {
+		var err error
+		info, err = gitnaturalapi.GetInfoRefs(url)
+		if err != nil {
+			return "", err
+		}
+	}
+
+	var commit string
+	switch {
+	case gitHashRe.MatchString(ref):
+		commit = ref
+	case strings.HasPrefix(ref, "refs/"):
+		if info != nil {
+			commit = info.Refs[ref]
+		}
+	default:
+		if info == nil {
+			var err error
+			info, err = gitnaturalapi.GetInfoRefs(url)
+			if err != nil {
+				return "", err
+			}
+		}
+		if ref == "" {
+			if symref, ok := info.Symrefs["HEAD"]; ok && symref != "" {
+				commit, _ = info.Refs[symref]
+			} else if head, ok := info.Refs["HEAD"]; ok && head != "" {
+				commit = head
+			}
+		} else if ch, ok := info.Refs["refs/heads/"+ref]; ok {
+			commit = ch
+		} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
+			commit = ch
+		} else if sr, ok := info.Symrefs[ref]; ok {
+			commit = info.Refs[sr]
+		}
+	}
+
+	if commit == "" {
+		return "", fmt.Errorf("couldn't resolve ref '%s'", ref)
+	}
+	if !gitHashRe.MatchString(commit) {
+		return "", fmt.Errorf("invalid commit hash for ref '%s': '%s'", ref, commit)
+	}
+
+	return commit, nil
+}
+
+// gitTreeAtPath navigates a fully loaded git tree to the directory at the given
+// path, failing if any segment is a file or doesn't exist.
+func gitTreeAtPath(tree *gitnaturalapi.Tree, path string) (*gitnaturalapi.Tree, error) {
+	path = strings.Trim(path, "/")
+	if path == "" {
+		return tree, nil
+	}
+
+	for _, segment := range strings.Split(path, "/") {
+		found := false
+		for _, dir := range tree.Directories {
+			if dir.Name == segment {
+				if dir.Content == nil {
+					return nil, fmt.Errorf("directory '%s' not found in fetched tree", path)
+				}
+				tree = dir.Content
+				found = true
+				break
+			}
+		}
+		if !found {
+			for _, file := range tree.Files {
+				if file.Name == segment {
+					return nil, fmt.Errorf("path '%s' is a file, not a directory", path)
+				}
+			}
+			return nil, fmt.Errorf("path '%s' not found", path)
+		}
+	}
+
+	return tree, nil
+}
+
+func firstLine(s string) string {
+	s = strings.TrimSpace(s)
+	if i := strings.IndexByte(s, '\n'); i != -1 {
+		return s[:i]
+	}
+	return s
 }
