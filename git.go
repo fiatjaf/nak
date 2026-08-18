@@ -1775,19 +1775,26 @@ please merge
 							return fmt.Errorf("failed to merge pull request: %w (if needed, run 'git merge --abort')", err)
 						}
 
-						log("merged pull request %s\n", color.GreenString(prEvt.ID.Hex()[:6]))
-
 						mergeCommit := ""
 						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
 							mergeCommit = strings.TrimSpace(string(output))
 						}
+
+						// 'git merge' exits 0 without creating a commit when the tip is
+						// already contained in the current branch, don't publish a bogus
+						// merged status in that case
+						if mergeCommit == previousHead {
+							return fmt.Errorf("nothing to merge, the pull request tip is already contained in the current branch")
+						}
+
+						log("merged pull request %s\n", color.GreenString(prEvt.ID.Hex()[:6]))
 
 						appliedCommits := []string{}
 						if previousHead != "" {
 							if output, err := exec.Command("git", "rev-list", "--reverse", previousHead+"..HEAD").Output(); err == nil {
 								for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
 									commit := strings.TrimSpace(line)
-									if commit != "" {
+									if commit != "" && commit != mergeCommit {
 										appliedCommits = append(appliedCommits, commit)
 									}
 								}
