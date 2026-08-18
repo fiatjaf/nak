@@ -807,9 +807,11 @@ write your forum post
 					group.Parent = parent
 				}
 				if children := c.String("children"); children != "" {
-					group.Children = strings.Split(children, ";")
-					for i := range group.Children {
-						group.Children[i] = strings.TrimSpace(group.Children[i])
+					group.Children = nil
+					for _, child := range strings.Split(children, ";") {
+						if child = strings.TrimSpace(child); child != "" {
+							group.Children = append(group.Children, child)
+						}
 					}
 				}
 				if c.Bool("orphan") {
