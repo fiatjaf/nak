@@ -429,7 +429,14 @@ var bunker = &cli.Command{
 		}
 
 		setBunkerInfo := func() {
-			info, _ := bunkerInfo()
+			info, bunkerURI := bunkerInfo()
+			if c.Bool("qrcode") {
+				// the secret embedded in the bunker uri may have rotated,
+				// so the qr code on screen has to be rendered again
+				qr := strings.Builder{}
+				qrterminal.Generate(bunkerURI, qrterminal.L, &qr)
+				terminal.Log("QR Code for bunker URI:\n%s\n", qr.String())
+			}
 			terminal.SetFooter(info)
 		}
 
