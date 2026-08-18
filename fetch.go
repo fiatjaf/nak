@@ -176,7 +176,16 @@ func isWebAddress(code string) bool {
 
 func guessWebScheme(code string) string {
 	host, _, _ := strings.Cut(code, "/")
-	if strings.HasPrefix(host, "localhost") || strings.HasPrefix(host, "127.0.0.1") {
+	if strings.HasPrefix(host, "[") {
+		// ipv6 literal, keep only the bracketed part
+		if i := strings.Index(host, "]"); i != -1 {
+			host = host[:i+1]
+		}
+	} else if h, _, ok := strings.Cut(host, ":"); ok {
+		// strip port
+		host = h
+	}
+	if host == "localhost" || host == "127.0.0.1" || host == "[::1]" {
 		return "http://"
 	}
 	return "https://"
