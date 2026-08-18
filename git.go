@@ -2913,6 +2913,11 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 			// construct local repo from config for comparison
 			localRepo := localConfig.ToRepository()
 
+			// nip34.json doesn't track web urls or maintainers, so carry them over
+			// from the fetched announcement instead of stripping them on republish
+			localRepo.Web = repo.Web
+			localRepo.Maintainers = repo.Maintainers
+
 			// check if we need to update local config or publish new announcement
 			if !repo.Equals(localRepo) {
 				// check modification times
