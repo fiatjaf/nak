@@ -1466,7 +1466,7 @@ aside from those, there is also:
 						}
 
 						// figure out which branch to send
-						localBranch, remoteBranch, err := figureOutBranches(c, c.Args().First(), true)
+						localBranch, _, err := figureOutBranches(c, c.Args().First(), true)
 						if err != nil {
 							return err
 						}
@@ -1497,7 +1497,7 @@ my great feature
 please merge
 
 # lines starting with '#' are ignored
-`, selfName, selfNpub, repo.ID, remoteBranch, shortCommitID(tip, 8))),
+`, selfName, selfNpub, repo.ID, localBranch, shortCommitID(tip, 8))),
 							true,
 						)
 						if err != nil {
@@ -1517,7 +1517,7 @@ please merge
 								nostr.Tag{"p", repo.Event.PubKey.Hex()},
 								nostr.Tag{"subject", subject},
 								nostr.Tag{"c", tip},
-								nostr.Tag{"branch-name", remoteBranch},
+								nostr.Tag{"branch-name", localBranch},
 							},
 							Content: body,
 						}
