@@ -61,10 +61,6 @@ aside from those, there is also:
 					Name:  "description",
 					Usage: "repository description",
 				},
-				&cli.StringSliceFlag{
-					Name:  "web",
-					Usage: "web URLs for the repository (can be used multiple times)",
-				},
 				&cli.StringFlag{
 					Name:  "owner",
 					Usage: "owner public key",
