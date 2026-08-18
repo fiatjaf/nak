@@ -1296,6 +1296,13 @@ aside from those, there is also:
 							return err
 						}
 
+						// we apply the patch to the current branch and then reset it back,
+						// so a dirty worktree would be wiped out by the reset
+						if output, err := exec.Command("git", "status", "--porcelain", "--untracked-files=no").Output(); err == nil &&
+							len(strings.TrimSpace(string(output))) > 0 {
+							return fmt.Errorf("working tree has uncommitted changes, commit or stash them before running 'patch pull'")
+						}
+
 						previousHead := ""
 						if output, err := exec.Command("git", "rev-parse", "HEAD").Output(); err == nil {
 							previousHead = strings.TrimSpace(string(output))
