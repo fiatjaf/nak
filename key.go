@@ -59,9 +59,17 @@ var public = &cli.Command{
 	Action: func(ctx context.Context, c *cli.Command) error {
 		args := c.Args().Slice()
 		if len(args) == 0 && !isPiped() {
-			kr, _, err := gatherKeyerFromArguments(ctx, c)
+			kr, sk, err := gatherKeyerFromArguments(ctx, c)
 			if err != nil {
 				return err
+			}
+			if c.Bool("with-parity") {
+				if sk == (nostr.SecretKey{}) {
+					return fmt.Errorf("--with-parity requires a plain secret key, not a bunker")
+				}
+				_, pk := btcec.PrivKeyFromBytes(sk[:])
+				stdout(hex.EncodeToString(pk.SerializeCompressed()))
+				return nil
 			}
 			pk, err := kr.GetPublicKey(ctx)
 			if err != nil {
