@@ -48,7 +48,14 @@ var (
 	stdout     = func(args ...any) { fmt.Fprintln(color.Output, args...) }
 )
 
-var connectTimeout = 2 * time.Second
+var connectTimeout = func() time.Duration {
+	if v := os.Getenv("NAK_CONNECT_TIMEOUT"); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 2 * time.Second
+}()
 
 func isPiped() bool {
 	stat, err := os.Stdin.Stat()
