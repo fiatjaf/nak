@@ -46,6 +46,7 @@ var fetch = &cli.Command{
 			filter := nostr.Filter{}
 			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")
+			authoritativeFilter := false
 
 			if strings.HasPrefix(code, "http://") || strings.HasPrefix(code, "https://") ||
 				isWebAddress(code) {
@@ -59,6 +60,7 @@ var fetch = &cli.Command{
 					continue
 				}
 				filter = webPath.Filter
+				authoritativeFilter = true
 				if len(webPath.Filter.Authors) > 0 {
 					authorHint = webPath.Filter.Authors[0]
 				}
@@ -130,7 +132,9 @@ var fetch = &cli.Command{
 				return err
 			}
 
-			if len(filter.Authors) > 0 && len(filter.Kinds) == 0 {
+			// default to fetching just the profile when given only an author,
+			// but not when the filter came ready-made from a web address
+			if !authoritativeFilter && len(filter.Authors) > 0 && len(filter.Kinds) == 0 {
 				filter.Kinds = append(filter.Kinds, 0)
 			}
 
