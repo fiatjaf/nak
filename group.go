@@ -1029,7 +1029,12 @@ func parseGroupIdentifier(ctx context.Context, c *cli.Command) (relay string, id
 		identifier = ptr.Identifier
 		author = ptr.PublicKey
 	} else if isWebAddress(groupArg) {
-		webPath, err := nipad.Resolve(ctx, groupArg)
+		addr := groupArg
+		if !strings.HasPrefix(addr, "http://") && !strings.HasPrefix(addr, "https://") {
+			addr = guessWebScheme(addr) + addr
+		}
+
+		webPath, err := nipad.Resolve(ctx, addr)
 		if err != nil {
 			return "", "", nostr.ZeroPK, fmt.Errorf("failed to resolve group address '%s': %w", groupArg, err)
 		}
