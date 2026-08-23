@@ -2828,10 +2828,22 @@ func gitFetchPullRequestIntoRef(ctx context.Context, repo nip34.Repository, prEv
 		// first try fetching the server ref that send/update pushed the tip to,
 		// which works even on servers that don't serve arbitrary commit hashes
 		log("fetching %s from %s...\n", color.CyanString(serverRef), color.BlueString(url))
-		fetchRefCmd := exec.Command("git", "fetch", url, fmt.Sprintf("%s:%s", serverRef, refName))
+		fetchRefCmd := exec.Command("git", "fetch", url, fmt.Sprintf("+%s:%s", serverRef, refName))
 		fetchRefCmd.Stderr = os.Stderr
 		if err := fetchRefCmd.Run(); err == nil {
-			return refName, commit, nil
+			if !gitHashRe.MatchString(commit) {
+				return refName, commit, nil
+			}
+
+			// make sure the server actually served the tip declared in the signed event
+			// (the declared tip may be abbreviated, so compare by prefix)
+			if output, err := exec.Command("git", "rev-parse", refName).Output(); err == nil &&
+				strings.HasPrefix(strings.TrimSpace(string(output)), commit) {
+				return refName, commit, nil
+			}
+
+			// it points elsewhere, refuse it and try the declared commit directly below
+			lastErr = fmt.Errorf("ref %s from %s doesn't match the declared tip %s", serverRef, url, shortCommitID(commit, 8))
 		} else {
 			lastErr = err
 		}
