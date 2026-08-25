@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -171,14 +172,19 @@ var nsite = &cli.Command{
 					}
 
 					var hhash string
+					var uploadErrors []error
 					for _, server := range blossomServers {
 						client := blossom.NewClient(server, kr)
 						bd, err := client.UploadFilePath(ctx, path)
 						if err != nil {
-							return fmt.Errorf("failed to upload %s to %s: %w", path, server, err)
+							uploadErrors = append(uploadErrors, fmt.Errorf("%s: %w", server, err))
+							continue
 						}
 						hhash = bd.SHA256
 						log("uploaded %s to %s as %s\n", color.GreenString(path), color.YellowString(server), color.CyanString(hhash))
+					}
+					if hhash == "" {
+						return fmt.Errorf("failed to upload %s to any blossom server: %w", path, errors.Join(uploadErrors...))
 					}
 
 					var hash [32]byte
