@@ -88,7 +88,6 @@ var app = &cli.Command{
 		decrypt,
 		gift,
 		outboxCmd,
-		wallet,
 		mcpServer,
 		curl,
 		fsCmd,
