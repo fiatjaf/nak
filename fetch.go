@@ -43,7 +43,7 @@ var fetch = &cli.Command{
 		}
 
 		for code := range getStdinLinesOrArguments(c.Args()) {
-			filter := nostr.Filter{}
+			var filter nostr.Filter
 			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")
 			authoritativeFilter := false
@@ -75,7 +75,7 @@ var fetch = &cli.Command{
 				}
 				authorHint = pp.PublicKey
 				relays = append(relays, pp.Relays...)
-				filter.Authors = append(filter.Authors, pp.PublicKey)
+				filter = pp.AsFilter()
 			} else {
 				prefix, value, err := nip19.Decode(code)
 				if err != nil {
@@ -88,30 +88,28 @@ var fetch = &cli.Command{
 				}
 
 				switch prefix {
-				case "nevent":
+				case "nevent", "note":
 					v := value.(nostr.EventPointer)
-					filter.IDs = append(filter.IDs, v.ID)
+					filter = v.AsFilter()
 					if v.Author != nostr.ZeroPK {
 						authorHint = v.Author
 					}
 					relays = append(relays, v.Relays...)
-				case "note":
-					filter.IDs = append(filter.IDs, value.(nostr.EventPointer).ID)
 				case "naddr":
 					v := value.(nostr.EntityPointer)
-					filter.Kinds = []nostr.Kind{v.Kind}
-					filter.Tags = nostr.TagMap{"d": []string{v.Identifier}}
-					filter.Authors = append(filter.Authors, v.PublicKey)
+					filter = v.AsFilter()
 					authorHint = v.PublicKey
 					relays = append(relays, v.Relays...)
 				case "nprofile":
 					v := value.(nostr.ProfilePointer)
-					filter.Authors = append(filter.Authors, v.PublicKey)
+					filter = v.AsFilter()
 					authorHint = v.PublicKey
 					relays = append(relays, v.Relays...)
 				case "npub":
 					v := value.(nostr.PubKey)
-					filter.Authors = append(filter.Authors, v)
+					filter = nostr.Filter{
+						Authors: []nostr.PubKey{v},
+					}
 					authorHint = v
 				default:
 					return fmt.Errorf("unexpected prefix %s", prefix)

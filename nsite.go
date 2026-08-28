@@ -13,7 +13,7 @@ import (
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip5a"
-	"fiatjaf.com/nostr/nipb0/blossom"
+	"fiatjaf.com/nostr/nipb7/blossom"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
 )

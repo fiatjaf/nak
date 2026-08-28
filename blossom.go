@@ -10,7 +10,7 @@ import (
 	"unsafe"
 
 	"fiatjaf.com/nostr/keyer"
-	"fiatjaf.com/nostr/nipb0/blossom"
+	"fiatjaf.com/nostr/nipb7/blossom"
 	"github.com/urfave/cli/v3"
 )
 
