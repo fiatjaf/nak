@@ -631,7 +631,7 @@ aside from those, there is also:
 					return fmt.Errorf("no HTTP git URLs found for repository")
 				}
 
-				path := strings.TrimSpace(args.Get(1))
+				path := args.Get(1)
 				ref := strings.TrimSpace(c.String("ref"))
 
 				var lastErr error
@@ -701,7 +701,7 @@ aside from those, there is also:
 					return fmt.Errorf("no HTTP git URLs found for repository")
 				}
 
-				path := strings.TrimSpace(args.Get(1))
+				path := args.Get(1)
 				ref := strings.TrimSpace(c.String("ref"))
 
 				var lastErr error
