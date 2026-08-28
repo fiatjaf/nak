@@ -800,6 +800,20 @@ aside from those, there is also:
 						continue
 					}
 
+					// they come back in a depth-first order that walks the first parent
+					// all the way down to the root before visiting merged branches, so
+					// put them in reverse chronological order like 'git log' does
+					slices.SortStableFunc(commits, func(a, b *gitnaturalapi.Commit) int {
+						switch {
+						case a.Committer.Timestamp > b.Committer.Timestamp:
+							return -1
+						case a.Committer.Timestamp < b.Committer.Timestamp:
+							return 1
+						default:
+							return 0
+						}
+					})
+
 					for _, c := range commits {
 						date := time.Unix(c.Author.Timestamp, 0).Format(time.DateOnly)
 						stdout(
