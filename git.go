@@ -717,19 +717,43 @@ aside from those, there is also:
 						continue
 					}
 
-					entry, err := gitnaturalapi.GetObjectByPath(url, commit, path)
+					// the path is walked here instead of with GetObjectByPath()
+					// because that also treats '\' as a separator, while in git
+					// path names a backslash is just a regular character
+					segments := strings.Split(strings.Trim(path, "/"), "/")
+					name := segments[len(segments)-1]
+
+					depth := len(segments)
+					tree, err := gitnaturalapi.GetDirectoryTreeAt(url, commit, &depth)
 					if err != nil {
 						lastErr = err
 						continue
 					}
-					if entry == nil {
-						return fmt.Errorf("path '%s' not found", path)
-					}
-					if entry.IsDir {
-						return fmt.Errorf("path '%s' is a directory", path)
+
+					if len(segments) > 1 {
+						tree, err = gitTreeAtPath(tree, strings.Join(segments[:len(segments)-1], "/"))
+						if err != nil {
+							return err
+						}
 					}
 
-					obj, err := gitnaturalapi.GetObject(url, entry.Hash)
+					hash := ""
+					for _, file := range tree.Files {
+						if file.Name == name {
+							hash = file.Hash
+							break
+						}
+					}
+					if hash == "" {
+						for _, dir := range tree.Directories {
+							if dir.Name == name {
+								return fmt.Errorf("path '%s' is a directory", path)
+							}
+						}
+						return fmt.Errorf("path '%s' not found", path)
+					}
+
+					obj, err := gitnaturalapi.GetObject(url, hash)
 					if err != nil {
 						lastErr = fmt.Errorf("download error: %s", err)
 						continue
