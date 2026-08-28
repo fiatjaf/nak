@@ -3846,6 +3846,22 @@ func resolveGitNaturalURLs(ctx context.Context, repoArg string) (gitURLs []strin
 	return gitURLs, state, nil
 }
 
+// isFullGitHash reports whether the given string is a complete object id, as
+// opposed to an abbreviation or just a branch or tag whose name is all hex.
+func isFullGitHash(s string) bool {
+	return (len(s) == 40 || len(s) == 64) && gitHashRe.MatchString(s)
+}
+
+// gitRefCommit returns the commit a given advertised ref points to. annotated
+// tags point to a tag object, so the commit is advertised separately as "<ref>^{}".
+func gitRefCommit(info *gitnaturalapi.InfoRefsUploadPackResponse, ref string) (string, bool) {
+	if hash, ok := info.Refs[ref+"^{}"]; ok && hash != "" {
+		return hash, true
+	}
+	hash, ok := info.Refs[ref]
+	return hash, ok && hash != ""
+}
+
 // resolveGitNaturalRef resolves a user-supplied ref (or the repository's HEAD,
 // possibly from its published state) into a commit hash for a given git url.
 func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) (string, error) {
@@ -3855,7 +3871,7 @@ func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) 
 		ref = state.HEAD
 	}
 
-	if ref != "" && !gitHashRe.MatchString(ref) {
+	if ref != "" && !isFullGitHash(ref) {
 		var err error
 		info, err = gitnaturalapi.GetInfoRefs(url)
 		if err != nil {
@@ -3865,11 +3881,11 @@ func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) 
 
 	var commit string
 	switch {
-	case gitHashRe.MatchString(ref):
+	case isFullGitHash(ref):
 		commit = ref
 	case strings.HasPrefix(ref, "refs/"):
 		if info != nil {
-			commit = info.Refs[ref]
+			commit, _ = gitRefCommit(info, ref)
 		}
 	default:
 		if info == nil {
@@ -3881,16 +3897,16 @@ func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) 
 		}
 		if ref == "" {
 			if symref, ok := info.Symrefs["HEAD"]; ok && symref != "" {
-				commit, _ = info.Refs[symref]
+				commit, _ = gitRefCommit(info, symref)
 			} else if head, ok := info.Refs["HEAD"]; ok && head != "" {
 				commit = head
 			}
-		} else if ch, ok := info.Refs["refs/heads/"+ref]; ok {
+		} else if ch, ok := gitRefCommit(info, "refs/heads/"+ref); ok {
 			commit = ch
-		} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
+		} else if ch, ok := gitRefCommit(info, "refs/tags/"+ref); ok {
 			commit = ch
 		} else if sr, ok := info.Symrefs[ref]; ok {
-			commit = info.Refs[sr]
+			commit, _ = gitRefCommit(info, sr)
 		}
 	}
 
