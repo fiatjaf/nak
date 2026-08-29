@@ -92,6 +92,7 @@ var app = &cli.Command{
 		curl,
 		fsCmd,
 		publish,
+		nwc,
 		nsite,
 		git,
 		group,
