@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"github.com/stretchr/testify/require"
@@ -218,15 +219,19 @@ func TestReqWithFlagsAfter3(t *testing.T) {
 }
 
 func TestNaturalTimestamps(t *testing.T) {
-	output := call(t, "nak event -t plu=pla -e 3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24 --ts '2018-May-19T03:37:19' -c nn")
+	output := call(t, "nak event -t plu=pla -e 3f770d65d3a764a9c5cb503ae123e62ec7598ad035d836e2a810f3877a745b24 --ts '2018-May-19T03:37:19' -c nn --sec 01")
 
 	var evt nostr.Event
 	err := stdjson.Unmarshal([]byte(output), &evt)
 	require.NoError(t, err)
 
+	// a timestamp without a zone is read as local time, so the expected value
+	// depends on the zone this runs in
+	expected := time.Date(2018, time.May, 19, 3, 37, 19, 0, time.Local).Unix()
+
 	require.Equal(t, nostr.Kind(1), evt.Kind)
 	require.Equal(t, "79be667ef9dcbbac55a06295ce870b07029bfcdb2dce28d959f2815b16f81798", evt.PubKey.Hex())
-	require.Equal(t, nostr.Timestamp(1526711839), evt.CreatedAt)
+	require.Equal(t, nostr.Timestamp(expected), evt.CreatedAt)
 	require.Equal(t, "nn", evt.Content)
 }
 
