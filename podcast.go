@@ -593,10 +593,7 @@ func printPodcastEpisodeList(ctx context.Context, p podcastInfo, limit int) erro
 			title = ep.ID.Hex()[:16]
 		}
 		date := ep.CreatedAt.Time().Format("2006-01-02")
-		desc := ep.Content
-		if len(desc) > 100 {
-			desc = desc[:100] + "..."
-		}
+		desc := clampWithEllipsis(ep.Content, 100)
 		stdout(fmt.Sprintf("%s  %s  %s", date, title, desc))
 	}
 

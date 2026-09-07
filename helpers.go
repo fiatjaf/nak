@@ -18,6 +18,7 @@ import (
 	"sync"
 	"time"
 	"unicode"
+	"unicode/utf8"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
@@ -621,11 +622,14 @@ func editWithDefaultEditor(filename string, initialContent string, wipe bool) (s
 	return string(data), nil
 }
 
+// clampWithEllipsis shortens s to at most size characters. it counts runes and
+// not bytes, otherwise it would cut multibyte characters in half.
 func clampWithEllipsis(s string, size int) string {
-	if len(s) <= size {
+	if utf8.RuneCountInString(s) <= size {
 		return s
 	}
-	return s[0:size-1] + "…"
+	runes := []rune(s)
+	return string(runes[0:size-1]) + "…"
 }
 
 var (
