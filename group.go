@@ -271,28 +271,32 @@ var group = &cli.Command{
 				// stored events arrive newest-first before EOSE, so we buffer them
 				// from the end and print them in chronological order once EOSE
 				// arrives; live events are printed as they come.
+				//
+				// rendering a message needs profile metadata, which may have to be
+				// fetched from the network, so it is only done after EOSE: doing it
+				// while the stored events are still arriving is slow enough that the
+				// subscription gives up waiting for EOSE and the events that hadn't
+				// been read yet are dropped.
 				eosed := false
-				messages := make([]string, 200)
+				messages := make([]nostr.Event, 200)
 				base := len(messages)
 
 				for {
 					select {
 					case evt := <-sub.Events:
-						meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
-						line := color.HiBlueString(meta.ShortName()) + " " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) + ": " + colorizeNoteContent(ctx, evt.Content)
 						if eosed {
-							stdout(line)
+							stdout(formatGroupChatMessage(ctx, evt))
 						} else if base > 0 {
 							base--
-							messages[base] = line
+							messages[base] = evt
 						}
 						// else: pre-EOSE buffer is full (relay returned more than the limit); drop.
 					case reason := <-sub.ClosedReason:
 						stdout("closed:" + color.YellowString(reason))
 					case <-sub.EndOfStoredEvents:
 						eosed = true
-						for _, msg := range messages[base:] {
-							stdout(msg)
+						for _, evt := range messages[base:] {
+							stdout(formatGroupChatMessage(ctx, evt))
 						}
 					case <-sub.Context.Done():
 						return fmt.Errorf("subscription ended: %w", context.Cause(sub.Context))
@@ -967,6 +971,13 @@ func cond(b bool, ifYes string, ifNo string) string {
 }
 
 var hashtagRe = regexp.MustCompile(`#+\w+`)
+
+func formatGroupChatMessage(ctx context.Context, evt nostr.Event) string {
+	meta := sys.FetchProfileMetadata(ctx, evt.PubKey)
+	return color.HiBlueString(meta.ShortName()) +
+		" " + color.HiCyanString(evt.CreatedAt.Time().Format(time.DateTime)) +
+		": " + colorizeNoteContent(ctx, evt.Content)
+}
 
 func colorizeNoteContent(ctx context.Context, content string) string {
 	var sb strings.Builder
