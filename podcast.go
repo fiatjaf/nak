@@ -553,6 +553,13 @@ func firstPodcastAudioURL(evt nostr.Event) string {
 	return ""
 }
 
+// singleLine joins the lines of s with spaces, dropping the blank ones.
+func singleLine(s string) string {
+	return strings.Join(strings.FieldsFunc(s, func(r rune) bool {
+		return r == '\n' || r == '\r'
+	}), " ")
+}
+
 func podcastTagValue(evt nostr.Event, name string) string {
 	if tag := evt.Tags.Find(name); len(tag) >= 2 {
 		return tag[1]
@@ -664,7 +671,9 @@ func printPodcastEpisodeList(ctx context.Context, p podcastInfo, limit int) erro
 		}
 		id := ep.ID.Hex()[:8]
 		date := ep.CreatedAt.Time().Format("2006-01-02")
-		desc := clampWithEllipsis(ep.Content, 100)
+		// episode descriptions are several paragraphs long, so fold them into
+		// the single line each episode gets here
+		desc := clampWithEllipsis(singleLine(ep.Content), 100)
 		stdout(fmt.Sprintf("%s  %s  %s  %s", color.CyanString(id), date, title, desc))
 	}
 
