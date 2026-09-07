@@ -509,66 +509,26 @@ aside from those, there is also:
 						log("attempting download from %s... ", printUrl)
 					}
 
-					info, err := gitnaturalapi.GetInfoRefs(url)
+					commitHash, err := resolveGitNaturalRef(url, ref, nil)
 					if err != nil {
 						lastErr = err
 						continue
 					}
 
-					var commitHash string
-
-					if ref == "" {
-						if symref, ok := info.Symrefs["HEAD"]; ok && symref != "" {
-							commitHash, _ = info.Refs[symref]
-						} else if head, ok := info.Refs["HEAD"]; ok && head != "" {
-							commitHash = head
-						} else {
-							lastErr = fmt.Errorf("could not resolve default ref for %s", url)
-							continue
-						}
-					}
-
-					if gitHashRe.MatchString(ref) {
-						commitHash = ref
-					} else if strings.HasPrefix(ref, "refs/") {
-						if ch, ok := info.Refs[ref]; ok {
-							commitHash = ch
-						}
-					} else {
-						if ch, ok := info.Refs["refs/heads/"+ref]; ok {
-							commitHash = ch
-						} else if ch, ok := info.Refs["refs/tags/"+ref]; ok {
-							commitHash = ch
-						} else if sr, ok := info.Symrefs[ref]; ok {
-							commitHash = info.Refs[sr]
-						}
-					}
-
-					if commitHash == "" {
-						lastErr = fmt.Errorf("couldn't get a commit hash for ref '%s'", ref)
-						continue
-					}
-
-					if !gitHashRe.MatchString(commitHash) {
-						lastErr = fmt.Errorf("couldn't invalid commit hash for ref '%s': '%s'", ref, commitHash)
-						continue
-					}
-
-					entry, err := gitnaturalapi.GetObjectByPath(url, commitHash, path)
+					depth := gitPathDepth(path)
+					tree, err := gitnaturalapi.GetDirectoryTreeAt(url, commitHash, &depth)
 					if err != nil {
 						lastErr = err
 						continue
 					}
-					if entry == nil {
-						lastErr = fmt.Errorf("path '%s' not found", path)
-						continue
-					}
-					if entry.IsDir {
-						lastErr = fmt.Errorf("path '%s' is a directory", path)
+
+					hash, err := gitBlobHashInTree(tree, path)
+					if err != nil {
+						lastErr = err
 						continue
 					}
 
-					obj, err := gitnaturalapi.GetObject(url, entry.Hash)
+					obj, err := gitnaturalapi.GetObject(url, hash)
 					if err != nil {
 						lastErr = fmt.Errorf("download error: %s", err)
 						continue
@@ -717,40 +677,16 @@ aside from those, there is also:
 						continue
 					}
 
-					// the path is walked here instead of with GetObjectByPath()
-					// because that also treats '\' as a separator, while in git
-					// path names a backslash is just a regular character
-					segments := strings.Split(strings.Trim(path, "/"), "/")
-					name := segments[len(segments)-1]
-
-					depth := len(segments)
+					depth := gitPathDepth(path)
 					tree, err := gitnaturalapi.GetDirectoryTreeAt(url, commit, &depth)
 					if err != nil {
 						lastErr = err
 						continue
 					}
 
-					if len(segments) > 1 {
-						tree, err = gitTreeAtPath(tree, strings.Join(segments[:len(segments)-1], "/"))
-						if err != nil {
-							return err
-						}
-					}
-
-					hash := ""
-					for _, file := range tree.Files {
-						if file.Name == name {
-							hash = file.Hash
-							break
-						}
-					}
-					if hash == "" {
-						for _, dir := range tree.Directories {
-							if dir.Name == name {
-								return fmt.Errorf("path '%s' is a directory", path)
-							}
-						}
-						return fmt.Errorf("path '%s' not found", path)
+					hash, err := gitBlobHashInTree(tree, path)
+					if err != nil {
+						return err
 					}
 
 					obj, err := gitnaturalapi.GetObject(url, hash)
@@ -3960,6 +3896,40 @@ func resolveGitNaturalRef(url string, ref string, state *nip34.RepositoryState) 
 
 // gitTreeAtPath navigates a fully loaded git tree to the directory at the given
 // path, failing if any segment is a file or doesn't exist.
+// gitPathDepth is how deep a tree has to be fetched to resolve the given path.
+func gitPathDepth(path string) int {
+	return len(strings.Split(strings.Trim(path, "/"), "/"))
+}
+
+// gitBlobHashInTree resolves the last segment of path to a blob hash in an
+// already fetched tree. it splits on '/' only, unlike the api's
+// GetObjectByPath(), which also treats a backslash as a separator even though
+// in git a backslash is just a regular character in a path name.
+func gitBlobHashInTree(tree *gitnaturalapi.Tree, path string) (string, error) {
+	segments := strings.Split(strings.Trim(path, "/"), "/")
+	name := segments[len(segments)-1]
+
+	if len(segments) > 1 {
+		var err error
+		tree, err = gitTreeAtPath(tree, strings.Join(segments[:len(segments)-1], "/"))
+		if err != nil {
+			return "", err
+		}
+	}
+
+	for _, file := range tree.Files {
+		if file.Name == name {
+			return file.Hash, nil
+		}
+	}
+	for _, dir := range tree.Directories {
+		if dir.Name == name {
+			return "", fmt.Errorf("path '%s' is a directory", path)
+		}
+	}
+	return "", fmt.Errorf("path '%s' not found", path)
+}
+
 func gitTreeAtPath(tree *gitnaturalapi.Tree, path string) (*gitnaturalapi.Tree, error) {
 	path = strings.Trim(path, "/")
 	if path == "" {
