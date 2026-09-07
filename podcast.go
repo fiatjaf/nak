@@ -31,7 +31,7 @@ var podcast = &cli.Command{
 		{
 			Name:      "play",
 			Usage:     "play latest episode from podcast or specific episode",
-			ArgsUsage: "<pubkey|nip05|npub|nprofile|nevent>",
+			ArgsUsage: "<pubkey|nip05|npub|nprofile|nevent> [episode-id-prefix]",
 			Flags: []cli.Flag{
 				&cli.StringSliceFlag{
 					Name:    "relay",
@@ -44,6 +44,28 @@ var podcast = &cli.Command{
 				},
 			},
 			Action: func(ctx context.Context, c *cli.Command) error {
+				// a second argument is the id prefix of an episode, as printed by
+				// "podcast list"; otherwise the latest episode is played
+				if c.Args().Len() == 2 {
+					relays := c.StringSlice("relay")
+					if err := normalizeAndValidateRelayURLs(relays); err != nil {
+						return err
+					}
+
+					pk, extraRelays, err := resolvePodcastPubKeyTarget(ctx, c.Args().Get(0))
+					if err != nil {
+						return fmt.Errorf("invalid podcast target %q: %w", c.Args().Get(0), err)
+					}
+
+					episode, err := fetchPodcastEpisodeByPrefix(ctx,
+						pk, c.Args().Get(1), nostr.AppendUnique(relays, extraRelays...), 500)
+					if err != nil {
+						return err
+					}
+
+					return playPodcastEpisode(c.String("player"), episode)
+				}
+
 				for target := range getStdinLinesOrArguments(c.Args()) {
 					if target == "" {
 						return fmt.Errorf("missing podcast or episode target")
@@ -224,9 +246,25 @@ func fetchSpecificPodcastEpisode(ctx context.Context, pointer nostr.EventPointer
 }
 
 func fetchLatestEpisodeForPodcastSelection(ctx context.Context, pk nostr.PubKey, relayHints []string) (*nostr.Event, error) {
-	choices, err := discoverPodcasts(ctx, pk, relayHints)
+	chosen, err := selectPodcast(ctx, pk, relayHints)
 	if err != nil {
 		return nil, err
+	}
+
+	episode, err := fetchLatestPodcastEpisode(ctx, chosen)
+	if err != nil {
+		return nil, err
+	}
+
+	return episode, nil
+}
+
+// selectPodcast finds the podcasts published or listed by the given pubkey,
+// asking which one is meant when there is more than one.
+func selectPodcast(ctx context.Context, pk nostr.PubKey, relayHints []string) (podcastInfo, error) {
+	choices, err := discoverPodcasts(ctx, pk, relayHints)
+	if err != nil {
+		return podcastInfo{}, err
 	}
 
 	chosen := choices[0]
@@ -242,7 +280,7 @@ func fetchLatestEpisodeForPodcastSelection(ctx context.Context, pk nostr.PubKey,
 			Options:  labels,
 			PageSize: 12,
 		}, &selected); err != nil {
-			return nil, err
+			return podcastInfo{}, err
 		}
 
 		for i, label := range labels {
@@ -253,12 +291,44 @@ func fetchLatestEpisodeForPodcastSelection(ctx context.Context, pk nostr.PubKey,
 		}
 	}
 
-	episode, err := fetchLatestPodcastEpisode(ctx, chosen)
+	return chosen, nil
+}
+
+// fetchPodcastEpisodeByPrefix finds one episode of the podcast by the id prefix
+// shown by "podcast list".
+func fetchPodcastEpisodeByPrefix(ctx context.Context, pk nostr.PubKey, prefix string, relayHints []string, limit int) (*nostr.Event, error) {
+	prefix = strings.ToLower(strings.TrimSpace(prefix))
+	if prefix == "" {
+		return nil, fmt.Errorf("missing episode id prefix")
+	}
+
+	chosen, err := selectPodcast(ctx, pk, relayHints)
 	if err != nil {
 		return nil, err
 	}
 
-	return episode, nil
+	episodes, err := fetchPodcastEpisodes(ctx, chosen, limit)
+	if err != nil {
+		return nil, err
+	}
+
+	var matched *nostr.Event
+	count := 0
+	for _, ep := range episodes {
+		if strings.HasPrefix(ep.ID.Hex(), prefix) {
+			matched = &ep
+			count++
+		}
+	}
+
+	switch {
+	case count == 0:
+		return nil, fmt.Errorf("no episode found with id prefix '%s'", prefix)
+	case count > 1:
+		return nil, fmt.Errorf("id prefix '%s' is ambiguous", prefix)
+	}
+
+	return matched, nil
 }
 
 func discoverPodcasts(ctx context.Context, pk nostr.PubKey, relayHints []string) ([]podcastInfo, error) {
@@ -590,11 +660,12 @@ func printPodcastEpisodeList(ctx context.Context, p podcastInfo, limit int) erro
 	for _, ep := range episodes {
 		title := podcastTagValue(ep, "title")
 		if title == "" {
-			title = ep.ID.Hex()[:16]
+			title = "<untitled>"
 		}
+		id := ep.ID.Hex()[:8]
 		date := ep.CreatedAt.Time().Format("2006-01-02")
 		desc := clampWithEllipsis(ep.Content, 100)
-		stdout(fmt.Sprintf("%s  %s  %s", date, title, desc))
+		stdout(fmt.Sprintf("%s  %s  %s  %s", color.CyanString(id), date, title, desc))
 	}
 
 	return nil
