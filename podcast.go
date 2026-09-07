@@ -2,11 +2,17 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"os"
 	"os/exec"
+	"os/signal"
 	"runtime"
 	"slices"
+	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip05"
@@ -63,7 +69,7 @@ var podcast = &cli.Command{
 						return err
 					}
 
-					return playPodcastEpisode(c.String("player"), episode)
+					return playPodcastEpisode(ctx, c.String("player"), episode)
 				}
 
 				for target := range getStdinLinesOrArguments(c.Args()) {
@@ -81,7 +87,7 @@ var podcast = &cli.Command{
 						return err
 					}
 
-					if err := playPodcastEpisode(c.String("player"), episode); err != nil {
+					if err := playPodcastEpisode(ctx, c.String("player"), episode); err != nil {
 						return err
 					}
 				}
@@ -462,7 +468,7 @@ func fetchLatestPodcastEpisode(ctx context.Context, podcast podcastInfo) (*nostr
 	return latest, nil
 }
 
-func playPodcastEpisode(player string, episode *nostr.Event) error {
+func playPodcastEpisode(ctx context.Context, player string, episode *nostr.Event) error {
 	audioURL := firstPodcastAudioURL(*episode)
 	if audioURL == "" {
 		return fmt.Errorf("podcast episode has no audio tag")
@@ -484,7 +490,61 @@ func playPodcastEpisode(player string, episode *nostr.Event) error {
 	cmd.Stdout = color.Output
 	cmd.Stderr = color.Error
 
-	return cmd.Run()
+	return runPodcastPlayer(ctx, cmd)
+}
+
+// errPodcastInterrupted is returned when the user stops playback with ctrl-c.
+var errPodcastInterrupted = errors.New("interrupted")
+
+// runPodcastPlayer runs the player and makes sure it goes away when we do.
+// on windows a ctrl-c doesn't necessarily reach the player (mpv.exe is a gui
+// subsystem binary and never installs a console handler), so instead of relying
+// on the console sending it the event we catch the interrupt ourselves and kill
+// the player.
+func runPodcastPlayer(ctx context.Context, cmd *exec.Cmd) error {
+	if err := cmd.Start(); err != nil {
+		return err
+	}
+
+	interrupt := make(chan os.Signal, 1)
+	signal.Notify(interrupt, os.Interrupt, syscall.SIGTERM)
+	defer signal.Stop(interrupt)
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+
+	select {
+	case err := <-done:
+		return err
+	case <-interrupt:
+	case <-ctx.Done():
+	}
+
+	killPodcastPlayer(cmd)
+
+	// give the player a moment to die so it doesn't keep writing to our terminal
+	select {
+	case <-done:
+	case <-time.After(3 * time.Second):
+	}
+
+	return errPodcastInterrupted
+}
+
+func killPodcastPlayer(cmd *exec.Cmd) {
+	if cmd.Process == nil {
+		return
+	}
+
+	if runtime.GOOS == "windows" {
+		// players tend to spawn helper processes, so kill the whole tree
+		kill := exec.Command("taskkill", "/T", "/F", "/PID", strconv.Itoa(cmd.Process.Pid))
+		if err := kill.Run(); err == nil {
+			return
+		}
+	}
+
+	cmd.Process.Kill()
 }
 
 func buildPodcastPlayerCommand(player string, audioURL string) (*exec.Cmd, error) {
@@ -526,9 +586,11 @@ func podcastPlayerCandidates() []struct {
 			name string
 			args []string
 		}{
-			{"mpv.exe", nil},
-			{"vlc.exe", nil},
-			{"ffplay.exe", []string{"-nodisp", "-autoexit"}},
+			// no .exe here on purpose: LookPath honours PATHEXT, so mpv.com,
+			// the console wrapper that handles ctrl-c, is preferred when present
+			{"mpv", nil},
+			{"vlc", nil},
+			{"ffplay", []string{"-nodisp", "-autoexit"}},
 			{"cmd", []string{"/c", "start"}},
 		}
 	}
