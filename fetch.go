@@ -43,6 +43,7 @@ var fetch = &cli.Command{
 		}
 
 		for code := range getStdinLinesOrArguments(c.Args()) {
+			code = strings.TrimPrefix(code, "nostr:")
 			var filter nostr.Filter
 			var authorHint nostr.PubKey
 			relays := c.StringSlice("relay")

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
+	"strings"
 	"time"
 
 	"fiatjaf.com/nostr"
@@ -253,6 +254,7 @@ func (t pubKeyOrAddressValue) ToString(b PubKeyOrAddress) string {
 }
 
 func (t *pubKeyOrAddressValue) Set(value string) error {
+	value = strings.TrimPrefix(value, "nostr:")
 	pubkey, err1 := parsePubKey(value)
 	if err1 == nil {
 		t.value = PubKeyOrAddress{PubKey: pubkey}

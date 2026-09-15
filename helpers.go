@@ -476,6 +476,7 @@ func askConfirmation(msg string) bool {
 }
 
 func parsePubKey(value string) (nostr.PubKey, error) {
+	value = strings.TrimPrefix(value, "nostr:")
 	if nip05.IsValidIdentifier(value) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		pp, err := nip05.QueryIdentifier(ctx, value)
@@ -508,6 +509,7 @@ func parsePubKey(value string) (nostr.PubKey, error) {
 }
 
 func parseSecretKey(input string) (nostr.SecretKey, error) {
+	input = strings.TrimPrefix(input, "nostr:")
 	if prefix, ski, err := nip19.Decode(input); err == nil && prefix == "nsec" {
 		return ski.(nostr.SecretKey), nil
 	}
@@ -521,6 +523,7 @@ func parseSecretKey(input string) (nostr.SecretKey, error) {
 }
 
 func parseEventID(value string) (nostr.ID, error) {
+	value = strings.TrimPrefix(value, "nostr:")
 	id, err := nostr.IDFromHex(value)
 	if err == nil {
 		return id, nil
