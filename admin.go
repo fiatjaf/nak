@@ -32,6 +32,8 @@ var admin = &cli.Command{
 		}{
 			{"allowpubkey", []string{"pubkey", "reason"}},
 			{"banpubkey", []string{"pubkey", "reason"}},
+			{"unallowpubkey", []string{"pubkey"}},
+			{"unbanpubkey", []string{"pubkey"}},
 			{"listallowedpubkeys", nil},
 			{"listbannedpubkeys", nil},
 			{"listeventsneedingmoderation", nil},
@@ -58,6 +60,11 @@ var admin = &cli.Command{
 			{"deleterole", []string{"role_id"}},
 			{"assignrole", []string{"pubkey", "role_id"}},
 			{"unassignrole", []string{"pubkey", "role_id"}},
+			{"assignmethod", []string{"pubkey", "method"}},
+			{"unassignmethod", []string{"pubkey", "method"}},
+			{"listclaims", nil},
+			{"createclaim", []string{"claim"}},
+			{"deleteclaim", []string{"claim"}},
 		}
 
 		commands := make([]*cli.Command, 0, len(methods))
@@ -182,7 +189,7 @@ func declareFlag(argName string) cli.Flag {
 	case "id":
 		return &IDFlag{Name: argName, Usage: usage}
 	case "kind", "order", "color":
-		return &cli.IntFlag{Name: argName, Required: true, Usage: usage}
+		return &cli.IntFlag{Name: argName, Required: argName == "kind", Usage: usage}
 	case "reason":
 		return &cli.StringFlag{Name: argName, Usage: usage}
 	case "methods":
