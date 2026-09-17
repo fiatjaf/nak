@@ -295,7 +295,7 @@ func performReq(
 			pTags := append([]string{}, filter.Tags["p"]...)
 			pTags = append(pTags, filter.Tags["P"]...)
 			for _, value := range pTags {
-				pubkey, err := parsePubKey(value)
+				pubkey, err := parsePubKey(value, nostr.ZeroPK)
 				if err != nil {
 					continue
 				}

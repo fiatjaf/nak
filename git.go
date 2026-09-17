@@ -156,7 +156,7 @@ aside from those, there is also:
 				var owner nostr.PubKey
 				var ownerStr string
 				if c.String("owner") != "" {
-					owner, err = parsePubKey(c.String("owner"))
+					owner, err = parsePubKey(c.String("owner"), nostr.ZeroPK)
 					if err != nil {
 						return fmt.Errorf("invalid owner pubkey: %w", err)
 					}
@@ -169,7 +169,7 @@ aside from those, there is also:
 						}, &ownerStr); err != nil {
 							return err
 						}
-						owner, err = parsePubKey(ownerStr)
+						owner, err = parsePubKey(ownerStr, nostr.ZeroPK)
 						if err == nil {
 							ownerStr = nip19.EncodeNpub(owner)
 							break
@@ -2204,7 +2204,7 @@ please fix
 				}
 
 				// parse owner
-				owner, err := parsePubKey(localConfig.Owner)
+				owner, err := parsePubKey(localConfig.Owner, nostr.ZeroPK)
 				if err != nil {
 					return fmt.Errorf("invalid owner public key: %w", err)
 				}
@@ -3046,7 +3046,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 	}
 
 	// parse owner
-	owner, err := parsePubKey(localConfig.Owner)
+	owner, err := parsePubKey(localConfig.Owner, nostr.ZeroPK)
 	if err != nil {
 		return nip34.Repository{}, nil, fmt.Errorf("invalid owner public key: %w", err)
 	}
@@ -3573,7 +3573,7 @@ func parseRepositoryAddress(
 		parts := strings.Split(address, "/")
 		if len(parts) == 5 {
 			// nostr://<owner>/<relay>/<identifier>
-			owner, err = parsePubKey(parts[2])
+			owner, err = parsePubKey(parts[2], nostr.ZeroPK)
 			if err != nil {
 				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
 			}
@@ -3596,7 +3596,7 @@ func parseRepositoryAddress(
 			return owner, identifier, relayHints, nil
 		} else if len(parts) == 4 {
 			// nostr://<owner>/<identifier>
-			owner, err = parsePubKey(parts[2])
+			owner, err = parsePubKey(parts[2], nostr.ZeroPK)
 			if err != nil {
 				return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner in URL: %w", err)
 			}
@@ -3625,7 +3625,7 @@ func parseRepositoryAddress(
 	identifier = parts[1]
 
 	// try to parse as pubkey (npub, nprofile, or hex)
-	owner, err = parsePubKey(ownerPart)
+	owner, err = parsePubKey(ownerPart, nostr.ZeroPK)
 	if err != nil {
 		return nostr.PubKey{}, "", nil, fmt.Errorf("invalid owner identifier '%s': %w", ownerPart, err)
 	}
@@ -3737,7 +3737,7 @@ func RepositoryToConfig(repo nip34.Repository) Nip34Config {
 }
 
 func (localConfig Nip34Config) Validate() error {
-	_, err := parsePubKey(localConfig.Owner)
+	_, err := parsePubKey(localConfig.Owner, nostr.ZeroPK)
 	if err != nil {
 		return fmt.Errorf("owner pubkey '%s' is not valid: %w", localConfig.Owner, err)
 	}
@@ -3745,7 +3745,7 @@ func (localConfig Nip34Config) Validate() error {
 }
 
 func (localConfig Nip34Config) ToRepository() nip34.Repository {
-	owner, err := parsePubKey(localConfig.Owner)
+	owner, err := parsePubKey(localConfig.Owner, nostr.ZeroPK)
 	if err != nil {
 		panic(err)
 	}

@@ -9,6 +9,7 @@ import (
 	"os"
 	"unsafe"
 
+	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb7/blossom"
 	"github.com/urfave/cli/v3"
@@ -39,7 +40,7 @@ var blossomCmd = &cli.Command{
 				var client *blossom.Client
 				pubkey := c.Args().First()
 				if pubkey != "" {
-					pk, err := parsePubKey(pubkey)
+					pk, err := parsePubKey(pubkey, nostr.ZeroPK)
 					if err != nil {
 						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
 					}

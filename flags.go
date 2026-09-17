@@ -192,7 +192,7 @@ func (t pubkeyValue) Create(val nostr.PubKey, p *nostr.PubKey, c struct{}) cli.V
 func (t pubkeyValue) ToString(b nostr.PubKey) string { return t.pubkey.String() }
 
 func (t *pubkeyValue) Set(value string) error {
-	pubkey, err := parsePubKey(value)
+	pubkey, err := parsePubKey(value, nostr.ZeroPK)
 	t.pubkey = pubkey
 	t.hasBeenSet = true
 	return err
@@ -255,7 +255,7 @@ func (t pubKeyOrAddressValue) ToString(b PubKeyOrAddress) string {
 
 func (t *pubKeyOrAddressValue) Set(value string) error {
 	value = strings.TrimPrefix(value, "nostr:")
-	pubkey, err1 := parsePubKey(value)
+	pubkey, err1 := parsePubKey(value, nostr.ZeroPK)
 	if err1 == nil {
 		t.value = PubKeyOrAddress{PubKey: pubkey}
 		t.hasBeenSet = true

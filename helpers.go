@@ -21,6 +21,7 @@ import (
 	"unicode/utf8"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/nip02"
 	"fiatjaf.com/nostr/nip05"
 	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/schema"
@@ -475,8 +476,13 @@ func askConfirmation(msg string) bool {
 	}
 }
 
-func parsePubKey(value string) (nostr.PubKey, error) {
+func parsePubKey(value string, from nostr.PubKey) (nostr.PubKey, error) {
 	value = strings.TrimPrefix(value, "nostr:")
+
+	if strings.HasPrefix(value, "~") {
+		return resolvePetnamePath(value, from)
+	}
+
 	if nip05.IsValidIdentifier(value) {
 		ctx, cancel := context.WithTimeout(context.Background(), time.Second*3)
 		pp, err := nip05.QueryIdentifier(ctx, value)
@@ -735,4 +741,30 @@ func combineFlags(flagSlices [][]cli.Flag, extraFlags ...cli.Flag) []cli.Flag {
 	}
 	result = append(result, extraFlags...)
 	return result
+}
+
+// resolvePetnamePath resolves NIP-02 petname references like "~erin/david/frank" to a pubkey,
+// by walking the follow lists of each name in the chain. The first name is looked up in the
+// signer's own follow list (or its NIP-05 identifier, which can be mixed in, like
+// "~erin@names.com/david/frank"). See https://github.com/nostr-protocol/nips/blob/master/02.md.
+func resolvePetnamePath(value string, from nostr.PubKey) (nostr.PubKey, error) {
+	if sys == nil {
+		return nostr.ZeroPK, fmt.Errorf("can't resolve petnames before system initialization")
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
+	defer cancel()
+
+	pk, err := sys.ResolvePetnamePath(ctx, from, value)
+	if err != nil {
+		// InputToProfile intentionally hides NIP-05 lookup errors. Preserve
+		// useful network errors instead of treating a failed lookup as petname.
+		if parts, parseErr := nip02.ParsePetnamePath(value); parseErr == nil && len(parts) > 0 && nip05.IsValidIdentifier(parts[0]) {
+			if _, nip05Err := nip05.QueryIdentifier(ctx, parts[0]); nip05Err != nil {
+				return nostr.ZeroPK, nip05Err
+			}
+		}
+		return nostr.ZeroPK, fmt.Errorf("failed to resolve \"%s\": %w", value, err)
+	}
+	return pk, nil
 }

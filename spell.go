@@ -260,7 +260,7 @@ func buildSpellReq(ctx context.Context, c *cli.Command, tags nostr.Tags) (nostr.
 
 	getMe := func() (nostr.PubKey, error) {
 		if !c.IsSet("sec") && !c.IsSet("prompt-sec") && c.IsSet("pub") {
-			return parsePubKey(c.String("pub"))
+			return parsePubKey(c.String("pub"), nostr.ZeroPK)
 		}
 
 		kr, _, err := gatherKeyerFromArguments(ctx, c)

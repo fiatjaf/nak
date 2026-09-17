@@ -299,7 +299,7 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 		keyGroups := make([][]*btcec.PublicKey, 0, len(result.Keys))
 
 		for i, keyhex := range result.Keys {
-			pk32, err := parsePubKey(keyhex)
+			pk32, err := parsePubKey(keyhex, nostr.ZeroPK)
 			if err == nil { /* we'll try both the 02 and the 03 prefix versions */
 				result.Keys[i] = pk32.Hex()
 
