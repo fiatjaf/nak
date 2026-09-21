@@ -98,6 +98,7 @@ var app = &cli.Command{
 		podcast,
 		nip,
 		syncCmd,
+		kanban,
 		spell,
 		profile,
 		validateCmd,
@@ -190,7 +191,7 @@ var app = &cli.Command{
 func init() {
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:  "version",
-		Usage: "prints the version",
+		Usage: "prints version",
 	}
 	cli.HelpFlag = &cli.BoolFlag{
 		Name:        "help",
