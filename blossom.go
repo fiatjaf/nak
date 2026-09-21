@@ -23,10 +23,9 @@ var blossomCmd = &cli.Command{
 	DisableSliceFlagSeparator: true,
 	Flags: combineFlags([][]cli.Flag{},
 		&cli.StringSliceFlag{
-			Name:     "server",
-			Aliases:  []string{"s"},
-			Usage:    "the hostname of the target mediaserver",
-			Required: true,
+			Name:    "server",
+			Aliases: []string{"s"},
+			Usage:   "the hostname of the target mediaserver",
 		},
 	),
 	Commands: []*cli.Command{
@@ -45,8 +44,8 @@ var blossomCmd = &cli.Command{
 						return fmt.Errorf("invalid public key '%s': %w", pubkey, err)
 					}
 					servers := c.StringSlice("server")
-					if err != nil {
-						return err
+					if len(servers) == 0 {
+						return fmt.Errorf("no server specified")
 					}
 					client = blossom.NewClient(servers[0], keyer.NewReadOnlySigner(pk))
 				} else {
@@ -75,6 +74,12 @@ var blossomCmd = &cli.Command{
 			Description:               `takes any number of local file paths and uploads them to a mediaserver, printing the resulting blob descriptions when successful.`,
 			DisableSliceFlagSeparator: true,
 			ArgsUsage:                 "[files...]",
+			Flags: []cli.Flag{
+				&cli.BoolFlag{
+					Name:  "auto",
+					Usage: "upload to the current user's advertised blossom servers",
+				},
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				keyer, _, err := gatherKeyerFromArguments(ctx, c)
 				if err != nil {
@@ -82,9 +87,19 @@ var blossomCmd = &cli.Command{
 				}
 
 				servers := c.StringSlice("server")
+				if c.Bool("auto") {
+					pubkey, err := keyer.GetPublicKey(ctx)
+					if err != nil {
+						return fmt.Errorf("failed to get public key: %w", err)
+					}
+					advertised := sys.FetchBlossomServerList(ctx, pubkey)
+					for _, server := range advertised.Items {
+						servers = append(servers, server.Value())
+					}
+				}
 
 				if len(servers) == 0 {
-					return fmt.Errorf("no server specified")
+					return fmt.Errorf("no server specified and no blossom servers advertised")
 				}
 
 				if isPiped() {
@@ -322,8 +337,8 @@ func getBlossomClient(ctx context.Context, c *cli.Command) (*blossom.Client, err
 		return nil, err
 	}
 	servers := c.StringSlice("server")
-	if err != nil {
-		return nil, err
+	if len(servers) == 0 {
+		return nil, fmt.Errorf("no server specified")
 	}
 	return blossom.NewClient(servers[0], keyer), nil
 }
