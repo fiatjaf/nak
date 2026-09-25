@@ -41,7 +41,6 @@ func setupPetnameSystem(t *testing.T, lists map[nostr.SecretKey][]sdk.ProfileRef
 
 	t.Cleanup(func() {
 		sys = nil
-		rootSec = ""
 	})
 }
 
@@ -94,9 +93,8 @@ func TestResolvePetnamePathChain(t *testing.T) {
 		erin:  {{Pubkey: david.Public(), Petname: "david"}},
 		david: {{Pubkey: frank.Public(), Petname: "frank"}},
 	})
-	rootSec = me.Hex()
 
-	pk, err := resolvePetnamePath("~erin/david/frank")
+	pk, err := resolvePetnamePath("~erin/david/frank", me.Public())
 	require.NoError(t, err)
 	require.Equal(t, frank.Public(), pk)
 }
@@ -108,9 +106,8 @@ func TestResolvePetnamePathSingleHop(t *testing.T) {
 	setupPetnameSystem(t, map[nostr.SecretKey][]sdk.ProfileRef{
 		me: {{Pubkey: erin.Public(), Petname: "erin"}},
 	})
-	rootSec = me.Hex()
 
-	pk, err := resolvePetnamePath("~erin")
+	pk, err := resolvePetnamePath("~erin", me.Public())
 	require.NoError(t, err)
 	require.Equal(t, erin.Public(), pk)
 }
@@ -122,9 +119,8 @@ func TestResolvePetnamePathCurrentUser(t *testing.T) {
 	setupPetnameSystem(t, map[nostr.SecretKey][]sdk.ProfileRef{
 		me: {{Pubkey: erin.Public(), Petname: "erin"}},
 	})
-	rootSec = me.Hex()
 
-	pk, err := resolvePetnamePath("~/erin")
+	pk, err := resolvePetnamePath("~/erin", me.Public())
 	require.NoError(t, err)
 	require.Equal(t, erin.Public(), pk)
 }
@@ -137,7 +133,7 @@ func TestResolvePetnamePathDirectRootWithoutIdentity(t *testing.T) {
 		me: {{Pubkey: erin.Public(), Petname: "erin"}},
 	})
 
-	pk, err := resolvePetnamePath("~" + nip19.EncodeNpub(me.Public()) + "/erin")
+	pk, err := resolvePetnamePath("~"+nip19.EncodeNpub(me.Public())+"/erin", nostr.ZeroPK)
 	require.NoError(t, err)
 	require.Equal(t, erin.Public(), pk)
 }
@@ -152,7 +148,7 @@ func TestResolvePetnamePathNip05Root(t *testing.T) {
 
 	// the first segment must be routed to nip05 (which will fail to connect here, as nothing
 	// listens on 127.0.0.1:443) instead of being treated as a petname
-	_, err := resolvePetnamePath("~erin@127.0.0.1/david")
+	_, err := resolvePetnamePath("~erin@127.0.0.1/david", nostr.ZeroPK)
 	require.Error(t, err)
 	require.Contains(t, err.Error(), "request failed")
 	require.NotContains(t, err.Error(), "follow list")
@@ -167,32 +163,30 @@ func TestResolvePetnamePathErrors(t *testing.T) {
 		me:   {{Pubkey: erin.Public(), Petname: "erin"}},
 		erin: {{Pubkey: david.Public(), Petname: "david"}},
 	})
-	rootSec = me.Hex()
 
 	// unknown petname at root
-	_, err := resolvePetnamePath("~carol")
+	_, err := resolvePetnamePath("~carol", me.Public())
 	require.ErrorContains(t, err, "no one in your follow list")
 
 	// unknown petname mid-chain
-	_, err = resolvePetnamePath("~erin/carol")
+	_, err = resolvePetnamePath("~erin/carol", me.Public())
 	require.ErrorContains(t, err, "doesn't follow anyone named")
 
 	// empty reference
-	_, err = resolvePetnamePath("~")
+	_, err = resolvePetnamePath("~", me.Public())
 	require.Error(t, err)
 
 	// empty segment
-	_, err = resolvePetnamePath("~erin//frank")
+	_, err = resolvePetnamePath("~erin//frank", me.Public())
 	require.Error(t, err)
 
 	// invalid petname characters
-	_, err = resolvePetnamePath("~er\tin")
+	_, err = resolvePetnamePath("~er\tin", me.Public())
 	require.Error(t, err)
 
 	// no identity
-	rootSec = ""
-	_, err = resolvePetnamePath("~erin")
-	require.ErrorContains(t, err, "no secret key")
+	_, err = resolvePetnamePath("~erin", nostr.ZeroPK)
+	require.ErrorContains(t, err, "without an identity")
 }
 
 func TestResolvePetnameMissingFollowList(t *testing.T) {
@@ -205,10 +199,9 @@ func TestResolvePetnameMissingFollowList(t *testing.T) {
 		me:   {{Pubkey: erin.Public(), Petname: "erin"}},
 		erin: nil,
 	})
-	t.Cleanup(func() { sys = nil; rootSec = "" })
-	rootSec = me.Hex()
+	t.Cleanup(func() { sys = nil })
 
-	_, err := resolvePetnamePath("~erin/frank")
+	_, err := resolvePetnamePath("~erin/frank", me.Public())
 	require.ErrorContains(t, err, "couldn't get follow list")
 }
 
@@ -219,7 +212,6 @@ func TestParsePubKeyUnaffectedInputs(t *testing.T) {
 	setupPetnameSystem(t, map[nostr.SecretKey][]sdk.ProfileRef{
 		me: {{Pubkey: erin.Public(), Petname: "erin"}},
 	})
-	rootSec = me.Hex()
 
 	// plain npub keeps working through parsePubKey
 	pk, err := parsePubKey(nip19.EncodeNpub(erin.Public()), nostr.ZeroPK)
