@@ -70,7 +70,7 @@ func isPiped() bool {
 	return is
 }
 
-func getJsonsOrBlank() iter.Seq[string] {
+func getJsonsOrBlank(github bool) iter.Seq[string] {
 	var curr strings.Builder
 
 	var finalJsonErr error
@@ -102,7 +102,7 @@ func getJsonsOrBlank() iter.Seq[string] {
 			return
 		}
 
-		if !hasStdin {
+		if !hasStdin && (!isPiped() || github) {
 			if !yield("{}") {
 				return
 			}

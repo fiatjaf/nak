@@ -306,7 +306,7 @@ if any of the files are not found the command will fail, otherwise it will succe
 					return nil
 				}
 
-				for input := range getJsonsOrBlank() {
+				for input := range getJsonsOrBlank(false) {
 					if input == "{}" {
 						continue
 					}
