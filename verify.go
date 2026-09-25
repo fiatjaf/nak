@@ -17,7 +17,7 @@ var verify = &cli.Command{
 it outputs nothing if the verification is successful.`,
 	DisableSliceFlagSeparator: true,
 	Action: func(ctx context.Context, c *cli.Command) error {
-		for stdinEvent := range getJsonsOrBlank() {
+		for stdinEvent := range getJsonsOrBlank(false) {
 			evt := nostr.Event{}
 			if stdinEvent == "{}" && !isPiped() {
 				// blank sentinel from getJsonsOrBlank(), use the argument instead
