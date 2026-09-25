@@ -5,7 +5,6 @@ import (
 
 	stdjson "encoding/json"
 
-	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
 	"github.com/fatih/color"
 	"github.com/urfave/cli/v3"
@@ -40,7 +39,7 @@ example usage:
 	ArgsUsage: "[pubkey]",
 	Action: func(ctx context.Context, c *cli.Command) error {
 		for pubkeyInput := range getStdinLinesOrArguments(c.Args()) {
-			pk, err := parsePubKey(pubkeyInput, nostr.ZeroPK)
+			pk, err := parsePubKeyForCommand(ctx, c, pubkeyInput)
 			if err != nil {
 				ctx = lineProcessingError(ctx, "invalid pubkey '%s': %s", pubkeyInput, err)
 				continue

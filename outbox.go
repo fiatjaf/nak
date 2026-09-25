@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 
-	"fiatjaf.com/nostr"
 	"github.com/urfave/cli/v3"
 )
 
@@ -23,7 +22,7 @@ var outboxCmd = &cli.Command{
 					return fmt.Errorf("expected exactly one argument (pubkey)")
 				}
 
-				pk, err := parsePubKey(c.Args().First(), nostr.ZeroPK)
+				pk, err := parsePubKeyForCommand(ctx, c, c.Args().First())
 				if err != nil {
 					return fmt.Errorf("invalid public key '%s': %w", c.Args().First(), err)
 				}

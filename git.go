@@ -156,7 +156,7 @@ aside from those, there is also:
 				var owner nostr.PubKey
 				var ownerStr string
 				if c.String("owner") != "" {
-					owner, err = parsePubKey(c.String("owner"), nostr.ZeroPK)
+					owner, err = parsePubKeyForCommand(ctx, c, c.String("owner"))
 					if err != nil {
 						return fmt.Errorf("invalid owner pubkey: %w", err)
 					}
@@ -169,7 +169,7 @@ aside from those, there is also:
 						}, &ownerStr); err != nil {
 							return err
 						}
-						owner, err = parsePubKey(ownerStr, nostr.ZeroPK)
+						owner, err = parsePubKeyForCommand(ctx, c, ownerStr)
 						if err == nil {
 							ownerStr = nip19.EncodeNpub(owner)
 							break
