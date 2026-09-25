@@ -20,4 +20,4 @@ jobs:
       # Existing CLI tests share flag state and include public-relay requests.
       # Keep this regression suite independent of those tests and Go vet's
       # pre-existing non-constant-format diagnostics.
-      - run: go test -vet=off . -run 'TestResolvePetname|TestParsePubKey' -count=1
+      - run: go test -vet=off . -run 'TestResolvePetname|TestParsePubKey|TestPetnameCLI' -count=1

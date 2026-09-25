@@ -188,6 +188,8 @@ var app = &cli.Command{
 }
 
 func init() {
+	deferPetnameFlags(app)
+
 	cli.VersionFlag = &cli.BoolFlag{
 		Name:  "version",
 		Usage: "prints the version",
