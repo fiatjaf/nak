@@ -57,7 +57,7 @@ var spell = &cli.Command{
 
 		if c.Args().Len() == 0 {
 			// check if we have input from stdin
-			for stdinEvent := range getJsonsOrBlank() {
+			for stdinEvent := range getJsonsOrBlank(false) {
 				if stdinEvent == "{}" {
 					break
 				}

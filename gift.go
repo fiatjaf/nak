@@ -92,7 +92,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				}
 
 				// read event from stdin
-				for eventJSON := range getJsonsOrBlank() {
+				for eventJSON := range getJsonsOrBlank(false) {
 					if eventJSON == "{}" {
 						continue
 					}
@@ -185,7 +185,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				}
 
 				// read gift-wrapped event from stdin
-				for wrapJSON := range getJsonsOrBlank() {
+				for wrapJSON := range getJsonsOrBlank(false) {
 					if wrapJSON == "{}" {
 						continue
 					}

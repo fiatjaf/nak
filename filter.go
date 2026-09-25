@@ -69,7 +69,7 @@ example:
 		}
 
 		// if there is no stdin we'll still get an empty object here
-		for evtj := range getJsonsOrBlank() {
+		for evtj := range getJsonsOrBlank(false) {
 			var evt nostr.Event
 			if err := easyjson.Unmarshal([]byte(evtj), &evt); err != nil {
 				ctx = lineProcessingError(ctx, "invalid event: %s", err)

@@ -48,7 +48,7 @@ func getEncodeSubcommandInput(args cli.Args, allowBlank bool) iter.Seq[string] {
 	}
 
 	return func(yield func(string) bool) {
-		for jsonStr := range getJsonsOrBlank() {
+		for jsonStr := range getJsonsOrBlank(false) {
 			if jsonStr == "{}" {
 				if allowBlank {
 					yield("")
@@ -96,7 +96,7 @@ var encode = &cli.Command{
 		}
 
 		hasStdin := false
-		for jsonStr := range getJsonsOrBlank() {
+		for jsonStr := range getJsonsOrBlank(false) {
 			if jsonStr == "{}" {
 				hasStdin = false
 				continue

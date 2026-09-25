@@ -155,7 +155,7 @@ example:
 		}
 
 		// go line by line from stdin or run once with input from flags
-		for stdinFilter := range getJsonsOrBlank() {
+		for stdinFilter := range getJsonsOrBlank(false) {
 			filter := nostr.Filter{}
 			if stdinFilter != "" {
 				if err := easyjson.Unmarshal([]byte(stdinFilter), &filter); err != nil {

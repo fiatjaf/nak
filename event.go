@@ -172,6 +172,11 @@ example:
 			Usage:    "ask before publishing the event",
 			Category: CATEGORY_EXTRAS,
 		},
+		&cli.BoolFlag{
+			Name:     "github",
+			Usage:    "treat empty stdin as no stdin at all, as GitHub Actions always opens it",
+			Category: CATEGORY_EXTRAS,
+		},
 
 		// hidden
 		&cli.StringFlag{
@@ -442,7 +447,7 @@ example:
 			return publishFlow(ctx, c, kr, evt, relays)
 		}
 
-		for stdinEvent := range getJsonsOrBlank() {
+		for stdinEvent := range getJsonsOrBlank(c.Bool("github")) {
 			if err := handleEvent(stdinEvent); err != nil {
 				ctx = lineProcessingError(ctx, err.Error())
 			}
