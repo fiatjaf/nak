@@ -246,6 +246,13 @@ var nsite = &cli.Command{
 			Usage:                     "downloads all files from a published nsite",
 			ArgsUsage:                 "<site> [directory]",
 			DisableSliceFlagSeparator: true,
+			Flags: []cli.Flag{
+				&cli.StringSliceFlag{
+					Name:    "server",
+					Aliases: []string{"s"},
+					Usage:   "extra blossom server hostname or URL to try, can be given multiple times",
+				},
+			},
 			Action: func(ctx context.Context, c *cli.Command) error {
 				input := c.Args().First()
 				if input == "" {
@@ -265,23 +272,45 @@ var nsite = &cli.Command{
 					return fmt.Errorf("failed to stat output directory %s: %w", outputDir, err)
 				}
 
-				pk, identifier, isRoot, err := nip5a.DecodeSiteURL(input)
-				if err != nil {
+				var filter nostr.Filter
+				var relays []string
+				var readOnlySigner nostr.Signer = keyer.NewReadOnlySigner(nostr.ZeroPK)
+
+				if strings.HasPrefix(input, "nostr:") {
+					input = input[6:]
+				}
+
+				if strings.HasPrefix(input, "nevent1") || strings.HasPrefix(input, "naddr1") {
+					ptr, err := nip19.ToPointer(input)
+					if err != nil {
+						return err
+					}
+					filter = ptr.AsFilter()
+
+					if pk := ptr.AssociatedPublicKey(); pk != nostr.ZeroPK {
+						relays = sys.FetchWriteRelays(ctx, pk)
+						readOnlySigner = keyer.NewReadOnlySigner(pk)
+					}
+					relays = append(relays, ptr.RelayHints()...)
+				} else if pk, identifier, isRoot, err := nip5a.DecodeSiteURL(input); err == nil {
+					filter = nostr.Filter{
+						Authors: []nostr.PubKey{pk},
+						Limit:   1,
+					}
+					if isRoot {
+						filter.Kinds = []nostr.Kind{nostr.KindNsiteRoot}
+					} else {
+						filter.Kinds = []nostr.Kind{nostr.KindNsiteNamed}
+						filter.Tags = nostr.TagMap{"d": []string{identifier}}
+					}
+
+					relays = sys.FetchWriteRelays(ctx, pk)
+					readOnlySigner = keyer.NewReadOnlySigner(pk)
+				} else {
 					return err
 				}
 
-				filter := nostr.Filter{
-					Authors: []nostr.PubKey{pk},
-					Limit:   1,
-				}
-				if isRoot {
-					filter.Kinds = []nostr.Kind{nostr.KindNsiteRoot}
-				} else {
-					filter.Kinds = []nostr.Kind{nostr.KindNsiteNamed}
-					filter.Tags = nostr.TagMap{"d": []string{identifier}}
-				}
-
-				res := sys.Pool.QuerySingle(ctx, sys.FetchWriteRelays(ctx, pk), filter, nostr.SubscriptionOptions{
+				res := sys.Pool.QuerySingle(ctx, relays, filter, nostr.SubscriptionOptions{
 					Label: "nak-nsite",
 				})
 				if res == nil {
@@ -297,15 +326,18 @@ var nsite = &cli.Command{
 				if len(blossomServers) == 0 {
 					servers := sys.FetchBlossomServerList(ctx, res.Event.PubKey)
 					if len(servers.Items) == 0 {
-						return fmt.Errorf("no blossom servers advertised in manifest or kind:10063")
-					}
-					blossomServers = make([]string, len(servers.Items))
-					for i, s := range servers.Items {
-						blossomServers[i] = s.Value()
+						blossomServers = []string{}
+					} else {
+						blossomServers = make([]string, len(servers.Items))
+						for i, s := range servers.Items {
+							blossomServers[i] = s.Value()
+						}
 					}
 				}
-
-				signer := keyer.NewReadOnlySigner(pk)
+				blossomServers = nostr.AppendUnique(blossomServers, c.StringSlice("server")...)
+				if len(blossomServers) == 0 {
+					return fmt.Errorf("no blossom servers advertised in manifest or kind:10063")
+				}
 
 				for path, hash := range mnf.Paths {
 					relPath := strings.TrimPrefix(path, "/")
@@ -319,12 +351,13 @@ var nsite = &cli.Command{
 
 					var downloadErr error
 					for _, server := range blossomServers {
-						client := blossom.NewClient(server, signer)
+						client := blossom.NewClient(server, readOnlySigner)
 						data, err := client.Download(ctx, hash)
 						if err != nil {
-							downloadErr = err
+							downloadErr = errors.Join(downloadErr, fmt.Errorf("%s: %w", server, err))
 							continue
 						}
+
 						if err := os.WriteFile(fullPath, data, 0o644); err != nil {
 							return fmt.Errorf("failed to write %s: %w", fullPath, err)
 						}
