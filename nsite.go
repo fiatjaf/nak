@@ -370,6 +370,12 @@ var nsite = &cli.Command{
 					}
 				}
 
+				absDir, err := filepath.Abs(outputDir)
+				if err != nil {
+					absDir = outputDir
+				}
+				log("%s %s\n", color.CyanString("downloaded to:"), absDir)
+
 				return nil
 			},
 		},
