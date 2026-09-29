@@ -142,6 +142,9 @@ var encryptKey = &cli.Command{
 		var password string
 		switch c.Args().Len() {
 		case 1:
+			if !isPiped() {
+				return fmt.Errorf("no password given or key piped on stdin")
+			}
 			password = c.Args().Get(0)
 		case 2:
 			keys = append(keys, c.Args().Get(0))
