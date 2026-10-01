@@ -63,6 +63,7 @@ var (
 
 var app = &cli.Command{
 	Name:                      "nak",
+	EnableShellCompletion:     true,
 	Suggest:                   true,
 	UseShortOptionHandling:    true,
 	Usage:                     "the nostr army knife command-line tool",
