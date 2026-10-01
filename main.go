@@ -102,6 +102,7 @@ var app = &cli.Command{
 		spell,
 		profile,
 		validateCmd,
+		relaysCmd,
 	},
 	Version: version,
 	Flags: combineFlags([][]cli.Flag{
