@@ -917,7 +917,7 @@ aside from those, there is also:
 					return fmt.Errorf("error signing state event: %w", err)
 				}
 
-				log("- publishing updated repository state to " + color.CyanString("%v", repo.Relays) + "\n")
+				log("%s", "- publishing updated repository state to "+color.CyanString("%v", repo.Relays)+"\n")
 				for res := range sys.Pool.PublishMany(ctx, repo.Relays, newStateEvent) {
 					if res.Error != nil {
 						log("! error publishing event to %s: %v\n", color.YellowString(res.RelayURL), res.Error)
@@ -3496,7 +3496,7 @@ func excludeNip34ConfigFile(baseDir string) {
 	// find git root
 	gitRoot := findGitRoot(baseDir)
 	if gitRoot == "" {
-		log(color.YellowString("not in a git repository, skipping exclude\n"))
+		log("%s", color.YellowString("not in a git repository, skipping exclude\n"))
 		return
 	}
 
@@ -3515,7 +3515,7 @@ func excludeNip34ConfigFile(baseDir string) {
 		}
 		newContent += "nip34.json\n"
 		if err := os.WriteFile(excludePath, []byte(newContent), 0644); err != nil {
-			log(color.YellowString("failed to add nip34.json to .git/info/exclude: %v\n", err))
+			log("%s", color.YellowString("failed to add nip34.json to .git/info/exclude: %v\n", err))
 		} else {
 			log("added nip34.json to %s\n", color.GreenString(".git/info/exclude"))
 		}

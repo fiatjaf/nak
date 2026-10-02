@@ -270,7 +270,7 @@ func performReq(
 	relayUrls []string,
 	stream bool,
 	outbox bool,
-	outboxRelaysPerPubKey uint64,
+	outboxRelaysPerPubKey uint,
 	paginate bool,
 	paginateInterval time.Duration,
 	label string,

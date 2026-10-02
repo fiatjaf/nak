@@ -6,6 +6,7 @@ import (
 	"net/textproto"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -208,9 +209,12 @@ func main() {
 	defer colors.reset()
 
 	// a megahack to enable this curl command proxy
-	if len(os.Args) > 2 && os.Args[1] == "curl" {
+	// (but not while the shell is asking for completions, which must go
+	// through the regular command graph)
+	if len(os.Args) > 2 && os.Args[1] == "curl" &&
+		!slices.Contains(os.Args, "--generate-shell-completion") {
 		if err := realCurl(); err != nil {
-			log(color.YellowString(err.Error()) + "\n")
+			log("%s", color.YellowString(err.Error())+"\n")
 			colors.reset()
 			os.Exit(1)
 		}

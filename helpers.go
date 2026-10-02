@@ -109,7 +109,7 @@ func getJsonsOrBlank(github bool) iter.Seq[string] {
 		}
 
 		if finalJsonErr != nil {
-			log(color.YellowString("stdin json parse error: %s", finalJsonErr))
+			log("%s", color.YellowString("stdin json parse error: %s", finalJsonErr))
 		}
 	}
 }
@@ -441,7 +441,7 @@ func askConfirmation(msg string) bool {
 		}
 		defer tty.Close()
 
-		log(color.YellowString(msg))
+		log("%s", color.YellowString("%s", msg))
 		answer, err := tty.ReadString()
 		if err != nil {
 			return false

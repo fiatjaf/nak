@@ -117,3 +117,53 @@ func TestPetnameCLIInvalidIdentity(t *testing.T) {
 	err := cmd.Run(t.Context(), []string{"nak", "--pubkey", "~/erin", "--sec", "invalid"})
 	require.ErrorContains(t, err, "failed to get petname identity")
 }
+
+// The real app's --sec is a StringFlag that carries a machine-specific default
+// and reads NOSTR_SECRET_KEY from the environment (see defaultKeyFlags in
+// main.go). Deferring the pubkey flags must leave that sibling alone, so cover
+// the default-vs-env-vs-explicit precedence that the other tests never hit.
+func TestPetnameCLIBesideSecWithDefault(t *testing.T) {
+	me := keyFromSeed(t, 1)
+	erin := keyFromSeed(t, 2)
+	fallback := keyFromSeed(t, 9)
+
+	for _, tc := range []struct {
+		name    string
+		args    []string
+		env     string
+		wantSec string
+	}{
+		{"default used", []string{"--pubkey", "~/erin"}, "", fallback.Hex()},
+		{"env used", []string{"--pubkey", "~/erin"}, me.Hex(), me.Hex()},
+		{"flag overrides default", []string{"--pubkey", "~/erin", "--sec", me.Hex()}, "", me.Hex()},
+		{"flag overrides env", []string{"--pubkey", "~/erin", "--sec", me.Hex()}, fallback.Hex(), me.Hex()},
+		{"flag after pubkey, before env is irrelevant", []string{"--sec", me.Hex(), "--pubkey", "~/erin"}, "", me.Hex()},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			setupPetnameSystem(t, map[nostr.SecretKey][]sdk.ProfileRef{
+				me:       {{Pubkey: erin.Public(), Petname: "erin"}},
+				fallback: {{Pubkey: erin.Public(), Petname: "erin"}},
+			})
+
+			if tc.env != "" {
+				t.Setenv("NOSTR_SECRET_KEY", tc.env)
+			}
+			var gotSec string
+			cmd := &cli.Command{
+				Name: "nak", Writer: io.Discard, ErrWriter: io.Discard,
+				Flags: []cli.Flag{
+					&cli.StringFlag{Name: "sec", Sources: cli.EnvVars("NOSTR_SECRET_KEY"), Value: fallback.Hex()},
+					&PubKeyFlag{Name: "pubkey"},
+				},
+				Action: func(ctx context.Context, c *cli.Command) error {
+					require.Equal(t, erin.Public(), getPubKey(c, "pubkey"))
+					gotSec = c.String("sec")
+					return nil
+				},
+			}
+			deferPetnameFlags(cmd)
+			require.NoError(t, cmd.Run(t.Context(), append([]string{"nak"}, tc.args...)))
+			require.Equal(t, tc.wantSec, gotSec)
+		})
+	}
+}

@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"flag"
 	"fmt"
 	"strings"
 
@@ -41,23 +40,21 @@ func parsePubKeyForCommand(ctx context.Context, c *cli.Command, value string) (n
 }
 
 // Public-key flags need the fully parsed signer options, including --sec after
-// the petname flag. Keep their input until flag actions run, then let the
-// original value parser handle the resolved keys (and any address inputs).
+// the petname flag. Keep their raw input when the parser hands it over, then let
+// the original value parser handle the resolved keys (and any address inputs)
+// once every flag has been parsed and the signer is known.
 type deferredPubkeyFlag[T any, C any, V cli.ValueCreator[T, C]] struct {
 	*cli.FlagBase[T, C, V]
 	pending []string
-	value   cli.Value
 }
 
-func (f *deferredPubkeyFlag[T, C, V]) Apply(set *flag.FlagSet) error {
-	if err := f.FlagBase.Apply(set); err != nil {
-		return err
-	}
+func (f *deferredPubkeyFlag[T, C, V]) PreParse() error {
 	f.pending = nil
-	f.value = set.Lookup(f.Name).Value.(cli.Value)
-	for _, name := range f.Names() {
-		set.Lookup(name).Value = &deferredPubkeyValue{Value: f.value, pending: &f.pending}
-	}
+	return f.FlagBase.PreParse()
+}
+
+func (f *deferredPubkeyFlag[T, C, V]) Set(_ string, val string) error {
+	f.pending = append(f.pending, val)
 	return nil
 }
 
@@ -66,31 +63,22 @@ func (f *deferredPubkeyFlag[T, C, V]) IsSet() bool {
 }
 
 func (f *deferredPubkeyFlag[T, C, V]) RunAction(ctx context.Context, c *cli.Command) error {
-	for _, input := range f.pending {
+	pending := f.pending
+	f.pending = nil
+	for _, input := range pending {
 		value := strings.TrimSpace(input)
 		if strings.HasPrefix(strings.TrimPrefix(value, "nostr:"), "~") {
 			pk, err := parsePubKeyForCommand(ctx, c, value)
 			if err != nil {
 				return fmt.Errorf("invalid value %q for --%s: %w", input, f.Name, err)
 			}
-			input = pk.Hex()
+			value = pk.Hex()
 		}
-		if err := f.value.Set(input); err != nil {
+		if err := f.FlagBase.Set(f.Name, value); err != nil {
 			return fmt.Errorf("invalid value %q for --%s: %w", input, f.Name, err)
 		}
 	}
-	f.pending = nil
 	return f.FlagBase.RunAction(ctx, c)
-}
-
-type deferredPubkeyValue struct {
-	cli.Value
-	pending *[]string
-}
-
-func (v *deferredPubkeyValue) Set(input string) error {
-	*v.pending = append(*v.pending, input)
-	return nil
 }
 
 func deferPetnameFlag[T any, C any, V cli.ValueCreator[T, C]](f *cli.FlagBase[T, C, V]) cli.Flag {

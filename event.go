@@ -535,7 +535,7 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 					// do not allow the message to overflow the term window
 					msg = clampMessage(msg, 20+len(res.RelayURL))
 
-					logthis(res.RelayURL, msg)
+					logthis(res.RelayURL, "%s", msg)
 				}
 			}
 		} else {
@@ -591,7 +591,7 @@ func publishFlow(ctx context.Context, c *cli.Command, kr nostr.Signer, evt nostr
 		}
 
 		if len(successRelays) > 0 && c.Bool("nevent") {
-			log(nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey) + "\n")
+			log("%s", nip19.EncodeNevent(evt.ID, successRelays, evt.PubKey)+"\n")
 		}
 
 		if len(successRelays) == 0 {

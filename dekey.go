@@ -67,20 +67,20 @@ var dekey = &cli.Command{
 		deviceKeyPath := filepath.Join(configPath, "dekey", "device-key")
 		var deviceSec nostr.SecretKey
 		if data, err := os.ReadFile(deviceKeyPath); err == nil {
-			log(color.GreenString("found existing device key\n"))
+			log("%s", color.GreenString("found existing device key\n"))
 			deviceSec, err = nostr.SecretKeyFromHex(string(data))
 			if err != nil {
 				return fmt.Errorf("invalid device key in %s: %w", deviceKeyPath, err)
 			}
 		} else {
-			log(color.YellowString("generating new device key\n"))
+			log("%s", color.YellowString("generating new device key\n"))
 			// create one
 			deviceSec = nostr.Generate()
 			os.MkdirAll(filepath.Dir(deviceKeyPath), 0700)
 			if err := os.WriteFile(deviceKeyPath, []byte(deviceSec.Hex()), 0600); err != nil {
 				return fmt.Errorf("failed to write device key: %w", err)
 			}
-			log(color.GreenString("device key generated and stored\n"))
+			log("%s", color.GreenString("device key generated and stored\n"))
 		}
 		devicePub := deviceSec.Public()
 
@@ -120,7 +120,7 @@ var dekey = &cli.Command{
 
 			log(". a decoupled encryption public key already exists: %s\n", color.CyanString(ePub.Hex()))
 			if c.Bool("rotate") {
-				log(color.GreenString("rotating it by generating a new one\n"))
+				log("%s", color.GreenString("rotating it by generating a new one\n"))
 				generateNewEncryptionKey = true
 			}
 		}
@@ -158,7 +158,7 @@ var dekey = &cli.Command{
 			// check if we have the key
 			eKeyPath := filepath.Join(configPath, "dekey", "p", userPub.Hex(), "e", ePub.Hex())
 			if data, err := os.ReadFile(eKeyPath); err == nil {
-				log(color.GreenString("- and we have it locally already\n"))
+				log("%s", color.GreenString("- and we have it locally already\n"))
 				eSec, err = nostr.SecretKeyFromHex(string(data))
 				if err != nil {
 					return fmt.Errorf("invalid main key: %w", err)
@@ -204,10 +204,10 @@ var dekey = &cli.Command{
 					if err := publishFlow(ctx, c, kr, evt, relayList); err != nil {
 						return err
 					}
-					log(color.GreenString(". device announcement published\n"))
+					log("%s", color.GreenString(". device announcement published\n"))
 					ourDeviceAnnouncementEvents = append(ourDeviceAnnouncementEvents, evt)
 				} else {
-					log(color.GreenString(". device already registered\n"))
+					log("%s", color.GreenString(". device already registered\n"))
 				}
 
 				// see if some other device has shared the key with us from kind:4455
@@ -244,7 +244,7 @@ var dekey = &cli.Command{
 					// stale key received from another device would end up being redistributed
 					if candidate.Public() == ePub {
 						eSec = candidate
-						log(color.GreenString("successfully received decoupled encryption key from another device\n"))
+						log("%s", color.GreenString("successfully received decoupled encryption key from another device\n"))
 						// store it
 						os.MkdirAll(filepath.Dir(eKeyPath), 0700)
 						os.WriteFile(eKeyPath, []byte(eSecHex), 0600)
@@ -264,7 +264,7 @@ var dekey = &cli.Command{
 							} else if err := publishFlow(ctx, c, kr, deletion4454, relayList); err != nil {
 								log(color.RedString("failed to publish 4454 deletion: %v\n"), err)
 							} else {
-								log(color.GreenString("- device announcement deleted\n"))
+								log("%s", color.GreenString("- device announcement deleted\n"))
 							}
 						}
 
@@ -282,7 +282,7 @@ var dekey = &cli.Command{
 						} else if err := publishFlow(ctx, c, kr, deletion4455, relayList); err != nil {
 							log(color.RedString("failed to publish 4455 deletion: %v\n"), err)
 						} else {
-							log(color.GreenString("- key message deleted\n"))
+							log("%s", color.GreenString("- key message deleted\n"))
 						}
 
 						break
@@ -296,7 +296,7 @@ var dekey = &cli.Command{
 				color.YellowString(deviceName))
 			return nil
 		}
-		log(color.GreenString("- decoupled encryption key ready\n"))
+		log("%s", color.GreenString("- decoupled encryption key ready\n"))
 
 		// now we have mainSec, check for other kind:4454 events newer than the 10044
 		log("- checking for other devices and key messages so we can send the key\n")

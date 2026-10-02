@@ -147,7 +147,7 @@ func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, e
 		defer tty.Close()
 		for {
 			// print the prompt to stderr so it's visible to the user
-			log(color.YellowString(msg))
+			log("%s", color.YellowString("%s", msg))
 
 			// read password from TTY with masking
 			password, err := tty.ReadPassword()
