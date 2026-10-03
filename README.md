@@ -12,7 +12,7 @@ curl -sSL https://raw.githubusercontent.com/fiatjaf/nak/master/install.sh | sh
   - install with `go install`;
   - or run with docker using `docker build -t nak . && docker run nak event`.
 - or install with `brew install nak` if you use **macOS Homebrew**.
-- or install with `paru -S nak-bin` or `yay -S nak-bin` if you are on **Arch Linux**.
+- or install with `yay -S nak-bin` if you are on **Arch Linux**.
 - or install with `nix-env --install nak` if you use **Nix**.
 
 ## what can you do with it?
@@ -558,3 +558,19 @@ gitnostr.com... ok.
   ]
 }
 ```
+
+## shell completions
+
+If you installed using a method that doesn't do this automatically, install shell completions with one of these:
+
+```sh
+# bash
+mkdir -p ~/.local/share/bash-completion/completions && nak completion bash > ~/.local/share/bash-completion/completions/nak
+
+# zsh
+mkdir -p ~/.zsh/completions && nak completion zsh > ~/.zsh/completions/_nak
+
+# fish
+mkdir -p ~/.config/fish/completions && nak completion fish > ~/.config/fish/completions/nak.fish
+```
+
