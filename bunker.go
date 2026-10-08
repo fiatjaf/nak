@@ -733,21 +733,21 @@ func onSocketConnect(ctx context.Context, c *cli.Command, log func(string, ...an
 
 	// ensure directory exists
 	if err := os.MkdirAll(filepath.Dir(socketPath), 0755); err != nil {
-		log(color.RedString("failed to create socket directory: %s\n", err))
+		log("%s", color.RedString("failed to create socket directory: %s\n", err))
 		return res
 	}
 
 	// delete existing socket file if it exists
 	if _, err := os.Stat(socketPath); err == nil {
 		if err := os.Remove(socketPath); err != nil {
-			log(color.RedString("failed to remove existing socket file: %s\n", err))
+			log("%s", color.RedString("failed to remove existing socket file: %s\n", err))
 			return res
 		}
 	}
 
 	listener, err := net.Listen("unix", socketPath)
 	if err != nil {
-		log(color.RedString("failed to listen on unix socket %s: %s\n", socketPath, err))
+		log("%s", color.RedString("failed to listen on unix socket %s: %s\n", socketPath, err))
 		return res
 	}
 

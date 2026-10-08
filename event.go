@@ -449,7 +449,7 @@ example:
 
 		for stdinEvent := range getJsonsOrBlank(c.Bool("github")) {
 			if err := handleEvent(stdinEvent); err != nil {
-				ctx = lineProcessingError(ctx, err.Error())
+				ctx = lineProcessingError(ctx, "%s", err)
 			}
 		}
 

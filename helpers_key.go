@@ -60,7 +60,7 @@ func gatherSecretKeyOrBunkerFromArguments(ctx context.Context, c *cli.Command) (
 		logverbose("[nip46]: connecting to %s with client key %s\n", bunkerURL, clientKey.Hex())
 
 		bunker, err := nip46.ConnectBunker(ctx, clientKey, bunkerURL, sys.Pool, func(s string) {
-			log(color.CyanString("[nip46]: open the following URL: %s"), s)
+			log(color.CyanString("[nip46]: open the following URL: %s\n"), s)
 		})
 		if err != nil {
 			return nostr.SecretKey{}, nil, fmt.Errorf("failed to connect to %s: %w", bunkerURL, err)

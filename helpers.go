@@ -291,7 +291,7 @@ func connectToSingleRelay(
 			if colorizepreamble != nil {
 				colorizepreamble(colors.errorf)
 			}
-			logthis(clampError(err, len(url)+12))
+			logthis("%s", clampError(err, len(url)+12))
 			return nil
 		}
 
@@ -330,7 +330,7 @@ func connectToSingleRelay(
 					if colorizepreamble != nil {
 						colorizepreamble(colors.errorf)
 					}
-					logthis(err.Error())
+					logthis("%s", err)
 					return nil
 				}
 			}

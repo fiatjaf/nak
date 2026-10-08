@@ -214,7 +214,7 @@ func main() {
 	if len(os.Args) > 2 && os.Args[1] == "curl" &&
 		!slices.Contains(os.Args, "--generate-shell-completion") {
 		if err := realCurl(); err != nil {
-			log("%s", color.YellowString(err.Error())+"\n")
+			log("%s\n", color.YellowString("%s", err))
 			colors.reset()
 			os.Exit(1)
 		}
@@ -222,7 +222,7 @@ func main() {
 	}
 
 	if err := app.Run(context.Background(), os.Args); err != nil {
-		log("%s\n", color.RedString(err.Error()))
+		log("%s\n", color.RedString("%s", err))
 		colors.reset()
 		os.Exit(1)
 	}

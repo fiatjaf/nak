@@ -150,7 +150,7 @@ var admin = &cli.Command{
 							if len(bodyPrintable) > 300 {
 								bodyPrintable = bodyPrintable[0:297] + "..."
 							}
-							log("%s", bodyPrintable)
+							log("%s\n", bodyPrintable)
 							continue
 						}
 						var response nip86.Response
@@ -160,7 +160,7 @@ var admin = &cli.Command{
 							if len(bodyPrintable) > 300 {
 								bodyPrintable = bodyPrintable[0:297] + "..."
 							}
-							log("%s", bodyPrintable)
+							log("%s\n", bodyPrintable)
 							continue
 						}
 

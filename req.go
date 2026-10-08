@@ -226,7 +226,7 @@ example:
 					for _, url := range relayUrls {
 						err := nip77.NegentropySync(ctx, url, filter, source, target, handle)
 						if err != nil {
-							log("negentropy sync from %s failed: %s", url, err)
+							log("negentropy sync from %s failed: %s\n", url, err)
 						}
 					}
 				} else {

@@ -115,7 +115,7 @@ example:
 				}
 				stdout(out)
 			} else {
-				logverbose("event %s didn't match %s", evt, baseFilter)
+				logverbose("event %s didn't match %s\n", evt, baseFilter)
 			}
 		}
 
