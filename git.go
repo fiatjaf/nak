@@ -3229,10 +3229,11 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 	}
 
 	// delete all nip34/grasp/ remotes that we don't have anymore in repo
+	// (or whose url is wrong, these are recreated below)
 	remotes := strings.Split(strings.TrimSpace(string(output)), "\n")
-	for i, remote := range remotes {
+	existing := make([]string, 0, len(remotes))
+	for _, remote := range remotes {
 		remote = strings.TrimSpace(remote)
-		remotes[i] = remote
 
 		if strings.HasPrefix(remote, "nip34/grasp/") {
 			graspURL := rebuildGraspURLFromRemote(remote)
@@ -3256,6 +3257,7 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 				goto delete
 			}
 
+			existing = append(existing, remote)
 			continue
 
 		delete:
@@ -3266,17 +3268,19 @@ func gitSetupRemotes(ctx context.Context, dir string, repo nip34.Repository) {
 			}
 			if err := delCmd.Run(); err != nil {
 				logverbose("failed to remove remote %s: %v\n", remote, err)
+				existing = append(existing, remote)
 			}
+		} else {
+			existing = append(existing, remote)
 		}
 	}
 
 	// create new remotes for each grasp server
-	remotes = strings.Split(strings.TrimSpace(string(output)), "\n")
 	for _, relay := range repo.Relays {
 		remote := gitRemoteName(relay)
 		gitURL := fmt.Sprintf("http%s/%s/%s.git", nostr.NormalizeURL(relay)[2:], nip19.EncodeNpub(repo.PubKey), repo.ID)
 
-		if slices.Contains(remotes, remote) {
+		if slices.Contains(existing, remote) {
 			continue
 		}
 
