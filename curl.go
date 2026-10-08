@@ -3,12 +3,14 @@ package main
 import (
 	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"strings"
 
 	"fiatjaf.com/nostr"
+	"fiatjaf.com/nostr/sdk"
 	"github.com/urfave/cli/v3"
 	"golang.org/x/exp/slices"
 )
@@ -103,7 +105,13 @@ var curl = &cli.Command{
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin
 		cmd.Stdout = os.Stdout
-		cmd.Run()
+		if err := cmd.Run(); err != nil {
+			var exitErr *exec.ExitError
+			if errors.As(err, &exitErr) {
+				os.Exit(exitErr.ExitCode())
+			}
+			return fmt.Errorf("failed to run curl: %w", err)
+		}
 		return nil
 	},
 }
@@ -130,6 +138,11 @@ func realCurl() error {
 		} else {
 			curlFlags = append(curlFlags, arg)
 		}
+	}
+
+	// the root command's Before() doesn't run here, but bunker signers need the pool
+	if sys == nil {
+		sys = sdk.NewSystem()
 	}
 
 	// Run treats the first element as the program name, so prepend one
