@@ -255,27 +255,24 @@ func eventToCliArgs(evt *nostr.Event) string {
 	b.WriteString(" -ts ")
 	b.WriteString(strconv.FormatInt(int64(evt.CreatedAt), 10))
 
-	b.WriteString(" -c '")
-	b.WriteString(evt.Content)
-	b.WriteString("'")
+	b.WriteString(" -c ")
+	b.WriteString(shellQuote(evt.Content))
 
 	for _, tag := range evt.Tags {
-		b.WriteString(" -t '")
-		b.WriteString(tag[0])
+		t := tag[0]
 		if len(tag) > 1 {
-			b.WriteString("=")
-			b.WriteString(tag[1])
-			if len(tag) > 2 {
-				for _, item := range tag[2:] {
-					b.WriteString(";")
-					b.WriteString(item)
-				}
-			}
+			t += "=" + strings.Join(tag[1:], ";")
 		}
-		b.WriteString("'")
+		b.WriteString(" -t ")
+		b.WriteString(shellQuote(t))
 	}
 
 	return b.String()
+}
+
+// shellQuote wraps s in single quotes, escaping any single quotes inside it.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
 
 func signersToCliArgs(knownSigners []*btcec.PublicKey) string {
