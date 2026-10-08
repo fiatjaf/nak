@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"fmt"
+	"iter"
 	"strings"
 
 	"fiatjaf.com/nostr"
@@ -79,7 +80,7 @@ var public = &cli.Command{
 			return nil
 		}
 
-		for sk := range getSecretKeysFromStdinLinesOrSlice(ctx, c, args) {
+		for sk := range getSecretKeysFromStdinLinesOrSlice(&ctx, args) {
 			_, pk := btcec.PrivKeyFromBytes(sk[:])
 
 			if c.Bool("with-parity") {
@@ -88,6 +89,7 @@ var public = &cli.Command{
 				stdout(hex.EncodeToString(pk.SerializeCompressed()[1:]))
 			}
 		}
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }
@@ -119,6 +121,7 @@ var expand = &cli.Command{
 			keyhex = strings.ToLower(keyhex)
 			stdout(strings.Repeat("0", 64-len(keyhex)) + keyhex)
 		}
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }
@@ -153,7 +156,7 @@ var encryptKey = &cli.Command{
 		if password == "" {
 			return fmt.Errorf("no password given")
 		}
-		for sec := range getSecretKeysFromStdinLinesOrSlice(ctx, c, keys) {
+		for sec := range getSecretKeysFromStdinLinesOrSlice(&ctx, keys) {
 			ncryptsec, err := nip49.Encrypt(sec, password, uint8(c.Int("logn")), 0x02)
 			if err != nil {
 				ctx = lineProcessingError(ctx, "failed to encrypt: %s", err)
@@ -161,6 +164,7 @@ var encryptKey = &cli.Command{
 			}
 			stdout(ncryptsec)
 		}
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }
@@ -259,6 +263,7 @@ Returns error if key is invalid, otherwise exits successfully.`,
 				continue
 			}
 		}
+		exitIfLineProcessingError(ctx)
 		return nil
 	},
 }
@@ -332,9 +337,6 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 				}
 				keyGroups = append(keyGroups, []*btcec.PublicKey{pubk})
 
-				// remove the leading byte from the output just so it is all uniform
-				result.Keys[i] = result.Keys[i][2:]
-
 				continue
 			}
 
@@ -397,9 +399,9 @@ However, if the intent is to check if two existing Nostr pubkeys match a given c
 	},
 }
 
-func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, keys []string) chan nostr.SecretKey {
-	ch := make(chan nostr.SecretKey)
-	go func() {
+// getSecretKeysFromStdinLinesOrSlice marks ctx with a line processing error for every invalid key.
+func getSecretKeysFromStdinLinesOrSlice(ctx *context.Context, keys []string) iter.Seq[nostr.SecretKey] {
+	return func(yield func(nostr.SecretKey) bool) {
 		for sec := range getStdinLinesOrArgumentsFromSlice(keys) {
 			if sec == "" {
 				continue
@@ -409,7 +411,7 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, key
 			if strings.HasPrefix(sec, "nsec1") {
 				_, data, err := nip19.Decode(sec)
 				if err != nil {
-					ctx = lineProcessingError(ctx, "invalid nsec code: %s", err)
+					*ctx = lineProcessingError(*ctx, "invalid nsec code: %s", err)
 					continue
 				}
 				sk = data.(nostr.SecretKey)
@@ -417,14 +419,14 @@ func getSecretKeysFromStdinLinesOrSlice(ctx context.Context, _ *cli.Command, key
 				var err error
 				sk, err = nostr.SecretKeyFromHex(sec)
 				if err != nil {
-					ctx = lineProcessingError(ctx, "invalid hex key: %s", err)
+					*ctx = lineProcessingError(*ctx, "invalid hex key: %s", err)
 					continue
 				}
 			}
 
-			ch <- sk
+			if !yield(sk) {
+				return
+			}
 		}
-		close(ch)
-	}()
-	return ch
+	}
 }
