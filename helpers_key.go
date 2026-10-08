@@ -179,6 +179,7 @@ func askPassword(msg string, shouldAskAgain func(answer string) bool) (string, e
 		if err != nil {
 			return "", err
 		}
+		defer rl.Close()
 
 		for {
 			answer, err := rl.Readline()

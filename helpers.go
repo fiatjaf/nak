@@ -450,7 +450,7 @@ func askConfirmation(msg string) bool {
 		// print newline after password input
 		fmt.Fprintln(os.Stderr)
 
-		answer = strings.TrimSpace(string(answer))
+		answer = strings.ToLower(strings.TrimSpace(answer))
 		return answer == "y" || answer == "yes"
 	} else {
 		config := &readline.Config{
@@ -466,6 +466,7 @@ func askConfirmation(msg string) bool {
 		if err != nil {
 			return false
 		}
+		defer rl.Close()
 
 		answer, err := rl.Readline()
 		if err != nil {
