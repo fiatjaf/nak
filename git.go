@@ -3106,7 +3106,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 			}
 		} else {
 			if err != nil {
-				if _, ok := err.(StateErr); ok {
+				if stateErr := (*StateErr)(nil); errors.As(err, &stateErr) {
 					// some error with the state, just do nothing and proceed
 				} else {
 					// actually fail with this error we don't know about
@@ -3176,7 +3176,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 		}
 	} else {
 		if err != nil {
-			if _, ok := err.(StateErr); ok {
+			if stateErr := (*StateErr)(nil); errors.As(err, &stateErr) {
 				// some error with the state, just do nothing and proceed
 			} else {
 				// actually fail with this error we don't know about
