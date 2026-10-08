@@ -57,6 +57,10 @@ var decode = &cli.Command{
 						stdout(v.ID.Hex())
 						continue
 					}
+					if c.Bool("pubkey") && v.Author != nostr.ZeroPK {
+						stdout(v.Author.Hex())
+						continue
+					}
 					out, _ := stdjson.MarshalIndent(v, "", "  ")
 					stdout(string(out))
 					continue
@@ -69,6 +73,10 @@ var decode = &cli.Command{
 					stdout(string(out))
 					continue
 				case nostr.EntityPointer:
+					if c.Bool("pubkey") {
+						stdout(v.PublicKey.Hex())
+						continue
+					}
 					out, _ := stdjson.MarshalIndent(v, "", "  ")
 					stdout(string(out))
 					continue
