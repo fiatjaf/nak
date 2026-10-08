@@ -154,6 +154,9 @@ var dekey = &cli.Command{
 			if err := publishFlow(ctx, c, kr, evt10044, relayList); err != nil {
 				return err
 			}
+
+			// devices and key messages are only relevant if they're newer than this new announcement
+			keyAnnouncementEvent = evt10044
 		} else {
 			// check if we have the key
 			eKeyPath := filepath.Join(configPath, "dekey", "p", userPub.Hex(), "e", ePub.Hex())
