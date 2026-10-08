@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -48,8 +49,11 @@ var fsCmd = &cli.Command{
 			return fmt.Errorf("must be called with a directory path to serve as the mountpoint as an argument")
 		}
 
+		// --sec always has a default value, so only use the read-only --pubkey when no key was given explicitly
 		var kr nostr.User
-		if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
+		if c.IsSet("pubkey") && !c.IsSet("sec") && !c.IsSet("prompt-sec") {
+			kr = keyer.NewReadOnlyUser(getPubKey(c, "pubkey"))
+		} else if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
 			kr = signer
 		} else {
 			kr = keyer.NewReadOnlyUser(getPubKey(c, "pubkey"))
@@ -102,10 +106,12 @@ var fsCmd = &cli.Command{
 
 		// setup signal handling for clean unmount
 		ch := make(chan os.Signal, 1)
-		chErr := make(chan error)
+		chErr := make(chan error, 1)
+		var unmounting atomic.Bool
 		signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
 		go func() {
 			<-ch
+			unmounting.Store(true)
 			log("- unmounting... ")
 			err := server.Unmount()
 			if err != nil {
@@ -118,6 +124,10 @@ var fsCmd = &cli.Command{
 
 		// serve the filesystem until unmounted
 		server.Wait()
+		if !unmounting.Load() {
+			// unmounted from the outside (e.g. with fusermount -u), there will be nothing on chErr
+			return nil
+		}
 		return <-chErr
 	},
 }

@@ -47,8 +47,11 @@ var fsCmd = &cli.Command{
 			return fmt.Errorf("must be called with a directory path to serve as the mountpoint as an argument")
 		}
 
+		// --sec always has a default value, so only use the read-only --pubkey when no key was given explicitly
 		var kr nostr.User
-		if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
+		if c.IsSet("pubkey") && !c.IsSet("sec") && !c.IsSet("prompt-sec") {
+			kr = keyer.NewReadOnlyUser(getPubKey(c, "pubkey"))
+		} else if signer, _, err := gatherKeyerFromArguments(ctx, c); err == nil {
 			kr = signer
 		} else {
 			kr = keyer.NewReadOnlyUser(getPubKey(c, "pubkey"))
