@@ -3,6 +3,9 @@ package main
 import (
 	"context"
 	"fmt"
+	"io"
+	"os"
+	"strings"
 
 	"fiatjaf.com/nostr/nip04"
 	"github.com/urfave/cli/v3"
@@ -11,7 +14,7 @@ import (
 var encrypt = &cli.Command{
 	Name:                      "encrypt",
 	Usage:                     "encrypts a string with nip44 (or nip04 if specified using a flag) and returns the resulting ciphertext as base64",
-	ArgsUsage:                 "[plaintext string]",
+	ArgsUsage:                 "[plaintext string, or read from stdin]",
 	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
 		&PubKeyFlag{
@@ -27,7 +30,11 @@ var encrypt = &cli.Command{
 	Action: func(ctx context.Context, c *cli.Command) error {
 		target := getPubKey(c, "recipient-pubkey")
 
-		plaintext := c.Args().First()
+		plaintext, err := getArgumentOrStdin(c)
+		if err != nil {
+			return err
+		}
+		plaintext = strings.TrimSuffix(plaintext, "\n")
 
 		if c.Bool("nip04") {
 			sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
@@ -72,7 +79,7 @@ var encrypt = &cli.Command{
 var decrypt = &cli.Command{
 	Name:                      "decrypt",
 	Usage:                     "decrypts a base64 nip44 ciphertext (or nip04 if specified using a flag) and returns the resulting plaintext",
-	ArgsUsage:                 "[ciphertext base64]",
+	ArgsUsage:                 "[ciphertext base64, or read from stdin]",
 	DisableSliceFlagSeparator: true,
 	Flags: []cli.Flag{
 		&PubKeyFlag{
@@ -88,7 +95,11 @@ var decrypt = &cli.Command{
 	Action: func(ctx context.Context, c *cli.Command) error {
 		source := getPubKey(c, "sender-pubkey")
 
-		ciphertext := c.Args().First()
+		ciphertext, err := getArgumentOrStdin(c)
+		if err != nil {
+			return err
+		}
+		ciphertext = strings.TrimSpace(ciphertext)
 
 		if c.Bool("nip04") {
 			sec, bunker, err := gatherSecretKeyOrBunkerFromArguments(ctx, c)
@@ -128,4 +139,18 @@ var decrypt = &cli.Command{
 
 		return nil
 	},
+}
+
+func getArgumentOrStdin(c *cli.Command) (string, error) {
+	if c.Args().Len() > 0 {
+		return c.Args().First(), nil
+	}
+	if isPiped() {
+		data, err := io.ReadAll(os.Stdin)
+		if err != nil {
+			return "", fmt.Errorf("failed to read from stdin: %w", err)
+		}
+		return string(data), nil
+	}
+	return "", fmt.Errorf("no input given. pipe it or pass it as an argument.")
 }
