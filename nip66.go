@@ -22,7 +22,8 @@ type nip66Checks struct {
 func parseNIP66Checks(spec string) (nip66Checks, error) {
 	var checks nip66Checks
 	for _, name := range strings.Split(spec, ",") {
-		switch strings.TrimSpace(name) {
+		name = strings.TrimSpace(name)
+		switch name {
 		case "open":
 			checks.open = true
 		case "read":
@@ -120,7 +121,10 @@ func probeRelayNIP66(ctx context.Context, url string, checks nip66Checks) (nostr
 		if err == nil {
 			evt.Tags = append(evt.Tags, nostr.Tag{"rtt-write", nip66Millis(rtt)})
 			// what actually happened trumps what the nip11 document says
-			requirements["auth"] = readNeedsAuth
+			// (but only when we have actually checked reads, otherwise we know nothing about them)
+			if checks.read {
+				requirements["auth"] = readNeedsAuth
+			}
 			requirements["writes"] = false
 		} else {
 			logverbose("write check on %s failed: %s\n", url, err)
@@ -129,6 +133,8 @@ func probeRelayNIP66(ctx context.Context, url string, checks nip66Checks) (nostr
 				requirements["auth"] = true
 			} else if strings.Contains(msg, "restricted:") || strings.Contains(msg, "blocked:") {
 				requirements["writes"] = true
+			} else if strings.Contains(msg, "pow:") {
+				requirements["pow"] = true
 			}
 		}
 	}
@@ -164,8 +170,11 @@ func nip66MeasureRead(ctx context.Context, relay *nostr.Relay) (time.Duration, e
 
 	for {
 		select {
-		case <-sub.Events:
+		case _, ok := <-sub.Events:
 			// the read round-trip ends at EOSE, ignore the events themselves
+			if !ok {
+				return 0, fmt.Errorf("subscription ended before EOSE")
+			}
 		case <-sub.EndOfStoredEvents:
 			return time.Since(start), nil
 		case reason := <-sub.ClosedReason:
