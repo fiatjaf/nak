@@ -283,7 +283,11 @@ var group = &cli.Command{
 
 				for {
 					select {
-					case evt := <-sub.Events:
+					case evt, ok := <-sub.Events:
+						if !ok {
+							// the library closes this channel when the subscription ends
+							return fmt.Errorf("subscription ended: %w", context.Cause(sub.Context))
+						}
 						if eosed {
 							stdout(formatGroupChatMessage(ctx, evt))
 						} else if base > 0 {
@@ -656,7 +660,7 @@ write your forum post
 		{
 			Name:      "remove-user",
 			Usage:     "remove a user from the group",
-			ArgsUsage: "<address> <pubkey>",
+			ArgsUsage: "<address>",
 			Flags: []cli.Flag{
 				&PubKeyFlag{
 					Name:     "pubkey",
