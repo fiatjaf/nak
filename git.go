@@ -69,10 +69,6 @@ aside from those, there is also:
 					Name:  "grasp-servers",
 					Usage: "grasp servers (can be used multiple times)",
 				},
-				&cli.StringSliceFlag{
-					Name:  "relays",
-					Usage: "relay URLs to publish to (can be used multiple times)",
-				},
 				&cli.StringFlag{
 					Name:  "earliest-unique-commit",
 					Usage: "earliest unique commit of the repository",
@@ -1280,8 +1276,8 @@ aside from those, there is also:
 						if strings.TrimSpace(content) == "" {
 							return fmt.Errorf("empty patch content, aborting")
 						}
-						if len(content) > 10_000 {
-							return fmt.Errorf("patch too large: %d bytes (limit is 10000 bytes)", len(content))
+						if len(content) > 10*1024 {
+							return fmt.Errorf("patch too large: %d bytes (limit is 10240 bytes)", len(content))
 						}
 
 						cmd := exec.Command("git", "apply", "--check", "--3way", "--whitespace=nowarn", "-")
