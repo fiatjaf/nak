@@ -67,7 +67,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, sender)
 					if has {
 						if err != nil {
-							return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --encrypt-with-our-identity-key to bypass", err)
+							return fmt.Errorf("our decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-our-identity-key to bypass", err)
 						}
 						cipher = keyer.NewPlainKeySigner(eSec)
 						log("- using our decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
@@ -178,7 +178,7 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 				eSec, has, err := getDecoupledEncryptionSecretKey(ctx, configPath, receiver)
 				if has {
 					if err != nil {
-						return fmt.Errorf("receiver's decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix or call this again with --use-direct to bypass", err)
+						return fmt.Errorf("receiver's decoupled encryption key exists, but we failed to get it: %w; call `nak dekey` to attempt a fix", err)
 					}
 					ciphers = append(ciphers, kr)
 					ciphers[0] = keyer.NewPlainKeySigner(eSec) // pub decoupled key first
@@ -205,14 +205,11 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 
 					// try both the receiver identity key and decoupled key
 					err = nil
-					for c, potentialCipher := range ciphers {
-						switch c {
-						case 0:
+					for i, potentialCipher := range ciphers {
+						// when a decoupled key exists it comes first, the identity key last
+						if i == len(ciphers)-1 {
 							log("- trying receiver's identity key %s\n", color.CyanString(receiver.Hex()))
-						case 1:
-							if eSec.Public() == nostr.ZeroPK {
-								continue
-							}
+						} else {
 							log("- trying receiver's decoupled encryption key %s\n", color.CyanString(eSec.Public().Hex()))
 						}
 
@@ -252,15 +249,14 @@ a decoupled key (if it has been created or received with "nak dekey" previously)
 					// (but we don't know if they have encrypted with their identity key or their decoupled key, so try both)
 					var rumor nostr.Event
 					err = nil
-					for s, senderEncryptionPublicKey := range senderEncryptionPublicKeys {
+					for _, senderEncryptionPublicKey := range senderEncryptionPublicKeys {
 						if senderEncryptionPublicKey == nostr.ZeroPK {
 							continue
 						}
 
-						switch s {
-						case 0:
+						if senderEncryptionPublicKey == seal.PubKey {
 							log("- trying sender's identity public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
-						case 1:
+						} else {
 							log("- trying sender's decoupled encryption public key %s\n", color.CyanString(senderEncryptionPublicKey.Hex()))
 						}
 
