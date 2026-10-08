@@ -40,7 +40,7 @@ example:
 
 		// resolve input to a kind number
 		var k nostr.Kind
-		if n, err := strconv.ParseUint(input, 10, 16); err == nil && n >= 0 {
+		if n, err := strconv.ParseUint(input, 10, 16); err == nil {
 			k = nostr.Kind(n)
 		} else {
 			resolved, err := stringToKind(input)
@@ -55,7 +55,10 @@ example:
 			return err
 		}
 
-		ks := sch.Kinds[strconv.Itoa(int(k.Num()))]
+		ks, ok := sch.Kinds[strconv.Itoa(int(k.Num()))]
+		if !ok {
+			return fmt.Errorf("kind %d not found in the schema", k.Num())
+		}
 
 		j, _ := json.MarshalIndent(ks, "", "  ")
 		stdout(string(j))
