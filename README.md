@@ -364,16 +364,6 @@ publishing to 3 relays... offchain.pub: ok, nostr.wine: ok, pyramid.fiatjaf.com:
 event published as f1cbfa6... and updated locally.
 ```
 
-### list NIP-60 wallet tokens and send some
-```shell
-~> nak wallet tokens
-91a10b6fc8bbe7ef2ad9ad0142871d80468b697716d9d2820902db304ff1165e 500 cashu.space
-cac7f89f0611021984d92a7daca219e4cd1c9798950e50e952bba7cde1ac1337 1000 legend.lnbits.com
-~> nak wallet send 100
-cashuA1psxqyry8...
-~> nak wallet pay lnbc1...
-```
-
 ### upload and download files with blossom
 ```shell
 ~> nak blossom --server blossom.azzamo.net --sec 01 upload image.png
