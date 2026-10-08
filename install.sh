@@ -2,17 +2,14 @@
 set -e
 
 # pick which build to install:
-#   nak       -> lmdb when the platform supports it, boltdb otherwise (default)
-#   nak-b     -> boltdb everywhere
+#   nak       -> lmdb when the platform supports it, no local database otherwise (default)
 #   nak-nodb  -> no local database at all
 BINARY="nak"
 for arg in "$@"; do
     case "$arg" in
-        -b|--bolt) BINARY="nak-b" ;;
         -n|--nodb) BINARY="nak-nodb" ;;
         -h|--help)
-            echo "usage: install.sh [-b|--bolt] [-n|--nodb]"
-            echo "  -b, --bolt   install nak-b (uses boltdb instead of lmdb for local storage)"
+            echo "usage: install.sh [-n|--nodb]"
             echo "  -n, --nodb   install nak-nodb (no local event store, kvstore or hints)"
             exit 0
             ;;

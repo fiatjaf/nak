@@ -561,4 +561,4 @@ mkdir -p ~/.config/fish/completions && nak completion fish > ~/.config/fish/comp
 
 ## local database
 
-`nak` keeps a local event store, kvstore and outbox hints. By default that is [LMDB](https://www.sympatic.io/projects/lmdb/), which needs cgo and memory-mapping (but not actually using) a big file, so this is only used by default in linux/amd64 as other architectures might complain; everywhere else it falls back to [bbolt](https://github.com/etcd-io/bbolt), you can force by compiling with the `bolt` tag. There is also a `nodb` tag that should work ok too.
+`nak` keeps a local event store, kvstore and outbox hints. By default that is [LMDB](https://www.sympatic.io/projects/lmdb/), which needs cgo and memory-mapping (but not actually using) a big file, so this is only used by default in linux/amd64 as other architectures might complain; everywhere else there is no local database. You can also force that anywhere by compiling with the `nodb` tag (or by installing the `nak-nodb` binary).

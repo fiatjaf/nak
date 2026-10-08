@@ -31,8 +31,6 @@ jobs:
         variant:
           - binary_name: nak
             build_flags: ''
-          - binary_name: nak-b
-            build_flags: -tags bolt
           - binary_name: nak-nodb
             build_flags: -tags nodb
         goos: [linux, freebsd, darwin, windows]
@@ -92,7 +90,7 @@ jobs:
 
           echo "downloading nak binary from releases"
           RELEASE_URL="https://api.github.com/repos/fiatjaf/nak/releases/latest"
-          wget $(wget -q -O - ${RELEASE_URL} | jq -r '.assets[] | select(.name | contains("linux-amd64") and startswith("nak-") and (startswith("nak-b-") | not) and (startswith("nak-nodb-") | not)) | .browser_download_url') -O nak -nv
+          wget $(wget -q -O - ${RELEASE_URL} | jq -r '.assets[] | select(.name | contains("linux-amd64") and startswith("nak-") and (startswith("nak-nodb-") | not)) | .browser_download_url') -O nak -nv
           chmod +x nak
 
           echo "printing version..."
@@ -170,25 +168,6 @@ jobs:
           timeout 2s ./nak fs --sec $SECRET_KEY /tmp/nostr-mount || true
 
           echo "all tests passed"
-      - name: download and smoke test the boltdb binary (nak-b)
-        run: |
-          set -eo pipefail
-
-          echo "downloading nak-b binary from releases"
-          RELEASE_URL="https://api.github.com/repos/fiatjaf/nak/releases/latest"
-          wget $(wget -q -O - ${RELEASE_URL} | jq -r '.assets[] | select(.name | contains("linux-amd64") and startswith("nak-b-")) | .browser_download_url') -O nak-b -nv
-          chmod +x nak-b
-
-          echo "printing version..."
-          ./nak-b --version
-
-          # this must create the boltdb databases under <config-path>/bolt
-          echo "testing local boltdb store..."
-          rm -rf /tmp/nak-b-smoke
-          ./nak-b --config-path /tmp/nak-b-smoke key generate
-          ls /tmp/nak-b-smoke/bolt
-
-          echo "nak-b smoke test passed"
       - name: download and smoke test the no-database binary (nak-nodb)
         run: |
           set -eo pipefail

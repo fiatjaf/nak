@@ -1,4 +1,4 @@
-//go:build !bolt && !nodb && linux && !riscv64 && !arm64
+//go:build !nodb && linux && !riscv64 && !arm64
 
 package main
 
