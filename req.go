@@ -430,12 +430,15 @@ readevents:
 			stdout(out)
 
 		case closed, stillOpen := <-closeds:
-			if stillOpen {
-				if closed.HandledAuth {
-					logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
-				} else {
-					log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
-				}
+			if !stillOpen {
+				// stop selecting on it, otherwise we'd spin on the closed channel
+				closeds = nil
+				continue
+			}
+			if closed.HandledAuth {
+				logverbose("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
+			} else {
+				log("%s CLOSED: %s\n", closed.Relay.URL, closed.Reason)
 			}
 		case <-ctx.Done():
 			break readevents
