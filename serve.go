@@ -96,7 +96,7 @@ var serve = &cli.Command{
 			for scanner.Scan() {
 				var evt nostr.Event
 				if err := json.Unmarshal(scanner.Bytes(), &evt); err != nil {
-					return fmt.Errorf("invalid event received at line %d: %s (`%s`)", i, err, scanner.Text())
+					return fmt.Errorf("invalid event received at line %d: %s (`%s`)", i+1, err, scanner.Text())
 				}
 				db.SaveEvent(evt)
 				i++
