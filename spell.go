@@ -324,7 +324,7 @@ func buildSpellReq(ctx context.Context, c *cli.Command, tags nostr.Tags) (nostr.
 			for i := 1; i < len(tag); i++ {
 				id, err := nostr.IDFromHex(tag[i])
 				if err != nil {
-					return nostr.Filter{}, fmt.Errorf("invalid  id '%s' in 'authors': %w", tag[i], err)
+					return nostr.Filter{}, fmt.Errorf("invalid id '%s' in 'ids': %w", tag[i], err)
 				}
 				filter.IDs = append(filter.IDs, id)
 			}
@@ -463,8 +463,9 @@ func logSpellDetails(spell nostr.Event) {
 
 func createSpellEvent(ctx context.Context, filter nostr.Filter, kr nostr.Keyer) nostr.Event {
 	spell := nostr.Event{
-		Kind: 777,
-		Tags: make(nostr.Tags, 0),
+		Kind:      777,
+		CreatedAt: nostr.Now(),
+		Tags:      make(nostr.Tags, 0),
 	}
 
 	// add cmd tag
