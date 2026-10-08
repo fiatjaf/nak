@@ -191,25 +191,13 @@ func nip66MeasureWrite(ctx context.Context, relay *nostr.Relay) (time.Duration, 
 		return 0, err
 	}
 
-	// some relays (e.g. khatru) reject ephemeral events nobody is subscribed to, so listen for it ourselves
-	sub, err := relay.Subscribe(ctx, nostr.Filter{Kinds: []nostr.Kind{evt.Kind}, Authors: []nostr.PubKey{evt.PubKey}}, nostr.SubscriptionOptions{
-		Label: "nak-nip66",
-	})
-	if err != nil {
-		return 0, err
-	}
-	defer sub.Unsub()
-	select {
-	case <-sub.EndOfStoredEvents:
-	case reason := <-sub.ClosedReason:
-		return 0, fmt.Errorf("subscription closed: %s", reason)
-	case <-ctx.Done():
-		return 0, fmt.Errorf("timed out waiting for EOSE")
-	}
-
 	start := time.Now()
 	if err := relay.Publish(ctx, evt); err != nil {
-		return 0, err
+		// relays like khatru answer "mute:" when nobody is listening for an ephemeral event,
+		// that is still an accepted write
+		if !strings.Contains(err.Error(), "mute:") {
+			return 0, err
+		}
 	}
 	return time.Since(start), nil
 }
