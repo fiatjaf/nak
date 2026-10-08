@@ -17,6 +17,9 @@ jobs:
         with:
           go-version-file: go.mod
       - run: go build .
+      # nak-b: boltdb instead of lmdb, nak-nodb: no local database at all
+      - run: go build -tags bolt -o /tmp/nak-b .
+      - run: go build -tags nodb -o /tmp/nak-nodb .
       # Existing CLI tests share flag state and include public-relay requests.
       # Keep this regression suite independent of those tests and Go vet's
       # pre-existing non-constant-format diagnostics.

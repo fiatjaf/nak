@@ -554,13 +554,11 @@ gitnostr.com... ok.
 If you installed using a method that doesn't do this automatically, install shell completions with one of these:
 
 ```sh
-# bash
 mkdir -p ~/.local/share/bash-completion/completions && nak completion bash > ~/.local/share/bash-completion/completions/nak
-
-# zsh
 mkdir -p ~/.zsh/completions && nak completion zsh > ~/.zsh/completions/_nak
-
-# fish
 mkdir -p ~/.config/fish/completions && nak completion fish > ~/.config/fish/completions/nak.fish
 ```
 
+## local database
+
+`nak` keeps a local event store, kvstore and outbox hints. By default that is [LMDB](https://www.sympatic.io/projects/lmdb/), which needs cgo and memory-mapping (but not actually using) a big file, so this is only used by default in linux/amd64 as other architectures might complain; everywhere else it falls back to [bbolt](https://github.com/etcd-io/bbolt), you can force by compiling with the `bolt` tag. There is also a `nodb` tag that should work ok too.

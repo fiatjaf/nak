@@ -1,4 +1,4 @@
-//go:build !linux || riscv64 || arm64
+//go:build nodb
 
 package main
 

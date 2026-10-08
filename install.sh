@@ -1,6 +1,28 @@
 #!/usr/bin/env sh
 set -e
 
+# pick which build to install:
+#   nak       -> lmdb when the platform supports it, boltdb otherwise (default)
+#   nak-b     -> boltdb everywhere
+#   nak-nodb  -> no local database at all
+BINARY="nak"
+for arg in "$@"; do
+    case "$arg" in
+        -b|--bolt) BINARY="nak-b" ;;
+        -n|--nodb) BINARY="nak-nodb" ;;
+        -h|--help)
+            echo "usage: install.sh [-b|--bolt] [-n|--nodb]"
+            echo "  -b, --bolt   install nak-b (uses boltdb instead of lmdb for local storage)"
+            echo "  -n, --nodb   install nak-nodb (no local event store, kvstore or hints)"
+            exit 0
+            ;;
+        *)
+            echo "error: unknown argument $arg" >&2
+            exit 1
+            ;;
+    esac
+done
+
 # detect OS
 detect_os() {
     case "$(uname -s)" in
@@ -35,7 +57,7 @@ INSTALL_DIR="${INSTALL_DIR:-$HOME/.local/bin}"
 OS=$(detect_os)
 ARCH=$(detect_arch)
 
-echo "installing nak ($OS-$ARCH) to $INSTALL_DIR..."
+echo "installing $BINARY ($OS-$ARCH) to $INSTALL_DIR..."
 
 # check if curl is available
 command -v curl >/dev/null 2>&1 || { echo "error: curl is required" >&2; exit 1; }
@@ -49,18 +71,18 @@ TAG="${TAG%%\"*}"
 [ -z "$TAG" ] && { echo "error: failed to fetch release info" >&2; exit 1; }
 
 # construct download URL
-BINARY_NAME="nak-${TAG}-${OS}-${ARCH}"
+BINARY_NAME="${BINARY}-${TAG}-${OS}-${ARCH}"
 [ "$OS" = "windows" ] && BINARY_NAME="${BINARY_NAME}.exe"
 DOWNLOAD_URL="https://github.com/fiatjaf/nak/releases/download/${TAG}/${BINARY_NAME}"
 
 # create install directory and download
 mkdir -p "$INSTALL_DIR"
-TARGET_PATH="$INSTALL_DIR/nak"
+TARGET_PATH="$INSTALL_DIR/$BINARY"
 [ "$OS" = "windows" ] && TARGET_PATH="${TARGET_PATH}.exe"
 
 if curl -sS -L -f -o "$TARGET_PATH" "$DOWNLOAD_URL"; then
     chmod +x "$TARGET_PATH"
-    echo "installed nak $TAG to $TARGET_PATH"
+    echo "installed $BINARY $TAG to $TARGET_PATH"
 
     # check if install dir is in PATH
     case ":$PATH:" in

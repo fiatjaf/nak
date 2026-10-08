@@ -1,4 +1,4 @@
-//go:build linux && !riscv64 && !arm64
+//go:build !bolt && !nodb && linux && !riscv64 && !arm64
 
 package main
 
@@ -32,14 +32,14 @@ func setupLocalDatabases(c *cli.Command, sys *sdk.System) {
 	os.MkdirAll(eventsPath, 0755)
 	sys.Store = &lmdb.LMDBBackend{Path: eventsPath}
 	if err := sys.Store.Init(); err != nil {
-		log("failed to create boltdb events db at '%s': %s\n", eventsPath, err)
+		log("failed to create lmdb events db at '%s': %s\n", eventsPath, err)
 		sys.Store = &nullstore.NullStore{}
 	}
 
 	kvPath := filepath.Join(configPath, "kvstore")
 	os.MkdirAll(kvPath, 0755)
 	if kv, err := lmdbkv.NewStore(kvPath); err != nil {
-		log("failed to create boltdb kvstore db at '%s': %s\n", kvPath, err)
+		log("failed to create lmdb kvstore db at '%s': %s\n", kvPath, err)
 	} else {
 		sys.KVStore = kv
 	}
