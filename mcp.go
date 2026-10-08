@@ -62,7 +62,7 @@ var mcpServer = &cli.Command{
 			}
 
 			if err := keyer.SignEvent(ctx, &evt); err != nil {
-				return mcp.NewToolResultError("it was impossible to sign the event, so we can't proceed to publishwith publishing it."), nil
+				return mcp.NewToolResultError("it was impossible to sign the event, so we can't proceed with publishing it."), nil
 			}
 
 			// our write relays
@@ -206,6 +206,9 @@ var mcpServer = &cli.Command{
 			}
 
 			res := sys.FetchOutboxRelays(ctx, pubkey, 1)
+			if len(res) == 0 {
+				return mcp.NewToolResultError("couldn't find any relays for this pubkey"), nil
+			}
 			return mcp.NewToolResultText(res[0]), nil
 		})
 
@@ -286,7 +289,7 @@ var mcpServer = &cli.Command{
 				for _, relayURL := range writeRelays {
 					if info, err := nip11.Fetch(ctx, relayURL); err == nil {
 						for _, nip := range info.SupportedNIPs {
-							if nipInt, ok := nip.(float64); ok && nipInt == 50 {
+							if nipInt, ok := nip.(int); ok && nipInt == 50 {
 								relays = append(relays, relayURL)
 								break
 							}
