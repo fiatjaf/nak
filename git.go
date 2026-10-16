@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -473,10 +472,7 @@ aside from those, there is also:
 
 					repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
 					if err != nil {
-						var stateErr *StateErr
-						if ref == "" || !errors.As(err, &stateErr) {
-							return err
-						}
+						return err
 					}
 
 					if ref == "" && state != nil && state.HEAD != "" {
@@ -2258,6 +2254,10 @@ please fix
 							commit := strings.TrimSpace(string(commitOutput))
 							if commit == stateHEAD {
 								row[2] = color.GreenString("repository synced with state")
+							} else if stateHEAD == "" {
+								// the state has no commit recorded for HEAD, so there is
+								// nothing to compare the pushed branch against
+								row[2] = color.YellowString("no HEAD commit in state")
 							} else {
 								short := func(s string) string {
 									if len(s) > 5 {
@@ -3110,12 +3110,9 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 			}
 		} else {
 			if err != nil {
-				if _, ok := err.(StateErr); ok {
-					// some error with the state, just do nothing and proceed
-				} else {
-					// actually fail with this error we don't know about
-					return repo, nil, err
-				}
+				// defensive: an announcement was found and is up-to-date on every
+				// grasp server, so there is nothing here that could fail
+				return repo, nil, err
 			}
 
 			// check if local config differs from remote announcement
@@ -3180,12 +3177,9 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 		}
 	} else {
 		if err != nil {
-			if _, ok := err.(StateErr); ok {
-				// some error with the state, just do nothing and proceed
-			} else {
-				// actually fail with this error we don't know about
-				return repo, nil, err
-			}
+			// only a missing repository announcement gets here, and with
+			// --no-announcement we can't publish one to make up for it
+			return repo, nil, err
 		}
 	}
 
@@ -3389,8 +3383,11 @@ func fetchRepositoryAndState(
 		return repo, nil, upToDateRelays, state, fmt.Errorf("no repository announcement (kind 30617) found for %s", identifier)
 	}
 
-	// fetch repository state (30618)
-	var stateErr *StateErr
+	// Fetch the newest repository state (30618) and keep it even when it is
+	// incomplete: NIP-34 allows a HEAD with no matching refs tag, so an
+	// incomplete state must not be reported as an error. Callers have to tell
+	// "no state was published" from "the state is incomplete", otherwise git
+	// push fabricates an empty state and overwrites what the real one records.
 	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30618},
 		Authors: []nostr.PubKey{pubkey},
@@ -3401,30 +3398,12 @@ func fetchRepositoryAndState(
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
 		if state == nil || ie.Event.CreatedAt > state.CreatedAt {
 			state_ := nip34.ParseRepositoryState(ie.Event)
-
-			if state_.HEAD == "" {
-				stateErr = &StateErr{"state is missing HEAD"}
-				continue
-			}
-			if _, ok := state_.Branches[state_.HEAD]; !ok {
-				stateErr = &StateErr{fmt.Sprintf("state is missing commit for HEAD branch '%s'", state_.HEAD)}
-				continue
-			}
-
-			stateErr = nil
 			state = &state_
 		}
-	}
-	if stateErr != nil {
-		return repo, upToDateAnnouncementEvent, upToDateRelays, state, stateErr
 	}
 
 	return repo, upToDateAnnouncementEvent, upToDateRelays, state, nil
 }
-
-type StateErr struct{ string }
-
-func (s StateErr) Error() string { return string(s.string) }
 
 func findGitRoot(startDir string) string {
 	if startDir == "" {
@@ -3805,10 +3784,7 @@ func resolveGitNaturalURLs(ctx context.Context, repoArg string) (gitURLs []strin
 
 	repo, _, _, state, err := fetchRepositoryAndState(ctx, owner, identifier, relayHints)
 	if err != nil {
-		var stateErr *StateErr
-		if !errors.As(err, &stateErr) {
-			return nil, nil, err
-		}
+		return nil, nil, err
 	}
 
 	for _, url := range repo.Clone {
