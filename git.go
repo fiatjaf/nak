@@ -3372,7 +3372,16 @@ func fetchRepositoryAndState(
 		// when the timestamps tie, which is what IsOlder() implements.
 		switch {
 		case repo.Event.ID == nostr.ZeroID || nostr.IsOlder(repo.Event, ie.Event):
-			repo = nip34.ParseRepository(ie.Event)
+			repo_ := nip34.ParseRepository(ie.Event)
+			if repo_.ID != identifier {
+				// the filter is satisfied by any matching d tag, but ParseRepository()
+				// keeps the last one: this id is what git push records in a state it
+				// has to create from scratch. logged by default because this can be
+				// the only hint about why no announcement was found.
+				log("ignoring repository announcement with d tag '%s', not '%s'\n", repo_.ID, identifier)
+				continue
+			}
+			repo = repo_
 
 			// reset this list as the previous was for relays with the older version
 			upToDateRelays = []string{ie.Relay.URL}
