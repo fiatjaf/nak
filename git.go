@@ -3111,7 +3111,7 @@ func gitSync(ctx context.Context, signer nostr.Keyer, skipAnnouncement bool) (ni
 		} else {
 			if err != nil {
 				// defensive: an announcement was found and is up-to-date on every
-				// grasp server, so there is nothing here that could fail
+				// grasp server, so err should be nil here
 				return repo, nil, err
 			}
 
