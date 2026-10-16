@@ -3406,6 +3406,14 @@ func fetchRepositoryAndState(
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
 		if state == nil || nostr.IsOlder(state.Event, ie.Event) {
 			state_ := nip34.ParseRepositoryState(ie.Event)
+			if state_.ID != identifier {
+				// the filter is satisfied by any matching d tag, but
+				// ParseRepositoryState() keeps the last one: publishing this state
+				// would write to another repository's address. logged by default
+				// because this can be the only hint about why no state was found.
+				log("ignoring repository state with d tag '%s', not '%s'\n", state_.ID, identifier)
+				continue
+			}
 			state = &state_
 		}
 	}
