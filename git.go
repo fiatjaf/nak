@@ -3367,15 +3367,18 @@ func fetchRepositoryAndState(
 			return false
 		},
 	}) {
-		if ie.Event.CreatedAt > repo.CreatedAt {
+		// NIP-01 orders addressable events by created_at first and by lowest id
+		// when the timestamps tie, which is what IsOlder() implements.
+		switch {
+		case repo.Event.ID == nostr.ZeroID || nostr.IsOlder(repo.Event, ie.Event):
 			repo = nip34.ParseRepository(ie.Event)
 
 			// reset this list as the previous was for relays with the older version
 			upToDateRelays = []string{ie.Relay.URL}
 
 			upToDateAnnouncementEvent = &ie.Event
-		} else if ie.Event.CreatedAt == repo.CreatedAt {
-			// we discard this because it's the same, but this relay is up-to-date
+		case ie.Event.CreatedAt == repo.CreatedAt && ie.Event.ID == repo.Event.ID:
+			// this relay holds the same version, so it is up-to-date
 			upToDateRelays = append(upToDateRelays, ie.Relay.URL)
 		}
 	}
@@ -3396,7 +3399,7 @@ func fetchRepositoryAndState(
 		},
 		Limit: 2,
 	}, nostr.SubscriptionOptions{Label: "nak-git"}) {
-		if state == nil || ie.Event.CreatedAt > state.CreatedAt {
+		if state == nil || nostr.IsOlder(state.Event, ie.Event) {
 			state_ := nip34.ParseRepositoryState(ie.Event)
 			state = &state_
 		}
