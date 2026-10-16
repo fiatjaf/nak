@@ -846,6 +846,7 @@ aside from those, there is also:
 
 				// create a new state if we didn't find any
 				if state == nil {
+					log("no repository state found on the relays, creating a new one from this push\n")
 					state = &nip34.RepositoryState{
 						ID:       repo.ID,
 						Branches: make(map[string]string),
@@ -3391,7 +3392,11 @@ func fetchRepositoryAndState(
 	// incomplete state must not be reported as an error. Callers have to tell
 	// "no state was published" from "the state is incomplete", otherwise git
 	// push fabricates an empty state and overwrites what the real one records.
-	for ie := range sys.Pool.FetchMany(ctx, repo.Relays, nostr.Filter{
+	//
+	// The state is looked for on the relays the announcement points at and on
+	// the ones the announcement came from, so that it stays reachable after a
+	// change to the repository's relays tag.
+	for ie := range sys.Pool.FetchMany(ctx, nostr.AppendUnique(relays, repo.Relays...), nostr.Filter{
 		Kinds:   []nostr.Kind{30618},
 		Authors: []nostr.PubKey{pubkey},
 		Tags: nostr.TagMap{
