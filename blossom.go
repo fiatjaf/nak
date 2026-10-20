@@ -101,6 +101,12 @@ var blossomCmd = &cli.Command{
 					return fmt.Errorf("no server specified and no blossom servers advertised")
 				}
 
+				// reuse one client per server so connections are kept alive across uploads
+				clients := make([]*blossom.Client, len(servers))
+				for i, server := range servers {
+					clients[i] = blossom.NewClient(server, keyer)
+				}
+
 				if isPiped() {
 					// get file from stdin
 					if c.Args().Len() > 0 {
@@ -111,11 +117,10 @@ var blossomCmd = &cli.Command{
 					if err != nil {
 						return fmt.Errorf("failed to read stdin: %w", err)
 					}
-					for _, server := range servers {
-						client := blossom.NewClient(server, keyer)
+					for _, client := range clients {
 						bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
 						if err != nil {
-							ctx = lineProcessingError(ctx, "failed to upload to '%s': %s", server, err)
+							ctx = lineProcessingError(ctx, "failed to upload to '%s': %s", client.GetMediaServer(), err)
 							continue
 						}
 
@@ -125,11 +130,10 @@ var blossomCmd = &cli.Command{
 				} else {
 					// get filenames from arguments
 					for _, fpath := range c.Args().Slice() {
-						for _, server := range servers {
-							client := blossom.NewClient(server, keyer)
+						for _, client := range clients {
 							bd, err := client.UploadFilePath(ctx, fpath)
 							if err != nil {
-								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %s", fpath, server, err)
+								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %s", fpath, client.GetMediaServer(), err)
 								continue
 							}
 
