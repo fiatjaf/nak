@@ -21,6 +21,10 @@ github.com/alecthomas/repr v0.4.0 h1:GhI2A8MACjfegCPVq9f1FLvIBS+DrQ2KQBFZP1iFzXc
 github.com/alecthomas/repr v0.4.0/go.mod h1:Fr0507jx4eOXV7AlPV6AVZLYrLIuIeSOWtW57eE/O/4=
 github.com/andybalholm/brotli v1.1.1 h1:PR2pgnyFznKEugtsUo0xLdDop5SKXd5Qf5ysW+7XdTA=
 github.com/andybalholm/brotli v1.1.1/go.mod h1:05ib4cKhjx3OQYUY22hTVd34Bc8upXjOLL2rKwwZBoA=
+github.com/avast/apkparser v0.0.0-20251022140151-7294e274bf65 h1:PWsG673uVG5/lNT1ut/GDUGWXVuUihRw02UB73uyjYI=
+github.com/avast/apkparser v0.0.0-20251022140151-7294e274bf65/go.mod h1:3F9A8btIerUcuy7Fmno+g/nIk4ELKJ6NCs2/KK1bvLs=
+github.com/avast/apkverifier v0.0.0-20251022140917-74acdc5f8b3f h1:DneEEnx4mb/j+b20VnmyvM0TNFbRC2vaDaX6vFaaeRs=
+github.com/avast/apkverifier v0.0.0-20251022140917-74acdc5f8b3f/go.mod h1:LRDgSMX7AD3MdV5MlmZ9Sly1tcf1Dqa6olfKg3X9DB8=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1 h1:HwpRHbFMcZLEVr42D4p7XBqjyuxQH5SMiErDT4WkJ2k=
 github.com/aymanbagabas/go-osc52/v2 v2.0.1/go.mod h1:uYgXzlJ7ZpABp8OJ+exZzJJhRNQ2ASbcXHWsFqH8hp8=
 github.com/aymanbagabas/go-udiff v0.2.0 h1:TK0fH4MteXUDspT88n8CKzvK0X9O2xu9yQjWpi6yML8=

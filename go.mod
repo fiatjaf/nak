@@ -30,12 +30,15 @@ require (
 
 require (
 	fiatjaf.com/lib v0.3.7
+	github.com/avast/apkparser v0.0.0-20251022140151-7294e274bf65
+	github.com/avast/apkverifier v0.0.0-20251022140917-74acdc5f8b3f
 	github.com/denisbrodbeck/machineid v1.0.1
 	github.com/hanwen/go-fuse/v2 v2.9.0
 	github.com/itchyny/gojq v0.12.19
 	github.com/lithammer/fuzzysearch v1.1.8
 	github.com/mattn/go-tty/v2 v2.0.0
 	github.com/urfave/cli-docs/v3 v3.1.0
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -112,6 +115,5 @@ require (
 	golang.org/x/net v0.41.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.26.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 	rsc.io/qr v0.2.0 // indirect
 )

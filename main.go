@@ -96,6 +96,7 @@ var app = &cli.Command{
 		publish,
 		nsite,
 		git,
+		software,
 		group,
 		podcast,
 		nip,
