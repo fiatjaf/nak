@@ -101,10 +101,19 @@ var blossomCmd = &cli.Command{
 					return fmt.Errorf("no server specified and no blossom servers advertised")
 				}
 
-				// reuse one client per server so connections are kept alive across uploads
-				clients := make([]*blossom.Client, len(servers))
-				for i, server := range servers {
-					clients[i] = blossom.NewClient(server, keyer)
+				// one client for all servers, so each blob is authorized with a single signature
+				mc := blossom.NewMultiClient(servers, keyer)
+
+				printResults := func(what string, results []blossom.MultiResult) {
+					for _, res := range results {
+						if res.Err != nil {
+							ctx = lineProcessingError(ctx, "failed to upload %s to '%s': %s", what, res.Server, res.Err)
+							continue
+						}
+
+						j, _ := json.Marshal(res.Blob)
+						stdout(string(j))
+					}
 				}
 
 				if isPiped() {
@@ -117,29 +126,16 @@ var blossomCmd = &cli.Command{
 					if err != nil {
 						return fmt.Errorf("failed to read stdin: %w", err)
 					}
-					for _, client := range clients {
-						bd, err := client.UploadBlob(ctx, bytes.NewReader(data), "")
-						if err != nil {
-							ctx = lineProcessingError(ctx, "failed to upload to '%s': %s", client.GetMediaServer(), err)
-							continue
-						}
-
-						j, _ := json.Marshal(bd)
-						stdout(string(j))
+					results, err := mc.UploadBlob(ctx, bytes.NewReader(data), "")
+					if err != nil && results == nil {
+						return err
 					}
+					printResults("stdin", results)
 				} else {
 					// get filenames from arguments
-					for _, fpath := range c.Args().Slice() {
-						for _, client := range clients {
-							bd, err := client.UploadFilePath(ctx, fpath)
-							if err != nil {
-								ctx = lineProcessingError(ctx, "failed to upload '%s' to '%s': %s", fpath, client.GetMediaServer(), err)
-								continue
-							}
-
-							j, _ := json.Marshal(bd)
-							stdout(string(j))
-						}
+					fpaths := c.Args().Slice()
+					for i, results := range mc.UploadFilePaths(ctx, fpaths) {
+						printResults("'"+fpaths[i]+"'", results)
 					}
 				}
 

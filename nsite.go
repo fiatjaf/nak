@@ -127,37 +127,7 @@ var nsite = &cli.Command{
 					}
 				}
 
-				if !c.Bool("yes") {
-					log("%s\n", color.CyanString("files:"))
-
-					if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
-						if err != nil {
-							return err
-						}
-						if d.IsDir() || !d.Type().IsRegular() {
-							return nil
-						}
-
-						relPath, err := filepath.Rel(dir, path)
-						if err != nil {
-							return fmt.Errorf("failed to get relative path for %s: %w", path, err)
-						}
-
-						log("  %s\n", color.GreenString("/%s", filepath.ToSlash(relPath)))
-						return nil
-					}); err != nil {
-						return err
-					}
-
-					log("%s\n", color.CyanString("blossom servers:"))
-					for _, server := range blossomServers {
-						log("  %s\n", color.YellowString(server))
-					}
-					if !askConfirmation("upload nsite and publish manifest? [y/n] ") {
-						return fmt.Errorf("aborted")
-					}
-				}
-
+				var paths, relPaths []string
 				if err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 					if err != nil {
 						return err
@@ -171,17 +141,44 @@ var nsite = &cli.Command{
 						return fmt.Errorf("failed to get relative path for %s: %w", path, err)
 					}
 
+					paths = append(paths, path)
+					relPaths = append(relPaths, "/"+filepath.ToSlash(relPath))
+					return nil
+				}); err != nil {
+					return err
+				}
+
+				if !c.Bool("yes") {
+					log("%s\n", color.CyanString("files:"))
+					for _, relPath := range relPaths {
+						log("  %s\n", color.GreenString(relPath))
+					}
+
+					log("%s\n", color.CyanString("blossom servers:"))
+					for _, server := range blossomServers {
+						log("  %s\n", color.YellowString(server))
+					}
+					if !askConfirmation("upload nsite and publish manifest? [y/n] ") {
+						return fmt.Errorf("aborted")
+					}
+				}
+
+				// one client for all servers, so each batch of files is authorized with a single signature
+				mc := blossom.NewMultiClient(blossomServers, kr)
+
+				for i, results := range mc.UploadFilePaths(ctx, paths) {
+					path := paths[i]
+
 					var hhash string
 					var uploadErrors []error
-					for _, server := range blossomServers {
-						client := blossom.NewClient(server, kr)
-						bd, err := client.UploadFilePath(ctx, path)
-						if err != nil {
-							uploadErrors = append(uploadErrors, fmt.Errorf("%s: %w", server, err))
+					for _, res := range results {
+						if res.Err != nil {
+							uploadErrors = append(uploadErrors, fmt.Errorf("%s: %w", res.Server, res.Err))
+							log("failed to upload %s to %s: %s\n", color.GreenString(path), color.YellowString(res.Server), res.Err)
 							continue
 						}
-						hhash = bd.SHA256
-						log("uploaded %s to %s as %s\n", color.GreenString(path), color.YellowString(server), color.CyanString(hhash))
+						hhash = res.Blob.SHA256
+						log("uploaded %s to %s as %s\n", color.GreenString(path), color.YellowString(res.Server), color.CyanString(hhash))
 					}
 					if hhash == "" {
 						return fmt.Errorf("failed to upload %s to any blossom server: %w", path, errors.Join(uploadErrors...))
@@ -191,11 +188,7 @@ var nsite = &cli.Command{
 					if _, err := hex.Decode(hash[:], []byte(hhash)); err != nil {
 						return fmt.Errorf("invalid blob hash '%s': %w", hhash, err)
 					}
-					manifest.Paths["/"+filepath.ToSlash(relPath)] = hash
-
-					return nil
-				}); err != nil {
-					return err
+					manifest.Paths[relPaths[i]] = hash
 				}
 
 				evt := manifest.ToEvent()
@@ -339,6 +332,7 @@ var nsite = &cli.Command{
 					return fmt.Errorf("no blossom servers advertised in manifest or kind:10063")
 				}
 
+				mc := blossom.NewMultiClient(blossomServers, readOnlySigner)
 				for path, hash := range mnf.Paths {
 					relPath := strings.TrimPrefix(path, "/")
 					if !filepath.IsLocal(relPath) {
@@ -349,25 +343,14 @@ var nsite = &cli.Command{
 						return fmt.Errorf("failed to create %s: %w", filepath.Dir(fullPath), err)
 					}
 
-					var downloadErr error
-					for _, server := range blossomServers {
-						client := blossom.NewClient(server, readOnlySigner)
-						data, err := client.Download(ctx, hash)
-						if err != nil {
-							downloadErr = errors.Join(downloadErr, fmt.Errorf("%s: %w", server, err))
-							continue
-						}
-
-						if err := os.WriteFile(fullPath, data, 0o644); err != nil {
-							return fmt.Errorf("failed to write %s: %w", fullPath, err)
-						}
-						stdout(path)
-						downloadErr = nil
-						break
+					data, err := mc.Download(ctx, hash)
+					if err != nil {
+						return fmt.Errorf("failed to download '%s': %w", path, err)
 					}
-					if downloadErr != nil {
-						return fmt.Errorf("failed to download '%s': %w", path, downloadErr)
+					if err := os.WriteFile(fullPath, data, 0o644); err != nil {
+						return fmt.Errorf("failed to write %s: %w", fullPath, err)
 					}
+					stdout(path)
 				}
 
 				absDir, err := filepath.Abs(outputDir)
