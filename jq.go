@@ -39,12 +39,7 @@ func jqPrepare(expr string, raw bool) (jqProcessor, error) {
 	}
 
 	return func(evt nostr.Event) (string, bool, error) {
-		input, err := toJQInput(evt)
-		if err != nil {
-			return "", false, err
-		}
-
-		iter := code.Run(input)
+		iter := code.Run(toJQInput(evt))
 		for {
 			v, ok := iter.Next()
 			if !ok {
@@ -75,18 +70,36 @@ func jqStringify(v any, raw bool) string {
 	return out
 }
 
-func toJQInput(v any) (any, error) {
-	data, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("failed to marshal jq input: %w", err)
+// toJQInput builds the generic value gojq expects directly from the event,
+// mirroring the fields and omissions of the event's JSON encoding without
+// paying for a marshal/unmarshal round trip.
+func toJQInput(evt nostr.Event) map[string]any {
+	tags := make([]any, len(evt.Tags))
+	for i, tag := range evt.Tags {
+		items := make([]any, len(tag))
+		for j, item := range tag {
+			items[j] = item
+		}
+		tags[i] = items
 	}
 
-	var input any
-	if err := json.Unmarshal(data, &input); err != nil {
-		return nil, fmt.Errorf("failed to unmarshal jq input: %w", err)
+	input := map[string]any{
+		"kind":       float64(evt.Kind),
+		"created_at": float64(evt.CreatedAt),
+		"tags":       tags,
+		"content":    evt.Content,
+	}
+	if evt.ID != nostr.ZeroID {
+		input["id"] = evt.ID.Hex()
+	}
+	if evt.PubKey != nostr.ZeroPK {
+		input["pubkey"] = evt.PubKey.Hex()
+	}
+	if evt.Sig != [64]byte{} {
+		input["sig"] = nostr.HexEncodeToString(evt.Sig[:])
 	}
 
-	return input, nil
+	return input
 }
 
 func jqTruthy(v any) bool {
