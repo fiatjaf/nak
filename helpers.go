@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"context"
+	stdjson "encoding/json"
 	"errors"
 	"fmt"
 	"iter"
@@ -71,30 +72,16 @@ func isPiped() bool {
 }
 
 func getJsonsOrBlank(github bool) iter.Seq[string] {
-	var curr strings.Builder
-
-	var finalJsonErr error
 	return func(yield func(string) bool) {
+		var acc jsonLineAccumulator
 		stopped := false
 		hasStdin := writeStdinLinesOrNothing(func(stdinLine string) bool {
 			// we're look for an event, but it may be in multiple lines, so if json parsing fails
 			// we'll try the next line until we're successful
-			curr.WriteString(stdinLine)
-			stdinEvent := curr.String()
-
-			var dummy any
-			if err := json.Unmarshal([]byte(stdinEvent), &dummy); err != nil {
-				finalJsonErr = err
-				return true
-			}
-			finalJsonErr = nil
-
-			if !yield(stdinEvent) {
+			if stdinEvent, ok := acc.feed(stdinLine); ok && !yield(stdinEvent) {
 				stopped = true
 				return false
 			}
-
-			curr.Reset()
 			return true
 		})
 
@@ -108,10 +95,49 @@ func getJsonsOrBlank(github bool) iter.Seq[string] {
 			}
 		}
 
-		if finalJsonErr != nil {
-			log("%s", color.YellowString("stdin json parse error: %s", finalJsonErr))
+		if err := acc.err(); err != nil {
+			log("%s", color.YellowString("stdin json parse error: %s", err))
 		}
 	}
+}
+
+// jsonLineAccumulator joins consecutive lines until they form a complete json value.
+type jsonLineAccumulator struct {
+	curr   []byte
+	failed bool
+}
+
+// feed appends a line and returns the accumulated json once it is valid.
+func (a *jsonLineAccumulator) feed(line string) (string, bool) {
+	a.curr = append(a.curr, line...)
+
+	// an object or array can only be complete once it ends with its closing
+	// bracket, so we can skip validating the buffer for most lines of
+	// pretty-printed input
+	if n := len(a.curr); n > 0 &&
+		((a.curr[0] == '{' && a.curr[n-1] != '}') || (a.curr[0] == '[' && a.curr[n-1] != ']')) {
+		a.failed = true
+		return "", false
+	}
+
+	if !stdjson.Valid(a.curr) {
+		a.failed = true
+		return "", false
+	}
+
+	a.failed = false
+	result := string(a.curr)
+	a.curr = a.curr[:0]
+	return result, true
+}
+
+// err describes why the last fed line did not complete a json value, if it didn't.
+func (a *jsonLineAccumulator) err() error {
+	if !a.failed {
+		return nil
+	}
+	var dummy any
+	return json.Unmarshal(a.curr, &dummy)
 }
 
 func getStdinLinesOrBlank() iter.Seq[string] {
