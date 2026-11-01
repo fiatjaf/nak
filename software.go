@@ -88,6 +88,56 @@ with --interactive all fields are prompted for, with the current values as defau
 			},
 			Action: softwarePublish,
 		},
+		{
+			Name:                      "apps",
+			Usage:                     "list applications published by an author or found on a relay",
+			ArgsUsage:                 "[<author>|<relay>]",
+			DisableSliceFlagSeparator: true,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "author",
+					Aliases: []string{"a"},
+					Usage:   "author pubkey (npub, nprofile, hex or nip05)",
+				},
+				&cli.StringSliceFlag{
+					Name:    "relay",
+					Aliases: []string{"r"},
+					Usage:   "relay to fetch from (can be used multiple times)",
+				},
+				&cli.IntFlag{
+					Name:    "limit",
+					Aliases: []string{"l"},
+					Usage:   "maximum number of applications to fetch",
+					Value:   100,
+				},
+			},
+			Action: softwareListApps,
+		},
+		{
+			Name:                      "releases",
+			Usage:                     "list releases and their assets for an application",
+			ArgsUsage:                 "<naddr|d-tag>",
+			DisableSliceFlagSeparator: true,
+			Flags: []cli.Flag{
+				&cli.StringFlag{
+					Name:    "author",
+					Aliases: []string{"a"},
+					Usage:   "author pubkey used to disambiguate a bare d tag",
+				},
+				&cli.StringSliceFlag{
+					Name:    "relay",
+					Aliases: []string{"r"},
+					Usage:   "relay to fetch from (can be used multiple times)",
+				},
+				&cli.IntFlag{
+					Name:    "limit",
+					Aliases: []string{"l"},
+					Usage:   "maximum number of releases to fetch",
+					Value:   100,
+				},
+			},
+			Action: softwareListReleases,
+		},
 	},
 }
 
@@ -719,6 +769,430 @@ func softwarePublish(ctx context.Context, c *cli.Command) error {
 	}
 
 	return nil
+}
+
+func softwareListApps(ctx context.Context, c *cli.Command) error {
+	if c.Args().Len() > 1 {
+		return fmt.Errorf("expected at most one argument (author or relay)")
+	}
+
+	relays := slices.Clone(c.StringSlice("relay"))
+	if err := normalizeAndValidateRelayURLs(relays); err != nil {
+		return err
+	}
+
+	authorTarget := strings.TrimSpace(c.String("author"))
+	if arg := strings.TrimSpace(c.Args().First()); arg != "" {
+		if softwareTargetIsRelay(arg) {
+			relay := nostr.NormalizeURL(arg)
+			if err := normalizeAndValidateRelayURLs([]string{relay}); err != nil {
+				return err
+			}
+			relays = nostr.AppendUnique(relays, relay)
+		} else if authorTarget != "" {
+			return fmt.Errorf("author given both as an argument and with --author")
+		} else {
+			authorTarget = arg
+		}
+	}
+
+	limit := int(c.Int("limit"))
+	if limit <= 0 {
+		limit = 100
+	}
+	filter := nostr.Filter{
+		Kinds: []nostr.Kind{32267},
+		Limit: limit,
+	}
+
+	if authorTarget != "" {
+		pk, err := parsePubKeyForCommand(ctx, c, authorTarget)
+		if err != nil {
+			return fmt.Errorf("invalid author '%s': %w", authorTarget, err)
+		}
+		relays = softwareAppReadRelays(ctx, pk, relays)
+		filter.Authors = []nostr.PubKey{pk}
+	}
+
+	if len(relays) == 0 {
+		return fmt.Errorf("expected an author or a relay")
+	}
+
+	apps := make([]nostr.Event, 0, limit)
+	sys.Pool.FetchManyReplaceable(ctx, relays, filter,
+		nostr.SubscriptionOptions{Label: "nak-software-apps"}).Range(func(_ nostr.ReplaceableKey, evt nostr.Event) bool {
+		apps = append(apps, evt)
+		return true
+	})
+
+	if len(apps) == 0 {
+		log("no applications found.\n")
+		return nil
+	}
+
+	slices.SortFunc(apps, func(a, b nostr.Event) int {
+		an := softwareTagValue(a, "name")
+		if an == "" {
+			an = softwareTagValue(a, "d")
+		}
+		bn := softwareTagValue(b, "name")
+		if bn == "" {
+			bn = softwareTagValue(b, "d")
+		}
+		if cmp := strings.Compare(strings.ToLower(an), strings.ToLower(bn)); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(softwareTagValue(a, "d"), softwareTagValue(b, "d"))
+	})
+
+	for _, app := range apps {
+		d := softwareTagValue(app, "d")
+		name := softwareTagValue(app, "name")
+		if name == "" {
+			name = d
+		}
+		naddr := nip19.EncodeNaddr(app.PubKey, 32267, d, nil)
+
+		line := fmt.Sprintf("%s  %s (%s)", color.CyanString(naddr), color.GreenString(name), d)
+		if platforms := softwareTagValues(app, "f"); len(platforms) > 0 {
+			line += "  [" + strings.Join(platforms, ", ") + "]"
+		}
+		if summary := softwareTagValue(app, "summary"); summary != "" {
+			line += "  " + clampWithEllipsis(singleLine(summary), 100)
+		}
+		stdout(line)
+	}
+
+	return nil
+}
+
+func softwareListReleases(ctx context.Context, c *cli.Command) error {
+	if c.Args().Len() != 1 {
+		return fmt.Errorf("expected exactly one argument (application naddr or d tag)")
+	}
+
+	relays := slices.Clone(c.StringSlice("relay"))
+	if err := normalizeAndValidateRelayURLs(relays); err != nil {
+		return err
+	}
+
+	app, relays, err := softwareResolveApp(ctx, c, c.Args().First(), strings.TrimSpace(c.String("author")), relays)
+	if err != nil {
+		return err
+	}
+	appID := softwareTagValue(*app, "d")
+
+	limit := int(c.Int("limit"))
+	if limit <= 0 {
+		limit = 100
+	}
+
+	releases := make([]nostr.Event, 0, limit)
+	sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
+		Kinds:   []nostr.Kind{30063},
+		Authors: []nostr.PubKey{app.PubKey},
+		Tags:    nostr.TagMap{"i": []string{appID}},
+		Limit:   limit,
+	}, nostr.SubscriptionOptions{Label: "nak-software-releases"}).Range(
+		func(_ nostr.ReplaceableKey, evt nostr.Event) bool {
+			releases = append(releases, evt)
+			return true
+		})
+
+	name := softwareTagValue(*app, "name")
+	if name == "" {
+		name = appID
+	}
+	stdout(fmt.Sprintf("%s %s (%s)", colors.bold("application:"), color.GreenString(name), appID))
+	if len(releases) == 0 {
+		stdout(color.YellowString("no releases found."))
+		return nil
+	}
+
+	slices.SortFunc(releases, func(a, b nostr.Event) int {
+		if a.CreatedAt != b.CreatedAt {
+			if a.CreatedAt > b.CreatedAt {
+				return -1
+			}
+			return 1
+		}
+		return strings.Compare(softwareTagValue(b, "version"), softwareTagValue(a, "version"))
+	})
+
+	// the release e tags are the authoritative list of assets, so fetch them by id
+	assetIDs := make([]nostr.ID, 0, len(releases))
+	assetRelays := slices.Clone(relays)
+	for _, release := range releases {
+		for tag := range release.Tags.FindAll("e") {
+			if len(tag) < 2 {
+				continue
+			}
+			id, err := nostr.IDFromHex(tag[1])
+			if err != nil {
+				continue
+			}
+			if !slices.Contains(assetIDs, id) {
+				assetIDs = append(assetIDs, id)
+			}
+			if len(tag) >= 3 {
+				relay := nostr.NormalizeURL(tag[2])
+				if nostr.IsValidRelayURL(relay) {
+					assetRelays = nostr.AppendUnique(assetRelays, relay)
+				}
+			}
+		}
+	}
+	assets := softwareFetchAssets(ctx, assetRelays, assetIDs)
+
+	for _, release := range releases {
+		softwarePrintRelease(release, assets)
+	}
+
+	return nil
+}
+
+func softwareResolveApp(
+	ctx context.Context,
+	c *cli.Command,
+	target string,
+	authorTarget string,
+	relayHints []string,
+) (*nostr.Event, []string, error) {
+	target = strings.TrimSpace(strings.TrimPrefix(target, "nostr:"))
+	if target == "" {
+		return nil, nil, fmt.Errorf("missing application naddr or d tag")
+	}
+
+	if prefix, value, err := nip19.Decode(target); err == nil {
+		if prefix != "naddr" {
+			return nil, nil, fmt.Errorf("expected an application naddr or d tag, got %s", prefix)
+		}
+		ptr := value.(nostr.EntityPointer)
+		if ptr.Kind != 0 && ptr.Kind != 32267 {
+			return nil, nil, fmt.Errorf("naddr points to kind %d, expected 32267", ptr.Kind)
+		}
+		if ptr.Identifier == "" {
+			return nil, nil, fmt.Errorf("naddr has no application identifier")
+		}
+
+		relays := nostr.AppendUnique(slices.Clone(relayHints), ptr.Relays...)
+		relays = softwareAppReadRelays(ctx, ptr.PublicKey, relays)
+		app, err := softwareFetchApp(ctx, ptr.PublicKey, ptr.Identifier, relays)
+		if err != nil {
+			return nil, nil, err
+		}
+		return app, relays, nil
+	} else if strings.HasPrefix(target, "naddr1") {
+		return nil, nil, fmt.Errorf("invalid application naddr: %w", err)
+	}
+
+	// a bare d tag is ambiguous across authors, so search by it and complain if
+	// more than one application is found
+	relays := slices.Clone(relayHints)
+	filter := nostr.Filter{
+		Kinds: []nostr.Kind{32267},
+		Tags:  nostr.TagMap{"d": []string{target}},
+		Limit: 10,
+	}
+	if authorTarget != "" {
+		pk, err := parsePubKeyForCommand(ctx, c, authorTarget)
+		if err != nil {
+			return nil, nil, fmt.Errorf("invalid author '%s': %w", authorTarget, err)
+		}
+		relays = softwareAppReadRelays(ctx, pk, relays)
+		filter.Authors = []nostr.PubKey{pk}
+	} else {
+		relays = nostr.AppendUnique(relays, zapstoreRelay)
+	}
+	if len(relays) == 0 {
+		return nil, nil, fmt.Errorf("no relays to search for application '%s'", target)
+	}
+
+	apps := make([]nostr.Event, 0, 4)
+	sys.Pool.FetchManyReplaceable(ctx, relays, filter,
+		nostr.SubscriptionOptions{Label: "nak-software-app"}).Range(func(_ nostr.ReplaceableKey, evt nostr.Event) bool {
+		apps = append(apps, evt)
+		return true
+	})
+
+	switch len(apps) {
+	case 0:
+		return nil, nil, fmt.Errorf("application '%s' not found", target)
+	case 1:
+		return &apps[0], relays, nil
+	default:
+		naddrs := make([]string, len(apps))
+		for i, app := range apps {
+			naddrs[i] = nip19.EncodeNaddr(app.PubKey, 32267, softwareTagValue(app, "d"), nil)
+		}
+		slices.Sort(naddrs)
+		return nil, nil, fmt.Errorf("multiple applications found for '%s', use an naddr or --author: %s",
+			target, strings.Join(naddrs, " "))
+	}
+}
+
+func softwareFetchApp(ctx context.Context, pk nostr.PubKey, d string, relays []string) (*nostr.Event, error) {
+	evt, ok := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
+		Kinds:   []nostr.Kind{32267},
+		Authors: []nostr.PubKey{pk},
+		Tags:    nostr.TagMap{"d": []string{d}},
+	}, nostr.SubscriptionOptions{Label: "nak-software-app"}).Load(nostr.ReplaceableKey{PubKey: pk, D: d})
+	if !ok {
+		return nil, fmt.Errorf("application %s not found", nip19.EncodeNaddr(pk, 32267, d, relays))
+	}
+	return &evt, nil
+}
+
+// softwareAppReadRelays returns the relays where an author's applications are
+// likely to be, including the read relays from their kind 10067 app catalog.
+func softwareAppReadRelays(ctx context.Context, pk nostr.PubKey, hints []string) []string {
+	relays := nostr.AppendUnique(slices.Clone(hints), sys.FetchOutboxRelays(ctx, pk, 3)...)
+	relays = nostr.AppendUnique(relays, zapstoreRelay)
+
+	catalog, ok := sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
+		Kinds:   []nostr.Kind{10067},
+		Authors: []nostr.PubKey{pk},
+	}, nostr.SubscriptionOptions{Label: "nak-software-catalog"}).Load(nostr.ReplaceableKey{PubKey: pk})
+	if ok {
+		for tag := range catalog.Tags.FindAll("r") {
+			if len(tag) < 2 {
+				continue
+			}
+			if len(tag) >= 3 && tag[2] != "read" {
+				continue
+			}
+			relay := nostr.NormalizeURL(tag[1])
+			if nostr.IsValidRelayURL(relay) {
+				relays = nostr.AppendUnique(relays, relay)
+			}
+		}
+	}
+
+	return relays
+}
+
+func softwareFetchAssets(ctx context.Context, relays []string, ids []nostr.ID) map[nostr.ID]nostr.Event {
+	assets := make(map[nostr.ID]nostr.Event, len(ids))
+	for start := 0; start < len(ids); start += 100 {
+		end := min(start+100, len(ids))
+		for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
+			Kinds: []nostr.Kind{3063},
+			IDs:   ids[start:end],
+		}, nostr.SubscriptionOptions{Label: "nak-software-assets"}) {
+			assets[ie.Event.ID] = ie.Event
+		}
+	}
+	return assets
+}
+
+func softwarePrintRelease(release nostr.Event, assets map[nostr.ID]nostr.Event) {
+	version := softwareTagValue(release, "version")
+	if version == "" {
+		version = softwareTagValue(release, "d")
+	}
+
+	parts := []string{colors.bold(version)}
+	if channel := softwareTagValue(release, "c"); channel != "" {
+		parts = append(parts, color.CyanString(channel))
+	}
+	parts = append(parts, release.CreatedAt.Time().Format("2006-01-02"))
+	if notes := clampWithEllipsis(singleLine(release.Content), 100); notes != "" {
+		parts = append(parts, notes)
+	}
+	stdout(strings.Join(parts, "  "))
+
+	for tag := range release.Tags.FindAll("e") {
+		if len(tag) < 2 {
+			continue
+		}
+		id, err := nostr.IDFromHex(tag[1])
+		if err != nil {
+			continue
+		}
+		asset, ok := assets[id]
+		if !ok {
+			stdout(fmt.Sprintf("  - %s", color.YellowString("missing asset %s", tag[1])))
+			continue
+		}
+		softwarePrintAsset(asset)
+	}
+}
+
+func softwarePrintAsset(asset nostr.Event) {
+	label := softwareTagValue(asset, "variant")
+	if label == "" {
+		label = softwareTagValue(asset, "filename")
+	}
+	if label == "" {
+		label = asset.ID.Hex()[:8]
+	}
+
+	parts := []string{color.GreenString(label)}
+	if mime := softwareTagValue(asset, "m"); mime != "" {
+		parts = append(parts, mime)
+	}
+	if size := softwareFormatSize(softwareTagValue(asset, "size")); size != "" {
+		parts = append(parts, size)
+	}
+	if platforms := softwareTagValues(asset, "f"); len(platforms) > 0 {
+		parts = append(parts, "["+strings.Join(platforms, ", ")+"]")
+	}
+	stdout(fmt.Sprintf("  - %s", strings.Join(parts, "  ")))
+
+	for _, url := range softwareTagValues(asset, "url") {
+		stdout(fmt.Sprintf("      %s", color.CyanString(url)))
+	}
+
+	details := []string{}
+	if hash := softwareTagValue(asset, "x"); hash != "" {
+		details = append(details, "sha256 "+hash)
+	}
+	if versionCode := softwareTagValue(asset, "version_code"); versionCode != "" {
+		details = append(details, "version_code "+versionCode)
+	}
+	if cert := softwareTagValue(asset, "apk_certificate_hash"); cert != "" {
+		details = append(details, "cert "+cert)
+	}
+	if len(details) > 0 {
+		stdout(fmt.Sprintf("      %s", strings.Join(details, "  ")))
+	}
+}
+
+func softwareTagValue(evt nostr.Event, name string) string {
+	if tag := evt.Tags.Find(name); len(tag) >= 2 {
+		return tag[1]
+	}
+	return ""
+}
+
+func softwareTagValues(evt nostr.Event, name string) []string {
+	values := []string{}
+	for tag := range evt.Tags.FindAll(name) {
+		if len(tag) >= 2 {
+			values = append(values, tag[1])
+		}
+	}
+	return values
+}
+
+func softwareFormatSize(value string) string {
+	n, err := strconv.ParseInt(value, 10, 64)
+	if err != nil || n < 0 {
+		return value
+	}
+	if n < 1024 {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(1024), 0
+	for n/div >= 1024 && exp < 5 {
+		div *= 1024
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
+}
+
+func softwareTargetIsRelay(target string) bool {
+	return strings.HasPrefix(target, "ws://") || strings.HasPrefix(target, "wss://")
 }
 
 func normalizeBlossomServer(s string) string {
