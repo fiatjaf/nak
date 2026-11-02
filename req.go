@@ -15,6 +15,7 @@ import (
 	"fiatjaf.com/nostr/eventstore"
 	"fiatjaf.com/nostr/eventstore/slicestore"
 	"fiatjaf.com/nostr/eventstore/wrappers"
+	"fiatjaf.com/nostr/nip19"
 	"fiatjaf.com/nostr/nip77"
 	"fiatjaf.com/nostr/schema"
 	"github.com/mailru/easyjson"
@@ -49,6 +50,16 @@ example:
 		&cli.BoolFlag{
 			Name:  "jq-raw",
 			Usage: "print --jq string results without JSON quoting, like `jq -r`",
+		},
+		&cli.BoolFlag{
+			Name:    "references",
+			Aliases: []string{"refs"},
+			Usage:   "instead of printing events, print nip19 references for them with relay hints (naddr for replaceable kinds, unless you also pass --nevent-always)",
+		},
+		&cli.BoolFlag{
+			Name:   "nevent-always",
+			Usage:  "when using --references, always print nevent codes even for replaceable events",
+			Hidden: true,
 		},
 		&cli.BoolFlag{
 			Name:  "no-verify",
@@ -136,6 +147,20 @@ example:
 			return fmt.Errorf("--jq requires relay URLs or --outbox")
 		}
 
+		references := c.Bool("references")
+		if references && jq != nil {
+			return fmt.Errorf("--references is incompatible with --jq")
+		}
+		if c.Bool("nevent-always") && !references {
+			return fmt.Errorf("--nevent-always requires --references")
+		}
+		if references && c.Bool("ids-only") {
+			return fmt.Errorf("--references is incompatible with --ids-only")
+		}
+		if references && len(relayUrls) == 0 && !c.Bool("outbox") {
+			return fmt.Errorf("--references requires relay URLs or --outbox")
+		}
+
 		if len(relayUrls) > 0 && !negentropy {
 			relays := connectToAllRelays(
 				ctx,
@@ -198,16 +223,6 @@ example:
 						}
 					}
 
-					target := PrintingQuerierPublisher{
-						QuerierPublisher: wrappers.StorePublisher{Store: store, MaxLimit: math.MaxInt},
-						jq:               jq,
-					}
-
-					var source nostr.Querier = nil
-					if c.IsSet("only-missing") {
-						source = target
-					}
-
 					handle := nip77.SyncEventsFromIDs
 
 					if c.Bool("ids-only") {
@@ -224,13 +239,26 @@ example:
 					}
 
 					for _, url := range relayUrls {
+						target := &PrintingQuerierPublisher{
+							QuerierPublisher: wrappers.StorePublisher{Store: store, MaxLimit: math.MaxInt},
+							jq:               jq,
+							references:       references,
+							neventAlways:     c.Bool("nevent-always"),
+							relayURL:         url,
+						}
+
+						var source nostr.Querier = nil
+						if c.IsSet("only-missing") {
+							source = target
+						}
+
 						err := nip77.NegentropySync(ctx, url, filter, source, target, handle)
 						if err != nil {
 							log("negentropy sync from %s failed: %s\n", url, err)
 						}
 					}
 				} else {
-					if err := performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), "nak-req", jq); err != nil {
+					if err := performReq(ctx, filter, relayUrls, c.Bool("stream"), c.Bool("outbox"), c.Uint("outbox-relays-per-pubkey"), c.Bool("paginate"), c.Duration("paginate-interval"), references, c.Bool("nevent-always"), "nak-req", jq); err != nil {
 						return err
 					}
 				}
@@ -264,6 +292,28 @@ example:
 	},
 }
 
+// eventReference builds a nip19 reference for an event, using the relay it was
+// downloaded from as a hint. Replaceable and addressable events become naddr
+// codes unless neventAlways is set.
+func eventReference(evt nostr.Event, relayURL string, neventAlways bool) string {
+	relays := make([]string, 0, 1)
+	if relayURL != "" {
+		relays = append(relays, relayURL)
+	}
+
+	if !neventAlways {
+		if evt.Kind.IsAddressable() {
+			if d := evt.Tags.GetD(); d != "" {
+				return nip19.EncodeNaddr(evt.PubKey, evt.Kind, d, relays)
+			}
+		} else if evt.Kind.IsReplaceable() {
+			return nip19.EncodeNaddr(evt.PubKey, evt.Kind, "", relays)
+		}
+	}
+
+	return nip19.EncodeNevent(evt.ID, relays, evt.PubKey)
+}
+
 func performReq(
 	ctx context.Context,
 	filter nostr.Filter,
@@ -273,6 +323,8 @@ func performReq(
 	outboxRelaysPerPubKey uint,
 	paginate bool,
 	paginateInterval time.Duration,
+	references bool,
+	neventAlways bool,
 	label string,
 	jq jqProcessor,
 ) error {
@@ -415,7 +467,13 @@ readevents:
 			}
 
 			var out string
-			if jq == nil {
+			if references {
+				relayURL := ""
+				if ie.Relay != nil {
+					relayURL = ie.Relay.URL
+				}
+				out = eventReference(ie.Event, relayURL, neventAlways)
+			} else if jq == nil {
 				out = ie.Event.String()
 			} else {
 				v, matches, err := jq(ie.Event)
@@ -616,13 +674,18 @@ func applyFlagsToFilter(c *cli.Command, filter *nostr.Filter) error {
 
 type PrintingQuerierPublisher struct {
 	nostr.QuerierPublisher
-	jq jqProcessor
+	jq           jqProcessor
+	references   bool
+	neventAlways bool
+	relayURL     string
 }
 
 func (p PrintingQuerierPublisher) Publish(ctx context.Context, evt nostr.Event) error {
 	if err := p.QuerierPublisher.Publish(ctx, evt); err == nil {
 		var out string
-		if p.jq == nil {
+		if p.references {
+			out = eventReference(evt, p.relayURL, p.neventAlways)
+		} else if p.jq == nil {
 			out = evt.String()
 		} else {
 			v, matches, err := p.jq(evt)
