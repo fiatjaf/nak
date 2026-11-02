@@ -36,6 +36,35 @@ func parseEntityPointerInput(target string) (nostr.EntityPointer, bool) {
 	return entityPtr, true
 }
 
+// parseEventInput parses a full event from JSON. Events are distinguished from
+// pointer inputs by the presence of the "tags" field.
+func parseEventInput(target string) (nostr.Event, bool, error) {
+	var fields map[string]stdjson.RawMessage
+	if err := stdjson.Unmarshal([]byte(target), &fields); err != nil {
+		return nostr.Event{}, false, nil
+	}
+	if _, ok := fields["tags"]; !ok {
+		return nostr.Event{}, false, nil
+	}
+
+	var evt nostr.Event
+	if err := stdjson.Unmarshal([]byte(target), &evt); err != nil {
+		return nostr.Event{}, true, fmt.Errorf("invalid event JSON: %w", err)
+	}
+	return evt, true, nil
+}
+
+// eventRelayHints appends valid relay URLs found in the event's "r" tags.
+func eventRelayHints(evt nostr.Event, relays []string) []string {
+	for tag := range evt.Tags.FindAll("r") {
+		relay := nostr.NormalizeURL(tag[1])
+		if nostr.IsValidRelayURL(relay) {
+			relays = nostr.AppendUnique(relays, relay)
+		}
+	}
+	return relays
+}
+
 func getEncodeSubcommandInput(args cli.Args, allowBlank bool) iter.Seq[string] {
 	if args.Len() > 0 {
 		return func(yield func(string) bool) {
@@ -80,7 +109,18 @@ var encode = &cli.Command{
 		  "author":"ebb6ff85430705651b311ed51328767078fd790b14f02d22efba68d5513376bc"
 		} | nak encode`,
 	DisableSliceFlagSeparator: true,
+	Flags: []cli.Flag{
+		&cli.StringSliceFlag{
+			Name:    "relay",
+			Aliases: []string{"r"},
+			Usage:   "attach relay hints to the code",
+		},
+	},
 	Action: func(ctx context.Context, c *cli.Command) error {
+		if c.Args().Len() == 0 && !isPiped() {
+			return cli.ShowSubcommandHelp(c)
+		}
+
 		if c.Args().Len() != 0 {
 			switch c.Args().First() {
 			case "naddr", "nevent", "npub", "nprofile", "nsec":
@@ -102,6 +142,15 @@ var encode = &cli.Command{
 				continue
 			} else {
 				hasStdin = true
+			}
+
+			if evt, isEvent, err := parseEventInput(jsonStr); err != nil {
+				ctx = lineProcessingError(ctx, "%s", err)
+				continue
+			} else if isEvent {
+				relays = eventRelayHints(evt, relays)
+				stdout(eventReference(evt, relays, false))
+				continue
 			}
 
 			if eventPtr, ok := parseEventPointerInput(jsonStr); ok {
@@ -245,7 +294,20 @@ var encode = &cli.Command{
 					author := getPubKey(c, "author")
 					relays := c.StringSlice("relay")
 
-					if eventPtr, ok := parseEventPointerInput(target); ok {
+					if evt, isEvent, err := parseEventInput(target); err != nil {
+						ctx = lineProcessingError(ctx, "%s", err)
+						continue
+					} else if isEvent {
+						if evt.ID == nostr.ZeroID {
+							ctx = lineProcessingError(ctx, "event has no id")
+							continue
+						}
+						id = evt.ID
+						relays = eventRelayHints(evt, relays)
+						if author == nostr.ZeroPK {
+							author = evt.PubKey
+						}
+					} else if eventPtr, ok := parseEventPointerInput(target); ok {
 						id = eventPtr.ID
 						relays = nostr.AppendUnique(relays, eventPtr.Relays...)
 						if author == nostr.ZeroPK {
@@ -322,16 +384,37 @@ var encode = &cli.Command{
 				for target := range getEncodeSubcommandInput(c.Args(), true) {
 					pubkey := getPubKey(c, "pubkey")
 					kind := getKind(c, "kind")
+					kindSet := c.IsSet("kind")
 					d := c.String("identifier")
 					relays := c.StringSlice("relay")
 
-					if entityPtr, ok := parseEntityPointerInput(target); ok {
+					if evt, isEvent, err := parseEventInput(target); err != nil {
+						ctx = lineProcessingError(ctx, "%s", err)
+						continue
+					} else if isEvent {
+						if pubkey == nostr.ZeroPK {
+							pubkey = evt.PubKey
+						}
+						relays = eventRelayHints(evt, relays)
+						if !kindSet {
+							kind = evt.Kind
+							kindSet = true
+						}
+						if !c.IsSet("identifier") {
+							if evt.Kind.IsAddressable() {
+								d = evt.Tags.GetD()
+							} else {
+								d = ""
+							}
+						}
+					} else if entityPtr, ok := parseEntityPointerInput(target); ok {
 						relays = nostr.AppendUnique(relays, entityPtr.Relays...)
 						if pubkey == nostr.ZeroPK {
 							pubkey = entityPtr.PublicKey
 						}
-						if kind == 0 {
+						if !kindSet {
 							kind = entityPtr.Kind
+							kindSet = true
 						}
 						if !c.IsSet("identifier") {
 							d = entityPtr.Identifier
@@ -345,7 +428,7 @@ var encode = &cli.Command{
 						continue
 					}
 
-					if kind == 0 {
+					if !kindSet {
 						ctx = lineProcessingError(ctx, "kind must be set")
 						continue
 					}
@@ -361,7 +444,7 @@ var encode = &cli.Command{
 							continue
 						}
 					} else {
-						ctx = lineProcessingError(ctx, "can only encode addressable events")
+						ctx = lineProcessingError(ctx, "can only encode replaceable events")
 						continue
 					}
 

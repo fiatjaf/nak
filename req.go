@@ -292,15 +292,10 @@ example:
 	},
 }
 
-// eventReference builds a nip19 reference for an event, using the relay it was
-// downloaded from as a hint. Replaceable and addressable events become naddr
-// codes unless neventAlways is set.
-func eventReference(evt nostr.Event, relayURL string, neventAlways bool) string {
-	relays := make([]string, 0, 1)
-	if relayURL != "" {
-		relays = append(relays, relayURL)
-	}
-
+// eventReference builds a nip19 reference for an event, using the given relays
+// as hints. Replaceable and addressable events become naddr codes unless
+// neventAlways is set.
+func eventReference(evt nostr.Event, relays []string, neventAlways bool) string {
 	if !neventAlways {
 		if evt.Kind.IsAddressable() {
 			if d := evt.Tags.GetD(); d != "" {
@@ -468,11 +463,11 @@ readevents:
 
 			var out string
 			if references {
-				relayURL := ""
-				if ie.Relay != nil {
-					relayURL = ie.Relay.URL
+				var relays []string
+				if ie.Relay != nil && ie.Relay.URL != "" {
+					relays = []string{ie.Relay.URL}
 				}
-				out = eventReference(ie.Event, relayURL, neventAlways)
+				out = eventReference(ie.Event, relays, neventAlways)
 			} else if jq == nil {
 				out = ie.Event.String()
 			} else {
@@ -684,7 +679,11 @@ func (p PrintingQuerierPublisher) Publish(ctx context.Context, evt nostr.Event) 
 	if err := p.QuerierPublisher.Publish(ctx, evt); err == nil {
 		var out string
 		if p.references {
-			out = eventReference(evt, p.relayURL, p.neventAlways)
+			var relays []string
+			if p.relayURL != "" {
+				relays = []string{p.relayURL}
+			}
+			out = eventReference(evt, relays, p.neventAlways)
 		} else if p.jq == nil {
 			out = evt.String()
 		} else {
