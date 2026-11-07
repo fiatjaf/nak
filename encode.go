@@ -5,6 +5,8 @@ import (
 	stdjson "encoding/json"
 	"fmt"
 	"iter"
+	"slices"
+	"strings"
 
 	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/nip19"
@@ -148,8 +150,12 @@ var encode = &cli.Command{
 				ctx = lineProcessingError(ctx, "%s", err)
 				continue
 			} else if isEvent {
-				relays = eventRelayHints(evt, relays)
-				stdout(eventReference(evt, relays, false))
+				ref := eventReference(evt, eventRelayHints(evt, slices.Clone(relays)), false)
+				if evt.ID == nostr.ZeroID && strings.HasPrefix(ref, "nevent1") {
+					ctx = lineProcessingError(ctx, "event has no id")
+					continue
+				}
+				stdout(ref)
 				continue
 			}
 
