@@ -147,6 +147,10 @@ var nsite = &cli.Command{
 				}); err != nil {
 					return err
 				}
+				if len(paths) == 0 {
+					// publishing a manifest with no paths would replace the existing site with an empty one
+					return fmt.Errorf("no files found in %s", dir)
+				}
 
 				if !c.Bool("yes") {
 					log("%s\n", color.CyanString("files:"))
