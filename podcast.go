@@ -1,6 +1,7 @@
 package main
 
 import (
+	"cmp"
 	"context"
 	"errors"
 	"fmt"
@@ -751,13 +752,22 @@ func fetchPodcastEpisodes(ctx context.Context, p podcastInfo, limit int) ([]nost
 		return nil, fmt.Errorf("no relay hints found for podcast %s", nip19.EncodeNpub(p.PubKey))
 	}
 
-	episodes := make([]nostr.Event, 0, limit)
+	episodes := make([]nostr.Event, 0, min(max(limit, 0), 100))
 	for ie := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{54},
 		Authors: []nostr.PubKey{p.PubKey},
 		Limit:   limit,
 	}, nostr.SubscriptionOptions{Label: "nak-podcast-list"}) {
 		episodes = append(episodes, ie.Event)
+	}
+
+	// each relay applies the limit on its own and results arrive in any order,
+	// so sort the merged list newest first and apply the limit to it
+	slices.SortFunc(episodes, func(a, b nostr.Event) int {
+		return cmp.Compare(b.CreatedAt, a.CreatedAt)
+	})
+	if limit > 0 && len(episodes) > limit {
+		episodes = episodes[:limit]
 	}
 
 	return episodes, nil
