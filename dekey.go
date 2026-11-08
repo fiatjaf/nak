@@ -172,7 +172,8 @@ var dekey = &cli.Command{
 			} else {
 				log("- decoupled encryption key not found locally, attempting to fetch the key from other devices\n")
 
-				// check if our kind:4454 is already published
+				// check if our kind:4454 is already published -- only announcements newer than the
+				// current kind:10044 count, since older ones are ignored by the devices that hold the key
 				log("- checking for existing device announcement (kind:4454)\n")
 				ourDeviceAnnouncementEvents := make([]nostr.Event, 0, 1)
 				for evt := range sys.Pool.FetchMany(ctx, relays, nostr.Filter{
@@ -181,6 +182,7 @@ var dekey = &cli.Command{
 					Tags: nostr.TagMap{
 						"P": []string{devicePub.Hex()},
 					},
+					Since: keyAnnouncementEvent.CreatedAt + 1,
 					Limit: 1,
 				}, nostr.SubscriptionOptions{Label: "nak-nip4e"}) {
 					ourDeviceAnnouncementEvents = append(ourDeviceAnnouncementEvents, evt.Event)
