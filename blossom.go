@@ -7,8 +7,10 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"unsafe"
 
+	"fiatjaf.com/nostr"
 	"fiatjaf.com/nostr/keyer"
 	"fiatjaf.com/nostr/nipb7/blossom"
 	"github.com/urfave/cli/v3"
@@ -93,7 +95,12 @@ var blossomCmd = &cli.Command{
 					}
 					advertised := sys.FetchBlossomServerList(ctx, pubkey)
 					for _, server := range advertised.Items {
-						servers = append(servers, server.Value())
+						// skip servers already given with --server, compared the way the client normalizes them
+						if !slices.ContainsFunc(servers, func(s string) bool {
+							return nostr.NormalizeURL(s) == nostr.NormalizeURL(server.Value())
+						}) {
+							servers = append(servers, server.Value())
+						}
 					}
 				}
 
