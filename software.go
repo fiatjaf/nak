@@ -632,7 +632,7 @@ func softwarePublish(ctx context.Context, c *cli.Command) error {
 		// keep tags we don't manage here (p, zap, h etc)
 		managed := []string{"d", "name", "summary", "icon", "image", "t", "url", "repository", "a", "f", "license"}
 		for _, t := range existing.Tags {
-			if !slices.Contains(managed, t[0]) {
+			if len(t) > 0 && !slices.Contains(managed, t[0]) {
 				app.Tags = append(app.Tags, t)
 			}
 		}
@@ -818,7 +818,7 @@ func softwareListApps(ctx context.Context, c *cli.Command) error {
 		return fmt.Errorf("expected an author or a relay")
 	}
 
-	apps := make([]nostr.Event, 0, limit)
+	apps := make([]nostr.Event, 0, min(limit, 100))
 	sys.Pool.FetchManyReplaceable(ctx, relays, filter,
 		nostr.SubscriptionOptions{Label: "nak-software-apps"}).Range(func(_ nostr.ReplaceableKey, evt nostr.Event) bool {
 		apps = append(apps, evt)
@@ -887,7 +887,7 @@ func softwareListReleases(ctx context.Context, c *cli.Command) error {
 		limit = 100
 	}
 
-	releases := make([]nostr.Event, 0, limit)
+	releases := make([]nostr.Event, 0, min(limit, 100))
 	sys.Pool.FetchManyReplaceable(ctx, relays, nostr.Filter{
 		Kinds:   []nostr.Kind{30063},
 		Authors: []nostr.PubKey{app.PubKey},
