@@ -290,17 +290,17 @@ if any of the files are not found the command will fail, otherwise it will succe
 					return err
 				}
 
-				var bd blossom.BlobDescriptor
 				if input := c.Args().First(); input != "" {
 					blobURL := input
+					var bd blossom.BlobDescriptor
 					if err := json.Unmarshal([]byte(input), &bd); err == nil {
 						blobURL = bd.URL
 					}
-					bd, err := client.MirrorBlob(ctx, blobURL)
+					mirrored, err := client.MirrorBlob(ctx, blobURL)
 					if err != nil {
 						return err
 					}
-					out, _ := json.Marshal(bd)
+					out, _ := json.Marshal(mirrored)
 					stdout(string(out))
 					return nil
 				}
@@ -310,16 +310,20 @@ if any of the files are not found the command will fail, otherwise it will succe
 						continue
 					}
 
-					blobURL := input
-					if err := json.Unmarshal([]byte(input), &bd); err == nil {
-						blobURL = bd.URL
+					// decode each line into a fresh descriptor, otherwise fields missing from
+					// this line would be taken from the previous one
+					var bd blossom.BlobDescriptor
+					if err := json.Unmarshal([]byte(input), &bd); err != nil || bd.URL == "" {
+						ctx = lineProcessingError(ctx, "no blob url in '%s'", input)
+						continue
 					}
-					bd, err := client.MirrorBlob(ctx, blobURL)
+					blobURL := bd.URL
+					mirrored, err := client.MirrorBlob(ctx, blobURL)
 					if err != nil {
 						ctx = lineProcessingError(ctx, "failed to mirror '%s': %s", blobURL, err)
 						continue
 					}
-					out, _ := json.Marshal(bd)
+					out, _ := json.Marshal(mirrored)
 					stdout(string(out))
 				}
 
